@@ -488,15 +488,19 @@ svg.lucide {
 }
 .inspector {
   position: absolute;
-  top: 80px;
-  bottom: 16px;
-  right: 16px;
+  top: 64px;
+  bottom: 0;
+  right: 0;
   width: 268px;
   z-index: 12;
-  border-radius: 10px;
+  border-radius: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  border-top: none;
+  border-right: none;
+  border-bottom: none;
+  box-shadow: none;
 }
 .inspector-tabs {
   height: 45px;
@@ -1333,15 +1337,19 @@ kbd {
 /* The layer tree stays independent of the right-hand design inspector. */
 .layers-sidebar {
   position: absolute;
-  top: 80px;
-  bottom: 16px;
-  left: 16px;
+  top: 64px;
+  bottom: 0;
+  left: 0;
   width: 240px;
   z-index: 12;
-  border-radius: 10px;
+  border-radius: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  border-top: none;
+  border-left: none;
+  border-bottom: none;
+  box-shadow: none;
 }
 .layers-sidebar .layers-panel {
   border-bottom: 0;
