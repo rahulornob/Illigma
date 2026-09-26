@@ -1,5 +1,7 @@
 # Illigma
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Frahulornob%2FIlligma)
+
 A lightweight vector editor with a Framer-inspired dark interface. Built with Vite, vanilla JavaScript, an SVG workspace, and Paper.js for Bézier geometry and boolean operations. Inter fonts are bundled locally.
 
 ## Run
