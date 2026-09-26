@@ -776,7 +776,7 @@ test("artboard label keeps constant screen size during zoom and selects artboard
   expect(after.height).toBeCloseTo(before.height, 1);
   expect(after.width).toBeCloseTo(before.width, 1);
   await label.click();
-  await expect(page.locator("#selection-type")).toHaveText("Artboard");
+  await expect(page.locator("#selection-type")).toHaveText("Frame");
   await expect(page.locator("[data-artboard-selection]")).toHaveCount(1);
   await property(page, "Width", 1200);
   expect((await state(page)).doc.artboard.width).toBe(1200);
@@ -789,7 +789,7 @@ test("artboard name can be renamed and selected from layers", async ({
 }) => {
   await page.locator("#artboard-label").dblclick();
   const input = page.getByRole("textbox", {
-    name: "Artboard name",
+    name: "Frame name",
     exact: true,
   });
   await expect(input).toBeVisible();
@@ -996,13 +996,13 @@ test('multiple frames persist per page and support geometry, rename, delete and 
   await page.goto('/');
   await page.getByRole('button', { name: 'Add frame', exact: true }).click();
   await expect(page.locator('[data-frame-id]')).toHaveCount(2);
-  await expect(page.locator('#selection-name')).toHaveText('Artboard 2');
+  await expect(page.locator('#selection-name')).toHaveText('Frame 2');
   await page.locator('#prop-w').fill('600');
   await page.locator('#prop-w').press('Tab');
   await expect(page.locator('#artboard')).toHaveAttribute('width', '600');
   await page.locator('[data-frame-id]').last().dblclick();
-  await page.getByRole('textbox', { name: 'Artboard name', exact: true }).fill('Mobile');
-  await page.getByRole('textbox', { name: 'Artboard name', exact: true }).press('Enter');
+  await page.getByRole('textbox', { name: 'Frame name', exact: true }).fill('Mobile');
+  await page.getByRole('textbox', { name: 'Frame name', exact: true }).press('Enter');
   await page.reload();
   await expect(page.locator('[data-frame-id]')).toHaveCount(2);
   await expect(page.locator('[data-frame-id]').last()).toContainText('Mobile');
@@ -1243,7 +1243,7 @@ test("frame effects and svg export filter generation", async ({ page }) => {
   await blank(page);
   // Select artboard
   await page.locator("#artboard-label").click();
-  await expect(page.locator("#selection-type")).toHaveText("Artboard");
+  await expect(page.locator("#selection-type")).toHaveText("Frame");
 
   // Add an effect to the artboard
   await page.locator("#add-effect").click();

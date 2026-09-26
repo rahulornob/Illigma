@@ -376,7 +376,7 @@ function activateFrame(id) {
 function nextFrameName() {
   const frames = pageFrames();
   const usesArtboard = frames.some(f => f.name.toLowerCase().startsWith("artboard"));
-  const prefix = usesArtboard ? "Artboard" : "Frame";
+  const prefix = "Frame";
   let number = 1;
   while (frames.some(f => f.name === `${prefix} ${number}`)) number++;
   return `${prefix} ${number}`;
@@ -395,7 +395,7 @@ function addFrame() {
 }
 $("add-artboard").addEventListener("click", addFrame);
 const artboardSelected = () => state.selected.includes("__artboard__");
-const artboardName = () => state.doc.artboard.name || "Artboard 1";
+const artboardName = () => state.doc.artboard.name || "Frame 1";
 let lastArtboardClick = 0;
 function selectArtboard() {
   setTool("select");
@@ -407,7 +407,7 @@ function renameArtboard() {
   if (document.querySelector(".artboard-name-editor")) return;
   const input = document.createElement("input");
   input.className = "artboard-name-editor";
-  input.setAttribute("aria-label", "Artboard name");
+  input.setAttribute("aria-label", "Frame name");
   input.setAttribute("title", "Frame name");
   input.value = artboardName();
   input.maxLength = 100;
@@ -1393,7 +1393,7 @@ function renderProperties() {
   $("frame-properties").hidden = !artboardSelected();
   $("clip-content").checked = state.doc.artboard.clipContent !== false;
   if (artboardSelected()) {
-    $("selection-type").textContent = state.doc.artboard.name?.toLowerCase().startsWith("frame") ? "Frame" : "Artboard";
+    $("selection-type").textContent = "Frame";
     $("selection-name").textContent = artboardName();
     $("prop-x").disabled = false;
     $("prop-y").disabled = false;
@@ -2911,7 +2911,7 @@ function openContextMenu(event) {
   if (!selected.length && !artboardSelected()) {
     add("Change canvas color...", () => openColorPicker("fill"), true);
   }
-  add("Fit artboard", fitCanvas, true, "⇧ 1");
+  add("Fit frame", fitCanvas, true, "⇧ 1");
   add(pixelGridVisible ? "Hide pixel grid" : "Show pixel grid", () => $("toggle-pixel-grid").click());
   contextMenu.hidden = false;
   contextMenu.style.left = `${Math.max(8, Math.min(event.clientX, innerWidth - contextMenu.offsetWidth - 8))}px`;

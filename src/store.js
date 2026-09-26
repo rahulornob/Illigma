@@ -336,7 +336,7 @@ export function preparePages(doc) {
     p.artboards ||= [p.artboard];
     for (const [index, frame] of p.artboards.entries()) {
       frame.id ||= crypto.randomUUID(); frame.x ??= 0; frame.y ??= 0;
-      frame.name ||= p.artboard?.name || `Artboard ${index + 1}`;
+      frame.name ||= p.artboard?.name || `Frame ${index + 1}`;
       frame.clipContent ??= true;
       frame.effects ||= [];
     }
