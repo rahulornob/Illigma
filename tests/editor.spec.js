@@ -7,7 +7,7 @@ async function state(page) {
       .transform.baseVal.consolidate().matrix;
     return {
       doc: JSON.parse(localStorage.getItem("illigma.document.v1")),
-      selected: [...document.querySelectorAll(".layer-row.selected")].map(
+      selected: [...document.querySelectorAll(".layer-row[data-layer].selected")].map(
         (row) => row.dataset.layer,
       ),
       zoom: matrix.a,
@@ -178,13 +178,13 @@ test("layers hide, lock, rename and reorder the SVG paint stack", async ({
     .getByRole("button", { name: "Unlock Ellipse", exact: true })
     .click();
   const name = page
-    .locator(".layer-row")
+    .locator(".layer-row[data-layer]")
     .filter({ has: page.locator(".layer-name", { hasText: /^Ellipse$/ }) })
     .locator(".layer-name");
   await name.dblclick();
   await page.getByRole("textbox", { name: "Layer name" }).fill("Moon");
   await page.getByRole("textbox", { name: "Layer name" }).press("Enter");
-  const rows = page.locator(".layer-row");
+  const rows = page.locator(".layer-row[data-layer]");
   await rows.nth(1).dragTo(rows.nth(0), { targetPosition: { x: 80, y: 4 } });
   expect((await state(page)).doc.objects.map((o) => o.name)).toEqual([
     "Moon",
@@ -844,7 +844,7 @@ test("local font imports, applies to text, and survives reload", async ({
   page,
 }) => {
   await page
-    .locator(".layer-row")
+    .locator(".layer-row[data-layer]")
     .filter({ has: page.locator(".layer-name", { hasText: /^Title$/ }) })
     .click();
   await page.getByRole("button", { name: "Add fonts", exact: true }).click();
@@ -900,7 +900,7 @@ test("Google font downloads, applies, and is cached for offline reload", async (
     route.fulfill({ contentType: "font/woff2", body: font }),
   );
   await page
-    .locator(".layer-row")
+    .locator(".layer-row[data-layer]")
     .filter({ has: page.locator(".layer-name", { hasText: /^Title$/ }) })
     .click();
   await page.getByRole("button", { name: "Add fonts", exact: true }).click();
@@ -995,31 +995,31 @@ test("pages keep separate artwork and survive reload, deletion, and undo", async
 test('multiple frames persist per page and support geometry, rename, delete and undo', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Add frame', exact: true }).click();
-  await expect(page.locator('.frame-row')).toHaveCount(2);
+  await expect(page.locator('[data-frame-id]')).toHaveCount(2);
   await expect(page.locator('#selection-name')).toHaveText('Artboard 2');
   await page.locator('#prop-w').fill('600');
   await page.locator('#prop-w').press('Tab');
   await expect(page.locator('#artboard')).toHaveAttribute('width', '600');
-  await page.locator('.frame-row').last().dblclick();
+  await page.locator('[data-frame-id]').last().dblclick();
   await page.getByRole('textbox', { name: 'Artboard name', exact: true }).fill('Mobile');
   await page.getByRole('textbox', { name: 'Artboard name', exact: true }).press('Enter');
   await page.reload();
-  await expect(page.locator('.frame-row')).toHaveCount(2);
-  await expect(page.locator('.frame-row').last()).toContainText('Mobile');
-  await page.locator('.frame-row').last().click();
+  await expect(page.locator('[data-frame-id]')).toHaveCount(2);
+  await expect(page.locator('[data-frame-id]').last()).toContainText('Mobile');
+  await page.locator('[data-frame-id]').last().click();
   await page.locator('#prop-x').fill('1500');
   await page.locator('#prop-x').press('Tab');
   await expect(page.locator('#artboard')).toHaveAttribute('x', '1500');
   await page.getByRole('button', { name: 'Add page', exact: true }).click();
-  await expect(page.locator('.frame-row')).toHaveCount(1);
+  await expect(page.locator('[data-frame-id]')).toHaveCount(1);
   await page.getByRole('button', { name: 'Page 1', exact: true }).click();
-  await expect(page.locator('.frame-row')).toHaveCount(2);
-  await page.locator('.frame-row').last().click();
+  await expect(page.locator('[data-frame-id]')).toHaveCount(2);
+  await page.locator('[data-frame-id]').last().click();
   await page.locator('#canvas').focus();
   await page.keyboard.press('Delete');
-  await expect(page.locator('.frame-row')).toHaveCount(1);
+  await expect(page.locator('[data-frame-id]')).toHaveCount(1);
   await page.locator('#undo').click();
-  await expect(page.locator('.frame-row')).toHaveCount(2);
+  await expect(page.locator('[data-frame-id]')).toHaveCount(2);
 });
 
 test("figma-like frame tool, canvas frame drawing, dragging selected frame, and object auto-nesting", async ({ page }) => {
@@ -1035,7 +1035,7 @@ test("figma-like frame tool, canvas frame drawing, dragging selected frame, and 
   const drawnObj = s2.doc.objects.at(-1);
   expect(drawnObj.frameId).toBe(newFrame.id);
 
-  await page.locator('.frame-row').last().click();
+  await page.locator('[data-frame-id]').last().click();
   const beforeFramePos = { x: newFrame.x, y: newFrame.y };
   const beforeObjPos = { x: drawnObj.x, y: drawnObj.y };
 

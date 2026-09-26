@@ -1667,16 +1667,15 @@ function renderLayers() {
   const containers = new Map();
   frames.forEach(frame => {
     const section = document.createElement("div"); section.className = "frame-section";
-    const row = document.createElement("div"); row.className = "frame-row"; row.dataset.frameId = frame.id;
-    row.classList.toggle("selected", artboardSelected() && frame.id === state.doc.artboard.id);
+    const row = document.createElement("div"); row.className = `layer-row${artboardSelected() && frame.id === state.doc.artboard.id ? " selected" : ""}`; row.dataset.frameId = frame.id;
     row.addEventListener("click", () => activateFrame(frame.id));
     row.addEventListener("dblclick", () => { activateFrame(frame.id); renameArtboard(); });
-    const toggle = document.createElement("button"); toggle.textContent = collapsedFrames.has(frame.id) ? "›" : "⌄";
+    const toggle = document.createElement("button"); toggle.className = "layer-toggle";
+    toggle.append(icon(collapsedFrames.has(frame.id) ? "chevron-right" : "chevron-down"));
     toggle.setAttribute("aria-label", `Toggle ${frame.name} layers`);
     toggle.setAttribute("aria-expanded", String(!collapsedFrames.has(frame.id)));
     toggle.addEventListener("click", (e) => { e.stopPropagation(); collapsedFrames.has(frame.id) ? collapsedFrames.delete(frame.id) : collapsedFrames.add(frame.id); renderLayers(); });
-    const name = document.createElement("button"); name.className = "frame-name"; name.textContent = frame.name;
-    name.addEventListener("click", (e) => { e.stopPropagation(); activateFrame(frame.id); });
+    const name = document.createElement("span"); name.className = "layer-name"; name.textContent = frame.name;
     name.addEventListener("dblclick", (e) => { e.stopPropagation(); activateFrame(frame.id); renameArtboard(); });
     row.append(toggle, icon("frame"), name);
     const children = document.createElement("div"); children.className = "frame-children"; children.hidden = collapsedFrames.has(frame.id);
@@ -1708,6 +1707,7 @@ function renderLayers() {
     name.textContent = obj.name;
     row.append(name);
     const lock = document.createElement("button");
+    lock.className = "layer-action";
     lock.dataset.lock = obj.id;
     lock.title = obj.locked ? "Unlock layer" : "Lock layer";
     lock.setAttribute(
@@ -1718,6 +1718,7 @@ function renderLayers() {
     lock.append(icon(obj.locked ? "lock" : "lock-open"));
     row.append(lock);
     const eye = document.createElement("button");
+    eye.className = "layer-action";
     eye.dataset.visibility = obj.id;
     eye.title = obj.visible ? "Hide layer" : "Show layer";
     eye.setAttribute(
@@ -2879,7 +2880,7 @@ window.addEventListener("pointerdown", event => {
   if (!contextMenu.contains(event.target)) closeContextMenu();
 }, true);
 window.addEventListener("resize", closeContextMenu);
-window.addEventListener("wheel", closeContextMenu, {passive:true});
+
 contextMenu.addEventListener("keydown", event => {
   if (event.key === "Escape" || event.key === "Tab") {
     closeContextMenu(); svg.focus(); event.preventDefault(); event.stopPropagation();

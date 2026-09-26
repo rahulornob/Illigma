@@ -796,62 +796,97 @@ svg.lucide {
 .layer-row {
   display: flex;
   align-items: center;
-  height: 30px;
+  height: 32px;
   gap: 8px;
-  padding: 0 6px 0 22px;
+  padding: 0 8px;
+  margin: 1px 4px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 500;
   cursor: pointer;
   border: 1px solid transparent;
-  color: #999;
+  color: #e0e0e0;
   position: relative;
+  user-select: none;
+}
+.frame-children .layer-row {
+  padding-left: 32px;
 }
 .layer-row:hover {
-  background: #1c1c1c;
+  background: #333333;
 }
 .layer-row.selected {
-  background: #0099ff16;
-  border-color: #0099ff24;
-  color: #e4e4e4;
+  background: #0D99FF;
+  border-color: transparent;
+  color: #ffffff;
 }
 .layer-row.hidden-layer {
-  opacity: 0.45;
+  opacity: 0.5;
 }
 .layer-row.drag-over {
-  border-top: 2px solid #0099ff;
+  border-bottom: 2px solid #0D99FF;
+  border-radius: 0;
 }
 .layer-row > .lucide {
-  width: 13px;
-  height: 13px;
-  color: #808080;
+  width: 14px;
+  height: 14px;
+  color: #999999;
 }
 .layer-row.selected > .lucide {
-  color: var(--accent);
+  color: #ffffff;
+}
+.layer-row .layer-toggle {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  color: #999999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+}
+.layer-row:hover .layer-toggle, .layer-row.selected .layer-toggle {
+  opacity: 1;
+}
+.layer-row.selected .layer-toggle {
+  color: #ffffff;
 }
 .layer-name {
   flex: 1;
+  text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .layer-row button {
   padding: 0;
-  width: 17px;
+  width: 20px;
   height: 20px;
-  color: #777;
+  color: #999999;
   opacity: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
 }
-.layer-row:hover button,
-.layer-row.selected button,
-.layer-row.hidden-layer button {
+.layer-row button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+.layer-row.selected button {
+  color: #ffffff;
+}
+.layer-row.selected button:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+.layer-row:hover button.layer-action,
+.layer-row.selected button.layer-action,
+.layer-row.hidden-layer button.layer-action,
+.layer-row button.is-locked {
   opacity: 1;
 }
 .layer-row button svg {
-  width: 12px;
-  height: 12px;
-}
-.layer-row button.is-locked {
-  opacity: 1;
+  width: 14px;
+  height: 14px;
 }
 .layer-row input {
   width: 100%;
@@ -1993,18 +2028,7 @@ kbd {
 #canvas-context-menu kbd { font: inherit; font-size: 10px; opacity: .65; }
 #canvas-context-menu hr { border: 0; border-top: 1px solid #363636; margin: 5px 3px; }
 
-.frame-row { display: block; width: 100%; padding: 8px 12px; text-align: left; font-size: 12px; border-radius: 5px; }
-.frame-row:hover { background: #1c1c1c; }
-.frame-row.selected { background: #0099ff22; color: #0099ff; }
-#frame-list { padding: 0 8px 8px; }
-[data-frame-label] { cursor: move; }
 
-#frame-list { display:none; }
-.frame-row { display:flex; align-items:center; gap:8px; padding:7px 8px; }
-.frame-row > svg { width:14px; height:14px; }
-.frame-row > button { padding:0; text-align:left; }
-.frame-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; }
-.frame-children { padding-left:16px; }
 #frame-properties { font-size:12px; margin:0 0 12px; align-items:center; gap:8px; }
 #frame-properties:not([hidden]) { display:flex; }
 
