@@ -138,3 +138,18 @@ Add and stack multiple effects on any shape, text, or frame like in Figma:
   - Native SVG filter export (`<filter>`, `<feGaussianBlur>`, `<feOffset>`, `<feColorMatrix>`, `<feComposite>`, `<feMorphology>`, `<feMerge>`) in `exportSvg()`.
 
 
+
+### Auto layout (2026 update)
+
+Select layers and press **Shift+A**, then use the right sidebar's **Auto layout** controls. Choose horizontal, vertical, or grid flow; configure wrap, fixed/hug/fill sizing, automatic spacing, independent padding, and min/max dimensions. Select a child for Ignore auto layout or grid spans. Fill-width text wraps without scaling glyphs.
+
+See [2026 sources, usage, and known differences](docs/auto-layout-2026.md). This implements a documented subset of Figma behavior, not complete feature parity.
+
+### Figma reference guide for AI implementation
+
+Start with [the Figma reference guide](docs/figma/README.md) when implementing or fixing Figma-like features. It includes shared terminology, behavior references, the Illigma code map, a live-comparison workflow, and a searchable catalog of 183 official articles. [AGENTS.md](AGENTS.md) routes coding agents to this workflow automatically when supported.
+
+```sh
+python3 scripts/figma_reference.py "frame"
+python3 scripts/figma_reference.py --read 360040449873
+```

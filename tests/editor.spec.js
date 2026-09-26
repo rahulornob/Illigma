@@ -172,6 +172,8 @@ test("layers hide, lock, rename and reorder the SVG paint stack", async ({
   await expect(page.locator("#objects > g")).toHaveCount(1);
   await page.getByRole("button", { name: "Show Ellipse", exact: true }).click();
   await page.getByRole("button", { name: "Lock Ellipse", exact: true }).click();
+  // Establish a child selection: page-level Select All intentionally selects frames.
+  await page.locator('.layer-row[data-layer]').filter({has:page.locator('.layer-name',{hasText:/^Rectangle$/})}).click();
   await selectAll(page);
   expect((await state(page)).selected).toHaveLength(1);
   await page
@@ -1362,4 +1364,370 @@ test('fill container shares available space and updates after parent resize', as
   for (const child of s.doc.objects.filter(o=>o.frameId===frame.id)) expect(child.w).toBeCloseTo(226,0);
   await page.reload();
   const restored=await state(page);expect(restored.doc.objects.filter(o=>o.widthSizing==='fill')).toHaveLength(2);
+});
+
+test('interrupted selection and pen gestures release pointer ownership and accept the next click', async ({page}) => {
+  await blank(page);
+  const errors=[];page.on('pageerror',error=>errors.push(error.message));
+  await draw(page,'Rectangle',[100,100],[220,200]);
+  await page.evaluate(()=>document.getElementById('canvas').addEventListener('pointerdown',e=>window.testPointerId=e.pointerId));
+  const a=await at(page,150,150), b=await at(page,190,180);
+  await page.mouse.move(a.x,a.y);await page.mouse.down();await page.mouse.move(b.x,b.y);
+  await page.evaluate(()=>document.getElementById('canvas').dispatchEvent(new PointerEvent('pointercancel',{pointerId:window.testPointerId,bubbles:true,pointerType:'mouse'})));
+  await page.mouse.up();
+  await drag(page,[150,150],[180,170]);
+  let s=await state(page);expect(s.doc.objects[0].x).toBeCloseTo(130,0);
+  await page.getByRole('button',{name:'Pen tool',exact:true}).click();
+  const p=await at(page,350,300);await page.mouse.move(p.x,p.y);await page.mouse.down();
+  await page.evaluate(()=>window.dispatchEvent(new Event('blur')));await page.mouse.up();
+  await page.mouse.click(p.x,p.y);
+  const q=await at(page,450,320);await page.mouse.click(q.x,q.y);await page.keyboard.press('Enter');
+  s=await state(page);expect(s.doc.objects.filter(o=>o.type==='path')).toHaveLength(1);
+  expect(errors).toEqual([]);
+});
+
+test('right click recovers an interrupted gesture and dismissed menu does not block drawing', async ({page}) => {
+  await blank(page);await draw(page,'Rectangle',[100,100],[220,200]);
+  const a=await at(page,150,150);await page.mouse.move(a.x,a.y);await page.mouse.down();
+  await page.locator('#canvas').dispatchEvent('contextmenu',{clientX:a.x,clientY:a.y,button:2});
+  await page.mouse.up();await expect(page.getByRole('menu',{name:'Editing actions'})).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:'Pen tool',exact:true}).click();
+  for(const [x,y] of [[350,300],[400,350],[450,300]]) {const p=await at(page,x,y);await page.mouse.click(p.x,p.y);}
+  await page.keyboard.press('Enter');
+  expect((await state(page)).doc.objects.filter(o=>o.type==='path')).toHaveLength(1);
+  const p=await at(page,350,300);await page.mouse.click(p.x,p.y,{button:'right'});
+  await expect(page.getByRole('menu',{name:'Editing actions'})).toBeVisible();
+});
+
+test('drag survives lost capture and a transient zero-buttons move until actual release', async ({page}) => {
+  await blank(page);await draw(page,'Rectangle',[100,100],[220,200]);
+  const a=await at(page,150,150),b=await at(page,180,170),c=await at(page,240,210);
+  await page.evaluate(()=>document.getElementById('canvas').addEventListener('pointerdown',event=>window.dragPointer=event.pointerId));
+  await page.mouse.move(a.x,a.y);await page.mouse.down();await page.mouse.move(b.x,b.y);
+  await page.evaluate(({x,y})=>{
+    const canvas=document.getElementById('canvas');
+    if(canvas.hasPointerCapture(window.dragPointer))canvas.releasePointerCapture(window.dragPointer);
+    canvas.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,pointerId:window.dragPointer,pointerType:'mouse',buttons:0,clientX:x,clientY:y}));
+  },b);
+  await page.mouse.move(c.x,c.y,{steps:10});await page.mouse.up();
+  const s=await state(page);expect(s.doc.objects[0].x).toBeCloseTo(190,0);expect(s.doc.objects[0].y).toBeCloseTo(160,0);
+});
+
+test('Select All includes every root frame and dragging moves frames and children once', async ({page}) => {
+  await blank(page);await draw(page,'Rectangle',[100,100],[200,180]);
+  await page.locator('#add-artboard').click();
+  const before=await state(page);
+  await selectAll(page);
+  await expect(page.locator('[data-frame-selection]')).toHaveCount(2);
+  await expect(page.locator('[data-frame-id].selected')).toHaveCount(2);
+  const label=page.locator('#artboard-label');const box=await label.boundingBox();
+  await page.mouse.move(box.x+20,box.y+5);await page.mouse.down();await page.mouse.move(box.x+60,box.y+35,{steps:10});await page.mouse.up();
+  const after=await state(page);
+  for(let i=0;i<2;i++)expect(after.doc.artboards[i].x-before.doc.artboards[i].x).toBeCloseTo(40/before.zoom,0);
+  expect(after.doc.objects[0].x-before.doc.objects[0].x).toBeCloseTo(40/before.zoom,0);
+});
+
+test('marquee selects an inactive frame and continues displaying the selection rectangle', async ({page}) => {
+  await blank(page);await page.locator('#add-artboard').click();
+  // Fit the first frame, then make the second active without changing the view.
+  await page.locator('[data-frame-id]').first().click();await page.locator('#fit-canvas').click();
+  await page.locator('[data-frame-id]').last().click();
+  const a=await at(page,-15,250),b=await at(page,100,400);
+  await page.mouse.move(a.x,a.y);await page.mouse.down();await page.mouse.move(b.x,b.y,{steps:10});
+  await expect(page.locator('.marquee')).toBeVisible();
+  await expect(page.locator('[data-frame-id]').first()).toHaveClass(/selected/);
+  await page.mouse.up();
+  await expect(page.locator('[data-artboard-selection]')).toHaveCount(1);
+});
+
+test('frame multiselection bounds use frame edges rather than child artwork', async ({page}) => {
+  await blank(page);await draw(page,'Rectangle',[100,100],[200,180]);
+  await page.locator('#add-artboard').click();await selectAll(page);
+  const s=await state(page), frames=s.doc.artboards;
+  const left=Math.min(...frames.map(f=>f.x)), top=Math.min(...frames.map(f=>f.y));
+  const right=Math.max(...frames.map(f=>f.x+f.width)), bottom=Math.max(...frames.map(f=>f.y+f.height));
+  const box=page.locator('[data-selection-bounds]');
+  await expect(box).toHaveAttribute('width',String(right-left));
+  await expect(box).toHaveAttribute('height',String(bottom-top));
+  await expect(box.locator('..')).toHaveAttribute('transform',`translate(${left} ${top})`);
+  const corner=page.locator('[data-handle="se"]');const rect=await corner.boundingBox();
+  await page.mouse.move(rect.x+rect.width/2,rect.y+rect.height/2);await page.mouse.down();
+  await page.mouse.move(rect.x+rect.width/2+30,rect.y+rect.height/2+20,{steps:5});await page.mouse.up();
+  const after=await state(page);expect(after.doc.artboards[1].width).toBeGreaterThan(frames[1].width);
+});
+
+test('rulers toggle and track pan/zoom, and smart guides snap edges only when enabled', async ({page}) => {
+  await blank(page);
+  await page.locator('#toggle-rulers').click();
+  await expect(page.locator('#canvas-rulers text').first()).toBeVisible();
+  const ticks=await page.locator('#canvas-rulers').innerHTML();
+  await page.locator('#zoom-in').click();expect(await page.locator('#canvas-rulers').innerHTML()).not.toBe(ticks);
+  await draw(page,'Rectangle',[100,100],[160,160]);
+  await draw(page,'Rectangle',[300,300],[360,360]);
+  const a=await at(page,330,330),b=await at(page,132,230);
+  await page.mouse.move(a.x,a.y);await page.mouse.down();await page.mouse.move(b.x,b.y,{steps:10});
+  await expect(page.locator('[data-smart-guide="x"]')).toHaveCount(1);
+  await page.mouse.up();
+  let s=await state(page);expect(s.doc.objects[1].x).toBeCloseTo(100,0);
+  await expect(page.locator('[data-smart-guide]')).toHaveCount(0);
+  await page.locator('#toggle-smart-guides').click();
+  await drag(page,[130,230],[132,250]);
+  s=await state(page);expect(s.doc.objects[1].x).toBeCloseTo(102,0);
+  await page.reload();
+  await expect(page.locator('#toggle-rulers')).toHaveAttribute('aria-pressed','true');
+  await expect(page.locator('#toggle-smart-guides')).toHaveAttribute('aria-pressed','false');
+  await page.locator('#canvas').focus();await page.keyboard.press('Shift+r');
+  await expect(page.locator('#canvas-rulers text')).toHaveCount(0);
+});
+
+test('Select All highlights containers only at page level and siblings only inside a frame', async ({page}) => {
+  await page.locator('[data-frame-id]').first().click();
+  await selectAll(page);
+  await expect(page.locator('[data-frame-id].selected')).toHaveCount(1);
+  await expect(page.locator('[data-layer].selected')).toHaveCount(0);
+  await page.locator('#duplicate').click();
+  await selectAll(page);
+  await expect(page.locator('[data-frame-id].selected')).toHaveCount(2);
+  await expect(page.locator('[data-layer].selected')).toHaveCount(0);
+  const child=page.locator('[data-layer]').filter({hasText:'Blue orbit'}).first();
+  await child.click();await selectAll(page);
+  await expect(page.locator('[data-frame-id].selected')).toHaveCount(0);
+  const selected=await page.locator('[data-layer].selected').evaluateAll(rows=>rows.map(row=>row.dataset.layer));
+  const s=await state(page), objects=s.doc.objects.filter(o=>selected.includes(o.id));
+  expect(objects.length).toBeGreaterThan(1);
+  expect(new Set(objects.map(o=>o.frameId)).size).toBe(1);
+  expect(objects.every(o=>!o.locked && o.visible)).toBe(true);
+});
+
+test('Alt shows object and frame distances, and smart snapping shows live measurement labels', async ({page}) => {
+  await blank(page);
+  await draw(page,'Rectangle',[100,100],[160,160]);
+  await draw(page,'Rectangle',[300,300],[360,360]);
+  const first=await at(page,130,130);
+  await page.mouse.move(first.x,first.y);await page.keyboard.down('Alt');
+  await expect(page.locator('#measurement-guides [data-distance="140"]')).toHaveCount(2);
+  await page.keyboard.up('Alt');await expect(page.locator('#measurement-guides [data-distance]')).toHaveCount(0);
+  const bg=await at(page,450,450);await page.mouse.move(bg.x,bg.y);await page.keyboard.down('Alt');
+  await expect(page.locator('#measurement-guides [data-distance]')).toHaveCount(4);
+  await page.keyboard.up('Alt');
+  const from=await at(page,330,330),to=await at(page,132,230);
+  await page.mouse.move(from.x,from.y);await page.mouse.down();await page.mouse.move(to.x,to.y,{steps:10});
+  await expect(page.locator('#smart-guides [data-distance="40"]')).toHaveCount(1);
+  await page.mouse.up();await expect(page.locator('#smart-guides [data-distance]')).toHaveCount(0);
+  await page.locator('#add-artboard').click();
+  await page.locator('[data-frame-id]').first().click();
+  const otherLabel=page.locator('[data-frame-label]').filter({hasText:'Frame 2'});
+  // Fit the second frame so its label can be hovered, then select the first via Layers.
+  await page.locator('[data-frame-id]').last().click();await page.locator('#fit-canvas').click();await page.locator('[data-frame-id]').first().click();
+  await otherLabel.hover();await page.keyboard.down('Alt');
+  await expect(page.locator('#measurement-guides [data-distance="100"]')).toHaveCount(1);
+  await page.keyboard.up('Alt');
+});
+
+test('Alt+L collapses and expands every frame without changing selection or intercepting typing', async ({page}) => {
+  await page.locator('#add-artboard').click();
+  const before=await page.locator('[data-frame-id].selected').getAttribute('data-frame-id');
+  await page.locator('#canvas').focus();await page.keyboard.press('Alt+l');
+  for(const toggle of await page.locator('.layer-toggle').all()) await expect(toggle).toHaveAttribute('aria-expanded','false');
+  await expect(page.locator('[data-frame-id].selected')).toHaveAttribute('data-frame-id',before);
+  await page.keyboard.press('Alt+l');
+  for(const toggle of await page.locator('.layer-toggle').all()) await expect(toggle).toHaveAttribute('aria-expanded','true');
+  await page.locator('#document-title').focus();await page.keyboard.press('Alt+l');
+  for(const toggle of await page.locator('.layer-toggle').all()) await expect(toggle).toHaveAttribute('aria-expanded','true');
+});
+
+test('measurement labels include px and dragging uses integer positions with smart guides off', async ({page}) => {
+  await blank(page);
+  await draw(page,'Rectangle',[100,100],[160,160]);
+  await draw(page,'Rectangle',[300,300],[360,360]);
+  const p=await at(page,130,130);await page.mouse.move(p.x,p.y);await page.keyboard.down('Alt');
+  for(const label of await page.locator('#measurement-guides [data-distance="140"] text').all()) await expect(label).toHaveText('140px');
+  await page.keyboard.up('Alt');
+  await page.locator('#toggle-smart-guides').click();
+  await page.locator('#prop-x').fill('300.25');await page.locator('#prop-x').press('Tab');
+  await drag(page,[330.25,330],[342.62,349.28]);
+  let s=await state(page);expect(s.doc.objects[1].x).toBe(313);expect(s.doc.objects[1].y).toBe(319);
+  await page.locator('#add-artboard').click();
+  const box=await page.locator('#artboard-label').boundingBox();
+  await page.mouse.move(box.x+20,box.y+5);await page.mouse.down();await page.mouse.move(box.x+32.3,box.y+16.7,{steps:5});await page.mouse.up();
+  s=await state(page);expect(Number.isInteger(s.doc.artboard.x)).toBe(true);expect(Number.isInteger(s.doc.artboard.y)).toBe(true);
+});
+
+test('spacing sets horizontal and vertical gaps for objects and keeps groups intact', async ({page}) => {
+  await blank(page);
+  await draw(page,'Rectangle',[100,100],[140,140]);
+  await draw(page,'Rectangle',[200,200],[240,240]);
+  await draw(page,'Rectangle',[300,300],[340,340]);
+  await selectAll(page);
+  await page.getByRole('spinbutton',{name:'Horizontal spacing',exact:true}).fill('20');
+  await page.getByRole('spinbutton',{name:'Horizontal spacing',exact:true}).press('Tab');
+  await page.getByRole('spinbutton',{name:'Vertical spacing',exact:true}).fill('15');
+  await page.getByRole('spinbutton',{name:'Vertical spacing',exact:true}).press('Tab');
+  let s=await state(page);const objects=s.doc.objects;
+  expect(objects[1].x-objects[0].x-objects[0].w).toBeCloseTo(20,3);
+  expect(objects[2].y-objects[1].y-objects[1].h).toBeCloseTo(15,3);
+  await page.locator(`[data-layer="${objects[0].id}"]`).click();
+  await page.locator(`[data-layer="${objects[1].id}"]`).click({modifiers:['ControlOrMeta']});
+  await page.keyboard.press('ControlOrMeta+g');await selectAll(page);
+  await page.locator('#spacing-horizontal').fill('50');await page.locator('#spacing-horizontal').press('Tab');
+  s=await state(page);
+  expect(s.doc.objects[1].x-s.doc.objects[0].x).toBeCloseTo(objects[1].x-objects[0].x,3);
+  expect(s.doc.objects[2].x-s.doc.objects[1].x-s.doc.objects[1].w).toBeCloseTo(50,3);
+  await page.locator('#undo').click();s=await state(page);
+  expect(s.doc.objects[2].x).toBeCloseTo(objects[2].x,3);
+});
+
+test('spacing moves frames with their children and survives reload', async ({page}) => {
+  await blank(page);await draw(page,'Rectangle',[100,100],[180,180]);
+  await page.locator('[data-frame-id]').first().click();await page.locator('#duplicate').click();await selectAll(page);
+  const before=await state(page);
+  await page.locator('#spacing-horizontal').fill('32');await page.locator('#spacing-horizontal').press('Tab');
+  let s=await state(page);const [a,b]=s.doc.artboards;
+  expect(b.x-a.x-a.width).toBeCloseTo(32,3);
+  const child=s.doc.objects.find(o=>o.frameId===b.id), old=before.doc.objects.find(o=>o.id===child.id);
+  expect(child.x-b.x).toBeCloseTo(old.x-before.doc.artboards[1].x,3);
+  await page.reload();s=await state(page);expect(s.doc.artboards[1].x-s.doc.artboards[0].width-s.doc.artboards[0].x).toBeCloseTo(32,3);
+});
+
+test('2026 layout controls wrap, distribute, grid, ignore children, undo and reload', async ({page})=>{
+  await blank(page);
+  for(let i=0;i<3;i++) await draw(page,'Rectangle',[100+i*130,100],[200+i*130,180]);
+  await selectAll(page); await page.keyboard.press('Shift+a');
+  const getLayout=async()=>{const s=await state(page);const frame=s.doc.artboards.find(f=>f.autoLayout?.enabled);return {frame,children:s.doc.objects.filter(o=>o.frameId===frame.id)};};
+  await page.locator('#al-width-sizing').selectOption('fixed');
+  await property(page,'Width',260);
+  await page.locator('#al-wrap').check();
+  let {frame,children}=await getLayout();
+  expect(children[1].y).toBeCloseTo(children[0].y);
+  expect(children[2].y).toBeGreaterThan(children[0].y+children[0].h);
+  await page.locator('#al-wrap').uncheck();
+  await property(page,'Width',500);
+  await page.locator('#al-spacing-mode').selectOption('between');
+  ({frame,children}=await getLayout());
+  expect(children[0].x).toBeCloseTo(frame.x+16);
+  expect(children[2].x+children[2].w).toBeCloseTo(frame.x+frame.width-16);
+  await page.locator('#autolayout-controls summary').click();
+  await page.locator('#al-padding-left').fill('40');await page.locator('#al-padding-left').press('Tab');
+  await page.locator('#al-flow').selectOption('grid');
+  await page.locator('#al-columns').fill('2');await page.locator('#al-columns').press('Tab');
+  await page.locator('#al-column-tracks').fill('1fr 2fr');await page.locator('#al-column-tracks').press('Tab');
+  ({frame,children}=await getLayout());
+  expect(children[0].x).toBeCloseTo(frame.x+40);
+  expect(children[2].y).toBeGreaterThan(children[0].y);
+  const childId=children[0].id;
+  await page.locator(`.layer-row[data-layer="${childId}"]`).click();
+  await expect(page.locator('#prop-x')).toBeDisabled();
+  await expect(page.locator('#prop-y')).toBeDisabled();
+  await page.locator('#layout-ignore').check();
+  await expect(page.locator('#prop-x')).toBeEnabled();
+  ({frame,children}=await getLayout());
+  expect(children.find(c=>c.id===childId).layoutAbsolute).toBe(true);
+  expect(children[1].x).toBeCloseTo(frame.x+40);
+  await page.locator('#canvas').focus();await page.keyboard.press('ControlOrMeta+z');
+  expect((await getLayout()).children.find(c=>c.id===childId).layoutAbsolute).not.toBe(true);
+  await page.reload();
+  ({frame,children}=await getLayout());
+  expect(frame.autoLayout.direction).toBe('grid');
+  expect(frame.autoLayout.paddingLeft).toBe(40);
+  expect(frame.autoLayout.columnTracks).toBe('1fr 2fr');
+  await page.locator(`[data-frame-id="${frame.id}"]`).click();
+  await page.locator('#al-flow').scrollIntoViewIfNeeded();
+  await page.screenshot({path:'/tmp/illigma-autolayout.png'});
+});
+
+test('auto layout fill text wraps without scaling glyphs and hug height follows width',async({page})=>{
+  await blank(page);
+  await page.getByRole('button',{name:'Type tool',exact:true}).click();
+  const p=await at(page,150,150);await page.mouse.click(p.x,p.y);
+  const editor=page.getByRole('textbox',{name:'Edit canvas text'});
+  await editor.fill('A responsive card title with enough words to wrap onto several lines');
+  await editor.press('ControlOrMeta+Enter');
+  await page.locator('#canvas').focus();await page.keyboard.press('Shift+a');
+  let s=await state(page);const frame=s.doc.artboards.find(f=>f.autoLayout?.enabled);const text=s.doc.objects.find(o=>o.type==='text');
+  await page.locator('#al-width-sizing').selectOption('fixed');await property(page,'Width',200);
+  await page.locator(`[data-layer="${text.id}"]`).click();await page.locator('#child-width-sizing').selectOption('fill');
+  s=await state(page);const wrapped=s.doc.objects.find(o=>o.id===text.id);
+  expect(wrapped.h).toBeGreaterThan(text.h);
+  expect(wrapped.w).toBeCloseTo(168);
+  expect(await page.locator("#objects text").first().getAttribute('transform')).toBe('scale(1 1)');
+  await page.locator(`[data-frame-id="${frame.id}"]`).click();await property(page,'Width',500);
+  s=await state(page);expect(s.doc.objects.find(o=>o.id===text.id).h).toBeLessThan(wrapped.h);
+});
+
+test('auto layout treats a group as a unit and keeps its internal spacing',async({page})=>{
+  await blank(page);
+  await draw(page,'Rectangle',[100,100],[160,160]);
+  await draw(page,'Rectangle',[240,180],[300,240]);
+  await selectAll(page);await page.keyboard.press('ControlOrMeta+g');
+  const before=(await state(page)).doc.objects;
+  await page.keyboard.press('Shift+a');
+  const after=(await state(page)).doc.objects;
+  expect(after[1].x-after[0].x).toBeCloseTo(before[1].x-before[0].x);
+  expect(after[1].y-after[0].y).toBeCloseTo(before[1].y-before[0].y);
+  expect(after[0].groupId).toBeTruthy();
+  expect(after[1].groupId).toBe(after[0].groupId);
+});
+
+test('contextual inspector edits radius, hides object controls for page, and persists panel width', async ({page}) => {
+  await blank(page);
+  await draw(page);
+  await expect(page.locator('#inspector-position')).toBeVisible();
+  await expect(page.locator('#inspector-typography')).toBeHidden();
+  await property(page, 'Corner radius', 24);
+  expect((await state(page)).doc.objects[0].radius).toBe(24);
+  const before=(await state(page)).doc.objects;
+  const resizer=page.getByRole('separator',{name:'Resize properties panel'});
+  await resizer.focus(); await resizer.press('ArrowLeft');
+  await expect(resizer).toHaveAttribute('aria-valuenow','276');
+  expect((await state(page)).doc.objects).toEqual(before);
+  await page.reload();
+  await expect(resizer).toHaveAttribute('aria-valuenow','276');
+  expect((await state(page)).doc.objects[0].radius).toBe(24);
+  await page.locator('#canvas').focus(); await page.keyboard.press('Escape');
+  await expect(page.locator('#inspector-context-label')).toHaveText('Page');
+  await expect(page.locator('#inspector-position')).toBeHidden();
+  await expect(page.locator('#inspector-stroke')).toBeHidden();
+  await expect(page.locator('#fill-title')).toHaveText('Page background');
+});
+
+test('text inspector applies actual letter spacing and line height', async ({page}) => {
+  await page.locator('.layer-row').filter({hasText:'Title'}).click();
+  await expect(page.locator('#inspector-typography')).toBeVisible();
+  await property(page, 'Letter spacing', 3);
+  await property(page, 'Line height', 1.5);
+  let title=(await state(page)).doc.objects.find(o=>o.name==='Title');
+  expect(title.letterSpacing).toBe(3); expect(title.lineHeight).toBe(1.5);
+  await page.reload();
+  title=(await state(page)).doc.objects.find(o=>o.name==='Title');
+  expect(title.letterSpacing).toBe(3); expect(title.lineHeight).toBe(1.5);
+  await page.locator('.layer-row').filter({hasText:'Title'}).click();
+  await page.screenshot({path:'/tmp/illigma-inspector-text.png'});
+});
+
+test('mixed inspector values stay mixed until explicitly edited', async ({page}) => {
+  await blank(page); await draw(page);
+  await property(page,'Opacity',40);
+  await draw(page,'Rectangle',[430,150],[550,300]);
+  await selectAll(page);
+  await expect(page.locator('#prop-opacity')).toHaveValue('');
+  await expect(page.locator('#prop-opacity')).toHaveAttribute('placeholder','Mixed');
+  await page.locator('#prop-opacity').focus();await page.locator('#prop-opacity').press('Tab');
+  expect((await state(page)).doc.objects.map(o=>o.opacity)).toEqual([.4,1]);
+  await property(page,'Opacity',75);
+  expect((await state(page)).doc.objects.map(o=>o.opacity)).toEqual([.75,.75]);
+  await page.locator('#canvas').focus();await page.keyboard.press('ControlOrMeta+z');
+  expect((await state(page)).doc.objects.map(o=>o.opacity)).toEqual([.4,1]);
+});
+
+test('multi-frame fill edits frames without changing the page background',async({page})=>{
+  await blank(page);await page.locator('#add-artboard').click();await selectAll(page);
+  const before=(await state(page)).doc.canvasColor;
+  await expect(page.locator('#fill-title')).toHaveText('Fill');
+  await page.locator('#fill-hex').fill('123456');await page.locator('#fill-hex').press('Tab');
+  const doc=(await state(page)).doc;
+  expect(doc.artboards.every(frame=>frame.fill==='#123456')).toBe(true);
+  expect(doc.canvasColor).toBe(before);
+  await page.locator('#canvas').focus();await page.keyboard.press('ControlOrMeta+z');
+  expect((await state(page)).doc.artboards.every(frame=>frame.fill!=='#123456')).toBe(true);
 });

@@ -1941,7 +1941,7 @@ kbd {
 }
 .sidebar-export {
   padding: 15px;
-  border-bottom: 1px solid var(--border);
+  border-top: 1px solid var(--border);
   flex-shrink: 0;
   display: flex;
   justify-content: flex-end;
@@ -2144,3 +2144,60 @@ kbd {
 .al-axis-sizing select {display:block;width:100%;margin-top:5px;background:var(--hover-active);border:1px solid var(--border);border-radius:5px;padding:5px;font-size:11px;}
 
 #child-layout-sizing[hidden] { display:none; }
+
+#toggle-rulers[aria-pressed="true"], #toggle-smart-guides[aria-pressed="true"] {color:var(--accent);background:#0099ff1a;}
+
+.layout-advanced { display: grid; gap: 12px; margin: 12px 0; font-size: 11px; color: var(--text-muted, #999); }
+.layout-advanced[hidden], .layout-advanced [hidden] { display: none; }
+.layout-advanced input:not([type=checkbox]), .layout-advanced select { min-width: 0; width: 100%; color: #eee; background: #1c1c1c; border: 1px solid #262626; border-radius: 5px; padding: 6px; font: inherit; }
+.layout-advanced .al-axis-sizing { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 8px; }
+.layout-advanced .al-axis-sizing label { display: grid; gap: 5px; }
+.layout-field { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.layout-field input { flex: 1; width: 0 !important; }
+.layout-hint { font-size: 10px; line-height: 1.5; }
+.layout-advanced summary { cursor: pointer; margin-bottom: 8px; }
+/* Contextual inspector: section order follows the live Design panel. */
+.inspector { width: var(--inspector-width,268px); overflow: visible; }
+#workspace { right: var(--inspector-width,268px); }
+.inspector-scroll { min-height:0; background:var(--panel,#141414); }
+.inspector-tabs { flex-shrink:0; background:#141414; }
+#inspector-context-label { margin-left:auto; color:#999; font-size:11px; }
+.contextual-properties { padding:0; border:0; }
+.inspector-selection-heading { padding:16px 15px 12px; display:flex; gap:10px; align-items:center; }
+.inspector-selection-heading #selection-type { background:none; padding:0; color:#fff; font-size:12px; font-weight:600; }
+.inspector-selection-heading .selection-summary { margin:0; min-width:0; color:#999; }
+.inspector-selection-heading .mini-object { display:none; }
+.inspector-section { padding:15px; border-bottom:1px solid #262626; }
+.inspector-section-heading { display:flex; gap:8px; align-items:center; margin-bottom:12px; }
+.inspector-section-heading h2 { margin:0; font-size:12px; font-weight:600; flex:1; }
+.inspector-section .property-label { margin-top:0; font-size:12px; font-weight:600; color:#fff; }
+.inspector-section .field { min-height:30px; height:30px; border-color:transparent; background:#1c1c1c; }
+.inspector-section .field:hover { border-color:#333; }
+.inspector-section .field:focus-within { border-color:#0099ff; }
+.inspector-section .field:has(input:disabled) { opacity:.45; }
+.inspector-section .unit { font-size:10px; color:#777; }
+.inspector-section .align-row { margin:0 0 12px; padding:0; border:0; }
+.inspector-section .align-row button { height:28px; }
+.inspector-section #layout-ignore-row { display:flex; gap:6px; align-items:center; margin-top:12px; font-size:11px; color:#999; }
+.inspector-section #frame-properties { display:flex; gap:6px; margin-top:12px; align-items:center; font-size:12px; }
+.inspector-section #autolayout-panel { padding:0; border:0; margin-top:10px; }
+.inspector-section .al-direction-row { margin:8px 0; }
+.inspector-section .al-axis-sizing { margin:8px 0; }
+.inspector-section #layout-item-options { margin:8px 0 0; }
+.size-limits summary { font-size:11px; color:#999; cursor:pointer; }
+.inspector-section .layout-advanced { gap:8px; margin:8px 0; }
+.inspector-section .layout-field { margin:5px 0; }
+.inspector-section #text-properties { border:0; margin:0; padding:0; }
+.inspector-section .typography-extra { margin-top:8px; }
+.inspector-section .effects-section { border:0; margin:0; padding:0; }
+.inspector-section .paint-row { margin-bottom:0; }
+.inspector-section input::placeholder { color:#999; opacity:1; }
+.paint-preview.mixed-paint { background:conic-gradient(#999 0 25%,#333 0 50%,#777 0 75%,#ddd 0) !important; }
+.inspector [hidden] { display:none !important; }
+.inspector-resizer { position:absolute; left:-3px; top:0; bottom:0; width:6px; cursor:col-resize; z-index:20; touch-action:none; }
+.inspector-resizer:hover, .inspector-resizer:focus-visible { background:#0099ff; outline:none; }
+.container-kind-icon {display:inline-flex;align-items:center;justify-content:center;flex:0 0 16px;width:16px;height:16px;color:inherit;}
+.container-kind-icon svg {width:16px;height:16px;flex-shrink:0;}
+.group-member-icon {margin-right:-4px;}
+#inspector-type-icon {display:inline-flex;flex-shrink:0;}
+.inspector-selection-heading {flex-wrap:wrap;gap:8px;}

@@ -252,20 +252,30 @@ export function validDocument(doc) {
       return false;
     });
   };
+  const validLayoutItem = item =>
+    ["minWidth","maxWidth","minHeight","maxHeight"].every(key=>item[key]===undefined || (Number.isFinite(item[key]) && item[key]>=1 && item[key]<=50000)) &&
+    ["widthSizing","heightSizing"].every(key=>item[key]===undefined || ["hug","fixed","fill"].includes(item[key])) &&
+    (item.layoutAbsolute===undefined || typeof item.layoutAbsolute==="boolean") &&
+    ["columnSpan","rowSpan"].every(key=>item[key]===undefined || (Number.isInteger(item[key]) && item[key]>=1 && item[key]<=(key==="columnSpan"?24:100)));
   if (doc.artboards !== undefined) {
     if (!Array.isArray(doc.artboards) || !doc.artboards.length || doc.artboards.length > 100) return false;
     const frameIds = new Set();
     for (const frame of doc.artboards) {
-      if (!frame || typeof frame.id !== "string" || frameIds.has(frame.id) ||
+      if (!frame || !validLayoutItem(frame) || typeof frame.id !== "string" || frameIds.has(frame.id) ||
           ![frame.x, frame.y].every(n => Number.isFinite(n) && Math.abs(n) <= 1000000) ||
           ![frame.width, frame.height].every(n => Number.isFinite(n) && n > 0 && n <= 50000) ||
           !color(frame.fill) || !validEffects(frame.effects) || (frame.name !== undefined && (typeof frame.name !== "string" || frame.name.length > 100))) return false;
       if (frame.autoLayout !== undefined) {
         const al = frame.autoLayout;
         if (!al || typeof al.enabled !== "boolean" ||
-            (al.direction !== undefined && !["horizontal", "vertical"].includes(al.direction)) ||
-            ["gap", "paddingX", "paddingY"].some(key => al[key] !== undefined && (!Number.isFinite(al[key]) || al[key] < 0 || al[key] > 50000)) ||
+            (al.direction !== undefined && !["horizontal", "vertical", "grid"].includes(al.direction)) ||
+            ["crossGap", "paddingX", "paddingY", "paddingLeft", "paddingRight", "paddingTop", "paddingBottom"].some(key => al[key] !== undefined && (!Number.isFinite(al[key]) || al[key] < 0 || al[key] > 50000)) ||
             ["sizing", "widthSizing", "heightSizing"].some(key => al[key] !== undefined && !["hug", "fixed", "fill"].includes(al[key])) ||
+            (al.gap !== undefined && (!Number.isFinite(al.gap) || Math.abs(al.gap)>50000)) ||
+            (al.wrap !== undefined && typeof al.wrap !== "boolean") ||
+            (al.spacingMode !== undefined && !["packed","between","around","evenly"].includes(al.spacingMode)) ||
+            (al.columns !== undefined && (!Number.isInteger(al.columns) || al.columns<1 || al.columns>24)) ||
+            ["columnTracks","rowTracks"].some(key=>al[key] !== undefined && (typeof al[key]!=="string" || al[key].length>2000)) ||
             (al.childOrder !== undefined && (!Array.isArray(al.childOrder) || al.childOrder.length > 3100 || !al.childOrder.every(id => typeof id === "string")))) return false;
       }
       frameIds.add(frame.id);
@@ -287,7 +297,7 @@ export function validDocument(doc) {
       ids.has(o.id) ||
       typeof o.name !== "string" ||
       !["rect", "ellipse", "path", "text"].includes(o.type) ||
-      !validEffects(o.effects)
+      !validEffects(o.effects) || !validLayoutItem(o)
     )
       return false;
     if (o.frameId !== undefined && o.frameId !== null && (typeof o.frameId !== "string" || (doc.artboards && !doc.artboards.some(f => f.id === o.frameId)))) return false;

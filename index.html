@@ -189,7 +189,10 @@
             <g id="extra-pixel-grids" pointer-events="none"></g>
             <rect id="pixel-grid" fill="url(#pixel-grid-pattern)" pointer-events="none" display="none" />
             <g id="canvas-overlays"></g>
+            <g id="smart-guides" pointer-events="none"></g>
+            <g id="measurement-guides" pointer-events="none"></g>
           </g>
+          <g id="canvas-rulers" pointer-events="none" aria-hidden="true"></g>
         </svg>
       </div>
       <div class="canvas-caption">
@@ -198,6 +201,9 @@
       </div>
       <div class="canvas-bottom">
         <div class="zoom-control floating">
+          <button id="toggle-rulers" class="icon-button" aria-label="Rulers" aria-pressed="false" title="Show rulers · Shift R"><i data-lucide="ruler"></i></button>
+          <button id="toggle-smart-guides" class="icon-button" aria-label="Smart guides" aria-pressed="true" title="Hide smart guides"><i data-lucide="magnet"></i></button>
+          <span></span>
           <button id="toggle-pixel-grid" class="icon-button" aria-label="Pixel grid" aria-pressed="false" title="Show pixel grid (visible at 400% zoom and above)">
             <i data-lucide="grid-2x2"></i>
           </button>
@@ -315,11 +321,6 @@
       </section>
     </aside>
     <aside class="inspector floating" aria-label="Design panels">
-      <div class="sidebar-export">
-        <button id="export" class="pill primary">
-          <i data-lucide="arrow-up-right"></i>Export SVG
-        </button>
-      </div>
       <div class="inspector-tabs">
         <button class="selected" id="design-tab">Design</button
         ><span class="inspector-caption">Make it yours</span
@@ -338,7 +339,20 @@
           </div>
           <div id="child-layout-sizing" class="al-axis-sizing" hidden>
             <label>Width <select id="child-width-sizing" aria-label="Child width sizing"><option value="fixed">Fixed</option><option value="fill">Fill container</option></select></label>
-            <label>Height <select id="child-height-sizing" aria-label="Child height sizing"><option value="fixed">Fixed</option><option value="fill">Fill container</option></select></label>
+            <label>Height <select id="child-height-sizing" aria-label="Child height sizing"><option value="hug">Hug contents</option><option value="fixed">Fixed</option><option value="fill">Fill container</option></select></label>
+          </div>
+          <div id="layout-item-options" class="layout-advanced" hidden>
+            <label id="layout-ignore-row"><input id="layout-ignore" type="checkbox"> Ignore auto layout</label>
+            <div class="al-axis-sizing">
+              <label>Min width<input id="layout-minWidth" type="number" min="1" placeholder="None" aria-label="Minimum width"></label>
+              <label>Max width<input id="layout-maxWidth" type="number" min="1" placeholder="None" aria-label="Maximum width"></label>
+              <label>Min height<input id="layout-minHeight" type="number" min="1" placeholder="None" aria-label="Minimum height"></label>
+              <label>Max height<input id="layout-maxHeight" type="number" min="1" placeholder="None" aria-label="Maximum height"></label>
+            </div>
+            <div id="layout-span-options" class="al-axis-sizing" hidden>
+              <label>Column span<input id="layout-columnSpan" type="number" min="1" max="24" aria-label="Column span"></label>
+              <label>Row span<input id="layout-rowSpan" type="number" min="1" max="100" aria-label="Row span"></label>
+            </div>
           </div>
           <label id="frame-properties" hidden><input id="clip-content" type="checkbox" checked /> Clip content</label>
           <div class="field-grid">
@@ -429,6 +443,14 @@
             >
               <i data-lucide="align-end-horizontal"></i>
             </button>
+          </div>
+          <div id="selection-spacing" hidden>
+            <div class="property-label">Spacing</div>
+            <div class="field-grid">
+              <label class="field"><span>↔</span><input id="spacing-horizontal" type="number" step="1" min="-50000" max="50000" aria-label="Horizontal spacing" /><span>px</span></label>
+              <label class="field"><span>↕</span><input id="spacing-vertical" type="number" step="1" min="-50000" max="50000" aria-label="Vertical spacing" /><span>px</span></label>
+            </div>
+            <p class="panel-note" id="spacing-note">Gap between selected items. Groups stay together.</p>
           </div>
           <div id="text-properties" hidden>
             <label class="field full"
@@ -561,6 +583,24 @@
             </button>
           </div>
           <div id="autolayout-controls" hidden>
+            <div class="layout-advanced">
+              <div class="al-axis-sizing">
+                <label>Flow<select id="al-flow" aria-label="Layout flow"><option value="horizontal">Horizontal</option><option value="vertical">Vertical</option><option value="grid">Grid</option></select></label>
+                <label>Spacing<select id="al-spacing-mode" aria-label="Spacing mode"><option value="packed">Packed</option><option value="between">Between</option><option value="around">Around</option><option value="evenly">Evenly</option></select></label>
+              </div>
+              <label><input id="al-wrap" type="checkbox"> Wrap items</label>
+              <label class="layout-field">Row / column gap<input id="al-cross-gap" type="number" min="0" aria-label="Wrap or grid cross gap"><span>px</span></label>
+              <div id="al-grid-options" hidden>
+                <label class="layout-field">Columns<input id="al-columns" type="number" min="1" max="24" aria-label="Grid columns"></label>
+                <label class="layout-field">Column sizes<input id="al-column-tracks" aria-label="Grid column sizes" placeholder="1fr 2fr"></label>
+                <label class="layout-field">Row sizes<input id="al-row-tracks" aria-label="Grid row sizes" placeholder="hug"></label>
+                <p class="layout-hint">Sizes: px, hug, or fr. Example: 120px 1fr 2fr.</p>
+              </div>
+              <details><summary>Independent padding</summary><div class="al-axis-sizing">
+<label>Top<input id="al-padding-top" type="number" min="0" aria-label="Top padding"></label><label>Right<input id="al-padding-right" type="number" min="0" aria-label="Right padding"></label><label>Bottom<input id="al-padding-bottom" type="number" min="0" aria-label="Bottom padding"></label><label>Left<input id="al-padding-left" type="number" min="0" aria-label="Left padding"></label>
+              </div></details>
+            </div>
+
             <div class="al-direction-row">
               <div class="al-btn-group" role="group" aria-label="Layout direction">
                 <button
@@ -627,7 +667,7 @@
                   <input
                     id="al-gap"
                     type="number"
-                    min="0"
+                    min="-50000"
                     max="1000"
                     step="1"
                     value="16"
@@ -739,6 +779,11 @@
             Select two or more shapes to combine.
           </p>
         </section>
+      </div>
+      <div class="sidebar-export">
+        <button id="export" class="pill primary">
+          <i data-lucide="arrow-up-right"></i>Export SVG
+        </button>
       </div>
     </aside>
     <aside
