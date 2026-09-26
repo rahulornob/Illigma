@@ -376,7 +376,6 @@ svg.lucide {
   outline: 0 !important;
 }
 #artboard {
-  filter: drop-shadow(0 12px 30px #0005);
 }
 #canvas[data-tool="hand"] {
   cursor: grab;
