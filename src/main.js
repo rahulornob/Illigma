@@ -2825,9 +2825,9 @@ function finishGesture(event, cancelled = false) {
     transaction(() => selectedObjects().forEach(convertToPath));
 }
 svg.addEventListener("pointerup", (event) => finishGesture(event));
-svg.addEventListener("pointercancel", (event) => finishGesture(event, true));
+svg.addEventListener("pointercancel", (event) => finishGesture(event));
 svg.addEventListener("lostpointercapture", (event) => {
-  if (state.pointer) finishGesture(event, true);
+  if (state.pointer) finishGesture(event);
 });
 svg.addEventListener("pointerleave", () => {
   $("eyedropper-preview").hidden = true;
@@ -4372,7 +4372,7 @@ window.addEventListener("blur", () => {
   state.space = false;
   svg.dataset.tool = state.tool;
   if (state.selected.length > 0) renderSelection();
-  if (state.pointer) finishGesture(null, true);
+  if (state.pointer) finishGesture(null);
 });
 window.addEventListener("resize", () => {
   if (textEditor) finishText();
