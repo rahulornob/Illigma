@@ -2437,6 +2437,30 @@ svg.addEventListener("pointermove", (event) => {
   }
   if (gesture.type === "frame-move") {
     const dx = point.x - gesture.start.x, dy = point.y - gesture.start.y;
+    if (event.altKey && !gesture.duplicated && Math.hypot(dx, dy) > 2) {
+      gesture.duplicated = true;
+      const f = gesture.frame;
+      f.x = gesture.x;
+      f.y = gesture.y;
+      gesture.contents.forEach(original => { const o = getObject(original.id); o.x = original.x; o.y = original.y; });
+      const newFrame = clone(f);
+      newFrame.id = crypto.randomUUID();
+      if (!newFrame.name.endsWith(" copy")) newFrame.name += " copy";
+      state.doc.artboards.push(newFrame);
+      state.doc.artboard = newFrame;
+      const newContents = [];
+      gesture.contents.forEach(original => {
+        const o = getObject(original.id);
+        const dup = clone(o);
+        dup.id = crypto.randomUUID();
+        dup.frameId = newFrame.id;
+        state.doc.objects.push(dup);
+        newContents.push({ id: dup.id, x: dup.x, y: dup.y });
+      });
+      gesture.frame = newFrame;
+      gesture.contents = newContents;
+      renderLayers();
+    }
     gesture.frame.x = gesture.x + dx; gesture.frame.y = gesture.y + dy;
     gesture.contents.forEach(original => { const o = getObject(original.id); o.x = original.x + dx; o.y = original.y + dy; });
     renderFast(); return;
@@ -2485,6 +2509,26 @@ svg.addEventListener("pointermove", (event) => {
     if (event.shiftKey) {
       if (Math.abs(dx) > Math.abs(dy)) dy = 0;
       else dx = 0;
+    }
+    if (event.altKey && !gesture.duplicated && Math.hypot(dx, dy) > 2) {
+      gesture.duplicated = true;
+      const newIds = [];
+      const newOriginals = [];
+      gesture.originals.forEach((original) => {
+        const o = getObject(original.id);
+        o.x = original.x;
+        o.y = original.y;
+        const dup = clone(o);
+        dup.id = crypto.randomUUID();
+        if (!dup.name.endsWith(" copy")) dup.name += " copy";
+        const index = state.doc.objects.findIndex((x) => x.id === o.id);
+        state.doc.objects.splice(index + 1, 0, dup);
+        newIds.push(dup.id);
+        newOriginals.push(clone(dup));
+      });
+      state.selected = newIds;
+      gesture.originals = newOriginals;
+      renderLayers();
     }
     gesture.originals.forEach((original) => {
       const o = getObject(original.id);
