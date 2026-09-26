@@ -158,6 +158,8 @@ const svg = $("canvas"),
   overlay = $("canvas-overlays");
 const NS = "http://www.w3.org/2000/svg";
 let lastCanvasTap = null,
+  altKeyIsDown = false,
+  hoverTargetId = null,
   layerStructure = "",
   toastTimer,
   textEditor,
@@ -1105,6 +1107,36 @@ function updatePenGesture(event, gesture) {
   }
   penHover = null;
 }
+function drawMeasureLine(x1, y1, x2, y2, val, group, z) {
+  if (val <= 0.5) return;
+  const d = Math.round(val);
+  group.append(el("line", { x1, y1, x2, y2, stroke: "#ff3333", "stroke-width": 1/z, "pointer-events": "none" }));
+  const midX = (x1 + x2)/2;
+  const midY = (y1 + y2)/2;
+  const g = el("g", { transform: `translate(${midX} ${midY}) scale(${1/z})`, "pointer-events": "none" });
+  const text = el("text", { x: 0, y: 1, fill: "white", "font-size": "10px", "font-family": "Inter", "text-anchor": "middle", "dominant-baseline": "middle" });
+  text.textContent = d;
+  const w = d.toString().length * 6 + 8;
+  const rect = el("rect", { fill: "#ff3333", rx: 3, ry: 3, x: -w/2, y: -7, width: w, height: 14 });
+  g.append(rect, text);
+  group.append(g);
+}
+
+function renderMeasurements(sb, hb, group, z) {
+  group.append(el("rect", { x: hb.x, y: hb.y, width: hb.w, height: hb.h, fill: "none", stroke: "#ff3333", "stroke-width": 1/z, "pointer-events": "none" }));
+  if (sb.x >= hb.x && sb.y >= hb.y && sb.x + sb.w <= hb.x + hb.w && sb.y + sb.h <= hb.y + hb.h) {
+    drawMeasureLine(sb.x + sb.w/2, sb.y, sb.x + sb.w/2, hb.y, sb.y - hb.y, group, z);
+    drawMeasureLine(sb.x + sb.w/2, sb.y + sb.h, sb.x + sb.w/2, hb.y + hb.h, (hb.y + hb.h) - (sb.y + sb.h), group, z);
+    drawMeasureLine(sb.x, sb.y + sb.h/2, hb.x, sb.y + sb.h/2, sb.x - hb.x, group, z);
+    drawMeasureLine(sb.x + sb.w, sb.y + sb.h/2, hb.x + hb.w, sb.y + sb.h/2, (hb.x + hb.w) - (sb.x + sb.w), group, z);
+    return;
+  }
+  if (sb.y + sb.h < hb.y) drawMeasureLine(sb.x + sb.w/2, sb.y + sb.h, sb.x + sb.w/2, hb.y, hb.y - (sb.y + sb.h), group, z);
+  else if (hb.y + hb.h < sb.y) drawMeasureLine(sb.x + sb.w/2, sb.y, sb.x + sb.w/2, hb.y + hb.h, sb.y - (hb.y + hb.h), group, z);
+  if (sb.x + sb.w < hb.x) drawMeasureLine(sb.x + sb.w, sb.y + sb.h/2, hb.x, sb.y + sb.h/2, hb.x - (sb.x + sb.w), group, z);
+  else if (hb.x + hb.w < sb.x) drawMeasureLine(sb.x, sb.y + sb.h/2, hb.x + hb.w, sb.y + sb.h/2, sb.x - (hb.x + hb.w), group, z);
+}
+
 function renderSelection() {
   overlay.replaceChildren();
   if (textEditor) return;
@@ -1347,6 +1379,22 @@ function renderSelection() {
   );
   group.append(badge);
   overlay.append(group);
+
+  if (altKeyIsDown && hoverTargetId && !state.selected.includes(hoverTargetId)) {
+    let hb = null;
+    if (hoverTargetId === "artboard" || (!hoverTargetId && artboardSelected() === false)) {
+      hb = { x: state.doc.artboard.x, y: state.doc.artboard.y, w: state.doc.artboard.width, h: state.doc.artboard.height };
+    } else {
+      const hoverObj = getObject(hoverTargetId);
+      if (hoverObj) hb = objectBounds(hoverObj);
+    }
+    if (hb) {
+      const g = el("g");
+      const sb = { x: b.x, y: b.y, w: b.w, h: b.h };
+      renderMeasurements(sb, hb, g, state.zoom);
+      overlay.append(g);
+    }
+  }
 }
 function renderProperties() {
   const objs = selectedObjects(),
@@ -2366,6 +2414,12 @@ svg.addEventListener("pointermove", (event) => {
   const point = worldPoint(event),
     gesture = state.pointer;
   if (!gesture) {
+    const hoverEl = event.target.closest("[data-object], [data-frame-label], #artboard");
+    const newHover = hoverEl ? (hoverEl.dataset.object || hoverEl.dataset.frameLabel || "artboard") : "artboard";
+    if (newHover !== hoverTargetId) {
+      hoverTargetId = newHover;
+      if (altKeyIsDown && state.selected.length > 0) renderSelection();
+    }
     if (state.tool === "pen" && state.pen.length) {
       penHover = penPosition(event);
       schedulePenPreview();
@@ -4105,6 +4159,10 @@ window.addEventListener("keydown", (event) => {
     return;
   const key = event.key.toLowerCase(),
     mod = event.metaKey || event.ctrlKey;
+  if (event.key === "Alt") {
+    altKeyIsDown = true;
+    if (state.selected.length > 0) renderSelection();
+  }
   if (event.code === "Space") {
     event.preventDefault();
     state.space = true;
@@ -4299,14 +4357,21 @@ window.addEventListener("keydown", (event) => {
   else if (tools[key]) setTool(tools[key]);
 });
 window.addEventListener("keyup", (event) => {
+  if (event.key === "Alt") {
+    altKeyIsDown = false;
+    if (state.selected.length > 0) renderSelection();
+  }
   if (event.code === "Space") {
     state.space = false;
     svg.dataset.tool = state.tool;
   }
 });
 window.addEventListener("blur", () => {
+  altKeyIsDown = false;
+  hoverTargetId = null;
   state.space = false;
   svg.dataset.tool = state.tool;
+  if (state.selected.length > 0) renderSelection();
   if (state.pointer) finishGesture(null, true);
 });
 window.addEventListener("resize", () => {
