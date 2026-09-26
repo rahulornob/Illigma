@@ -4773,7 +4773,7 @@ window.addEventListener("keydown", (event) => {
   }
   if (key.startsWith("arrow")) {
     event.preventDefault();
-    const n = event.shiftKey ? 10 : 1;
+    const n = event.shiftKey ? 8 : 1;
     if (selectedFrames().length && !artboardSelected()) {
       transaction(() => moveSelectionSnapshot(selectionMoveSnapshot(), key === "arrowleft" ? -n : key === "arrowright" ? n : 0, key === "arrowup" ? -n : key === "arrowdown" ? n : 0)); return;
     }

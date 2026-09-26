@@ -507,7 +507,7 @@ test("marquee, keyboard nudge, duplicate, delete and gesture cancellation", asyn
   await drag(page, [120, 120], [530, 280]);
   expect((await state(page)).selected).toHaveLength(2);
   await page.keyboard.press("Shift+ArrowRight");
-  expect((await state(page)).doc.objects[0].x).toBeCloseTo(160, 0);
+  expect((await state(page)).doc.objects[0].x).toBeCloseTo(158, 0);
   await page.keyboard.press("ControlOrMeta+d");
   expect((await state(page)).doc.objects).toHaveLength(4);
   await page.keyboard.press("Backspace");
