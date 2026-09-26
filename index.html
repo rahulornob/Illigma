@@ -1,0 +1,1060 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#090909" />
+    <meta
+      name="description"
+      content="Illigma — a little space for big ideas. Create, edit, and export vector artwork in your browser."
+    />
+    <title>Illigma — Vector playground</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230099ff'/%3E%3Cpath d='M10 7h5v5h-5zm0 8h5v10h-5zm8-8h5v18h-5z' fill='white'/%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <div id="document-menu" class="menu floating" hidden>
+      <button id="new-document">
+        <i data-lucide="file-plus-2"></i>New document</button
+      ><button id="save-json">
+        <i data-lucide="download"></i>Save editable file</button
+      ><button id="open-json">
+        <i data-lucide="folder-open"></i>Open editable file</button
+      ><button id="reset-demo">
+        <i data-lucide="rotate-ccw"></i>Open sample artwork
+      </button>
+      <div class="menu-divider"></div>
+      <button id="show-help">
+        <i data-lucide="keyboard"></i>Keyboard shortcuts <kbd>?</kbd>
+      </button>
+    </div>
+    <input id="file-input" type="file" accept=".json,.illigma" hidden />
+    <main id="workspace">
+      <nav class="toolbar floating" aria-label="Drawing tools">
+        <button
+          data-tool="select"
+          class="tool active"
+          aria-label="Selection tool"
+          title="Selection · V"
+        >
+          <i data-lucide="mouse-pointer-2"></i
+          ><span class="tool-tip">Selection <kbd>V</kbd></span>
+        </button>
+        <button
+          data-tool="direct"
+          class="tool"
+          aria-label="Direct selection tool"
+          title="Direct selection · A"
+        >
+          <i data-lucide="navigation-2"></i
+          ><span class="tool-tip">Direct selection <kbd>A</kbd></span>
+        </button>
+        <span class="tool-divider"></span>
+        <button
+          data-tool="frame"
+          class="tool"
+          aria-label="Frame tool"
+          title="Frame · F"
+        >
+          <i data-lucide="frame"></i
+          ><span class="tool-tip">Frame <kbd>F</kbd></span>
+        </button>
+        <button
+          data-tool="rect"
+          class="tool"
+          aria-label="Rectangle tool"
+          title="Rectangle · R"
+        >
+          <i data-lucide="square"></i
+          ><span class="tool-tip">Rectangle <kbd>R</kbd></span>
+        </button>
+        <button
+          data-tool="ellipse"
+          class="tool"
+          aria-label="Ellipse tool"
+          title="Ellipse · O"
+        >
+          <i data-lucide="circle"></i
+          ><span class="tool-tip">Ellipse <kbd>O</kbd></span>
+        </button>
+        <button
+          data-tool="pen"
+          class="tool"
+          aria-label="Pen tool"
+          title="Pen · P"
+        >
+          <i data-lucide="pen-tool"></i
+          ><span class="tool-tip">Pen <kbd>P</kbd></span>
+        </button>
+        <button
+          data-tool="text"
+          class="tool"
+          aria-label="Type tool"
+          title="Type · T"
+        >
+          <i data-lucide="type"></i
+          ><span class="tool-tip">Type <kbd>T</kbd></span>
+        </button>
+        <span class="tool-divider"></span>
+        <button
+          data-tool="builder"
+          class="tool"
+          aria-label="Shape builder tool"
+          title="Shape builder · Shift M"
+        >
+          <i data-lucide="shapes"></i
+          ><span class="tool-tip">Shape builder <kbd>⇧M</kbd></span>
+        </button>
+        <button
+          data-tool="eyedropper"
+          class="tool"
+          aria-label="Eyedropper tool"
+          title="Eyedropper · I"
+        >
+          <i data-lucide="pipette"></i
+          ><span class="tool-tip">Eyedropper <kbd>I</kbd></span>
+        </button>
+        <span class="tool-divider"></span>
+        <button
+          data-tool="hand"
+          class="tool"
+          aria-label="Hand tool"
+          title="Hand · H / hold Space"
+        >
+          <i data-lucide="hand"></i
+          ><span class="tool-tip">Hand <kbd>H</kbd></span>
+        </button>
+      </nav>
+      <div id="canvas-container">
+        <svg
+          id="canvas"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-label="Vector editing canvas"
+          tabindex="0"
+        >
+          <defs>
+            <g id="frame-clips"></g>
+            <g id="effect-filters"></g>
+            <pattern id="pixel-grid-pattern" width="1" height="1" patternUnits="userSpaceOnUse">
+              <path id="pixel-grid-lines" fill="#000000" fill-opacity="0.065" d="M0 0H1V.0625H.0625V1H0Z" />
+            </pattern>
+            <pattern
+              id="dot-grid"
+              width="24"
+              height="24"
+              patternUnits="userSpaceOnUse"
+            >
+              <circle cx="1" cy="1" r="0.7" fill="#303030" />
+            </pattern>
+            <pattern
+              id="region-hatch"
+              width="8"
+              height="8"
+              patternUnits="userSpaceOnUse"
+              patternTransform="rotate(45)"
+            >
+              <rect width="8" height="8" fill="#0099ff" fill-opacity=".2" />
+              <line
+                x1="0"
+                y1="0"
+                x2="0"
+                y2="8"
+                stroke="#0099ff"
+                stroke-width="2"
+              />
+            </pattern>
+          </defs>
+          <rect
+            id="grid-background"
+            width="100%"
+            height="100%"
+            fill="url(#dot-grid)"
+          />
+          <g id="viewport">
+            <g id="extra-artboards"></g>
+            <text
+              id="artboard-label"
+              x="0"
+              y="-18"
+              fill="#999999"
+              font-size="12"
+              font-family="Inter"
+            >
+              Artboard 1
+            </text>
+            <rect id="artboard" width="1000" height="720" fill="#f2f0e7" />
+            <g id="objects"></g>
+            <g id="extra-pixel-grids" pointer-events="none"></g>
+            <rect id="pixel-grid" fill="url(#pixel-grid-pattern)" pointer-events="none" display="none" />
+            <g id="canvas-overlays"></g>
+          </g>
+        </svg>
+      </div>
+      <div class="canvas-caption">
+        <span class="caption-dot"></span
+        ><span>Your next idea starts here.</span>
+      </div>
+      <div class="canvas-bottom">
+        <div class="zoom-control floating">
+          <button id="toggle-pixel-grid" class="icon-button" aria-label="Pixel grid" aria-pressed="false" title="Show pixel grid (visible at 400% zoom and above)">
+            <i data-lucide="grid-2x2"></i>
+          </button>
+          <span></span>
+          <button id="zoom-out" class="icon-button" aria-label="Zoom out">
+            <i data-lucide="minus"></i></button
+          ><button id="zoom-value" title="Reset to 100%">100%</button
+          ><button id="zoom-in" class="icon-button" aria-label="Zoom in">
+            <i data-lucide="plus"></i></button
+          ><span></span
+          ><button
+            id="fit-canvas"
+            class="icon-button"
+            aria-label="Fit artboard"
+            title="Fit artboard · Shift 1"
+          >
+            <i data-lucide="scan"></i>
+          </button>
+        </div>
+      </div>
+    </main>
+    <aside class="layers-sidebar floating" aria-label="Layers panel">
+      <div class="sidebar-document">
+        <div class="sidebar-brand-row">
+          <button
+            class="brand"
+            id="menu-button"
+            aria-label="Document menu"
+            aria-expanded="false"
+          >
+            <span class="brand-mark"><i></i><i></i><i></i></span
+            ><span>illigma</span><i data-lucide="chevron-down" class="tiny"></i>
+          </button>
+          <div class="sidebar-history">
+            <button
+              id="undo"
+              class="icon-button"
+              aria-label="Undo"
+              title="Undo (⌘Z)"
+            >
+              <i data-lucide="undo-2"></i></button
+            ><button
+              id="redo"
+              class="icon-button"
+              aria-label="Redo"
+              title="Redo (⌘⇧Z)"
+            >
+              <i data-lucide="redo-2"></i>
+            </button>
+          </div>
+        </div>
+        <div class="document-name">
+          <input
+            id="document-title"
+            aria-label="Document name"
+            value="Objects in motion"
+            maxlength="80"
+          /><span class="file-badge">Draft</span>
+        </div>
+        <div id="save-status" class="save-status">
+          <span class="status-dot"></span><span>All changes saved</span>
+        </div>
+      </div>
+      <section class="pages-panel panel" aria-label="Pages">
+        <div class="panel-heading">
+          <h2>Pages</h2>
+          <button
+            id="search-pages"
+            class="micro-button"
+            aria-label="Search pages"
+            title="Search pages"
+          >
+            <i data-lucide="search"></i></button
+          ><button
+            id="add-page"
+            class="micro-button"
+            aria-label="Add page"
+            title="Add page"
+          >
+            <i data-lucide="plus"></i>
+          </button>
+        </div>
+        <input
+          id="page-search"
+          placeholder="Search pages…"
+          aria-label="Search page names"
+          hidden
+        />
+        <div id="pages-list" role="list" aria-label="Document pages"></div>
+        <p id="pages-empty" class="panel-note" hidden>No matching pages</p>
+      </section>
+      <section class="panel layers-panel">
+        <div class="panel-heading">
+          <h2>Layers</h2>
+          <button id="add-artboard" class="micro-button" aria-label="Add frame" title="Add frame"><i data-lucide="plus"></i></button>
+          <span id="layer-total" class="panel-counter"></span
+          ><button
+            id="duplicate"
+            class="micro-button"
+            aria-label="Duplicate selection"
+            title="Duplicate · ⌘D"
+          >
+            <i data-lucide="copy"></i>
+          </button>
+        </div>
+        <div id="frame-list" aria-label="Frames"></div>
+        <button id="artboard-tree" class="artboard-tree" aria-expanded="true">
+          <i data-lucide="chevron-down"></i><i data-lucide="frame"></i
+          ><span>Artboard 1</span><span class="tree-size">1000 × 720</span>
+        </button>
+        <div id="layers" aria-label="Object layers"></div>
+        <div id="layers-empty" class="empty-state" hidden>
+          No layers yet. Draw something.
+        </div>
+      </section>
+    </aside>
+    <aside class="inspector floating" aria-label="Design panels">
+      <div class="sidebar-export">
+        <button id="export" class="pill primary">
+          <i data-lucide="arrow-up-right"></i>Export SVG
+        </button>
+      </div>
+      <div class="inspector-tabs">
+        <button class="selected" id="design-tab">Design</button
+        ><span class="inspector-caption">Make it yours</span
+        ><i data-lucide="sliders-horizontal"></i>
+      </div>
+      <div class="inspector-scroll">
+        <section class="panel properties-panel">
+          <div class="panel-heading">
+            <h2>Properties</h2>
+            <span id="selection-type" class="subtle-badge">Path</span>
+          </div>
+          <div id="selection-summary" class="selection-summary">
+            <span class="mini-object"></span
+            ><span id="selection-name">Blue orbit</span
+            ><span id="selection-count"></span>
+          </div>
+          <label id="frame-properties" hidden><input id="clip-content" type="checkbox" checked /> Clip content</label>
+          <div class="field-grid">
+            <label class="field"
+              ><span>X</span
+              ><input
+                id="prop-x"
+                type="number"
+                step="1"
+                aria-label="X position"
+              /><span class="unit">px</span></label
+            ><label class="field"
+              ><span>Y</span
+              ><input
+                id="prop-y"
+                type="number"
+                step="1"
+                aria-label="Y position"
+              /><span class="unit">px</span></label
+            ><label class="field"
+              ><span>W</span
+              ><input
+                id="prop-w"
+                type="number"
+                min="1"
+                step="1"
+                aria-label="Width"
+              /><span class="unit">px</span></label
+            ><label class="field"
+              ><span>H</span
+              ><input
+                id="prop-h"
+                type="number"
+                min="1"
+                step="1"
+                aria-label="Height"
+              /><span class="unit">px</span></label
+            ><label class="field"
+              ><i data-lucide="rotate-cw"></i
+              ><input
+                id="prop-rotation"
+                type="number"
+                aria-label="Rotation"
+              /><span class="unit">°</span></label
+            ><label class="field"
+              ><i data-lucide="blend"></i
+              ><input
+                id="prop-opacity"
+                type="number"
+                min="0"
+                max="100"
+                aria-label="Opacity"
+              /><span class="unit">%</span></label
+            >
+          </div>
+          <div class="align-row" aria-label="Alignment">
+            <button
+              data-align="left"
+              aria-label="Align left"
+              title="Align left"
+            >
+              <i data-lucide="align-start-vertical"></i></button
+            ><button
+              data-align="center"
+              aria-label="Align horizontal center"
+              title="Align horizontal center"
+            >
+              <i data-lucide="align-center-vertical"></i></button
+            ><button
+              data-align="right"
+              aria-label="Align right"
+              title="Align right"
+            >
+              <i data-lucide="align-end-vertical"></i></button
+            ><span></span
+            ><button data-align="top" aria-label="Align top" title="Align top">
+              <i data-lucide="align-start-horizontal"></i></button
+            ><button
+              data-align="middle"
+              aria-label="Align vertical center"
+              title="Align vertical center"
+            >
+              <i data-lucide="align-center-horizontal"></i></button
+            ><button
+              data-align="bottom"
+              aria-label="Align bottom"
+              title="Align bottom"
+            >
+              <i data-lucide="align-end-horizontal"></i>
+            </button>
+          </div>
+          <div id="text-properties" hidden>
+            <label class="field full"
+              ><span>Font</span
+              ><select id="font-family" aria-label="Font family">
+                <option>Inter</option>
+                <option>Georgia</option>
+                <option>monospace</option>
+              </select></label
+            >
+            <button id="add-fonts" class="font-add-button">
+              <i data-lucide="plus"></i>Add fonts
+            </button>
+            <div class="field-grid">
+              <label class="field"
+                ><span>Size</span
+                ><input
+                  id="font-size"
+                  type="number"
+                  min="6"
+                  max="500"
+                  aria-label="Font size" /></label
+              ><label class="field"
+                ><select id="font-weight" aria-label="Font weight">
+                  <option value="400">Regular</option>
+                  <option value="500">Medium</option>
+                  <option value="600">Semibold</option>
+                  <option value="700">Bold</option>
+                </select></label
+              >
+            </div>
+          </div>
+          <div class="property-label">
+            <span id="fill-title">Fill</span
+            ><button
+              id="no-fill"
+              class="micro-button"
+              aria-label="Remove fill"
+              title="Remove fill"
+            >
+              <i data-lucide="minus"></i>
+            </button>
+          </div>
+          <div class="paint-row">
+            <button
+              id="fill-preview"
+              class="paint-preview"
+              aria-label="Select fill"
+              title="Edit fill"
+            ></button
+            ><label class="hex-field"
+              ><span>#</span
+              ><input
+                id="fill-hex"
+                aria-label="Fill hex"
+                maxlength="7"
+                spellcheck="false" /></label
+            ><span id="fill-opacity" class="paint-percentage">100%</span>
+          </div>
+          <div class="property-label">
+            <span>Stroke</span
+            ><button
+              id="no-stroke"
+              class="micro-button"
+              aria-label="Remove stroke"
+              title="Remove stroke"
+            >
+              <i data-lucide="minus"></i>
+            </button>
+          </div>
+          <div class="paint-row">
+            <button
+              id="stroke-preview"
+              class="paint-preview"
+              aria-label="Select stroke"
+              title="Edit stroke"
+            ></button
+            ><label class="hex-field"
+              ><span>#</span
+              ><input
+                id="stroke-hex"
+                aria-label="Stroke hex"
+                maxlength="7"
+                spellcheck="false" /></label
+            ><label class="stroke-field"
+              ><input
+                id="stroke-width"
+                type="number"
+                min="0"
+                max="200"
+                step="0.5"
+                aria-label="Stroke weight"
+              /><span>px</span></label
+            >
+          </div>
+          <div id="effects-section" class="effects-section">
+            <div class="property-label">
+              <span>Effects</span>
+              <button
+                id="add-effect"
+                class="micro-button"
+                aria-label="Add effect"
+                title="Add effect"
+              >
+                <i data-lucide="plus"></i>
+              </button>
+            </div>
+            <div id="effects-list" class="effects-list"></div>
+          </div>
+        </section>
+        <section id="autolayout-panel" class="panel autolayout-panel" hidden>
+          <div class="panel-heading">
+            <h2>Auto layout</h2>
+            <button
+              id="add-autolayout"
+              class="micro-button"
+              aria-label="Add auto layout"
+              title="Add auto layout · ⇧A"
+            >
+              <i data-lucide="plus"></i>
+            </button>
+            <button
+              id="remove-autolayout"
+              class="micro-button"
+              aria-label="Remove auto layout"
+              title="Remove auto layout · ⌥⇧A"
+              hidden
+            >
+              <i data-lucide="minus"></i>
+            </button>
+          </div>
+          <div id="autolayout-controls" hidden>
+            <div class="al-direction-row">
+              <div class="al-btn-group" role="group" aria-label="Layout direction">
+                <button
+                  id="al-dir-horizontal"
+                  class="al-tool-btn active"
+                  aria-label="Horizontal layout"
+                  title="Horizontal layout"
+                >
+                  <i data-lucide="arrow-right"></i>
+                </button>
+                <button
+                  id="al-dir-vertical"
+                  class="al-tool-btn"
+                  aria-label="Vertical layout"
+                  title="Vertical layout"
+                >
+                  <i data-lucide="arrow-down"></i>
+                </button>
+              </div>
+              <div class="al-btn-group" role="group" aria-label="Frame sizing">
+                <button
+                  id="al-sizing-hug"
+                  class="al-tool-btn active"
+                  aria-label="Hug contents"
+                  title="Hug contents"
+                >
+                  <i data-lucide="shrink"></i>
+                </button>
+                <button
+                  id="al-sizing-fixed"
+                  class="al-tool-btn"
+                  aria-label="Fixed size"
+                  title="Fixed size"
+                >
+                  <i data-lucide="maximize-2"></i>
+                </button>
+              </div>
+            </div>
+            <div class="al-config-grid">
+              <div
+                id="al-align-matrix"
+                class="al-matrix"
+                role="radiogroup"
+                aria-label="Alignment"
+                title="Alignment"
+              >
+                <button class="al-dot active" data-al-align="top-left" data-align="top-left" aria-label="Top left" title="Top left"></button>
+                <button class="al-dot" data-al-align="top-center" data-align="top-center" aria-label="Top center" title="Top center"></button>
+                <button class="al-dot" data-al-align="top-right" data-align="top-right" aria-label="Top right" title="Top right"></button>
+                <button class="al-dot" data-al-align="center-left" data-align="center-left" aria-label="Center left" title="Center left"></button>
+                <button class="al-dot" data-al-align="center" data-align="center" aria-label="Center" title="Center"></button>
+                <button class="al-dot" data-al-align="center-right" data-align="center-right" aria-label="Center right" title="Center right"></button>
+                <button class="al-dot" data-al-align="bottom-left" data-align="bottom-left" aria-label="Bottom left" title="Bottom left"></button>
+                <button class="al-dot" data-al-align="bottom-center" data-align="bottom-center" aria-label="Bottom center" title="Bottom center"></button>
+                <button class="al-dot" data-al-align="bottom-right" data-align="bottom-right" aria-label="Bottom right" title="Bottom right"></button>
+              </div>
+              <div class="al-inputs">
+                <label class="field" title="Gap between items">
+                  <i data-lucide="columns-2"></i>
+                  <input
+                    id="al-gap"
+                    type="number"
+                    min="0"
+                    max="1000"
+                    step="1"
+                    value="16"
+                    aria-label="Item spacing"
+                  /><span class="unit">px</span>
+                </label>
+                <label class="field" title="Horizontal padding">
+                  <i data-lucide="move-horizontal"></i>
+                  <input
+                    id="al-pad-x"
+                    type="number"
+                    min="0"
+                    max="1000"
+                    step="1"
+                    value="16"
+                    aria-label="Horizontal padding"
+                  /><span class="unit">px</span>
+                </label>
+                <label class="field" title="Vertical padding">
+                  <i data-lucide="move-vertical"></i>
+                  <input
+                    id="al-pad-y"
+                    type="number"
+                    min="0"
+                    max="1000"
+                    step="1"
+                    value="16"
+                    aria-label="Vertical padding"
+                  /><span class="unit">px</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>Pathfinder</h2>
+            <i data-lucide="combine" class="muted-icon"></i>
+          </div>
+          <div class="pathfinder-label">Shape modes</div>
+          <div class="pathfinder-row shape-modes">
+            <button data-boolean="unite" title="Unite" aria-label="Unite">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 3h10v5h7v12H8v-7H3z" />
+              </svg>
+            </button>
+            <button
+              data-boolean="subtract"
+              title="Minus Front"
+              aria-label="Minus Front"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 3h11v5H8v6H3z M8 8h12v12H8z" />
+              </svg>
+            </button>
+            <button
+              data-boolean="intersect"
+              title="Intersect"
+              aria-label="Intersect"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 3h11v11H3z M9 9h11v11H9z M9 9h5v5H9z" />
+              </svg>
+            </button>
+            <button data-boolean="exclude" title="Exclude" aria-label="Exclude">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 3h11v6H9v5H3z M14 9h6v11H9v-6h5z" />
+              </svg>
+            </button>
+          </div>
+          <div class="pathfinder-label">Pathfinders</div>
+          <div class="pathfinder-row pathfinder-actions">
+            <button data-boolean="divide" title="Divide" aria-label="Divide">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 3h11v6H9v5H3z M10 10h4v4h-4z M15 9h5v11H9v-5h6z" />
+              </svg>
+            </button>
+            <button data-boolean="trim" title="Trim" aria-label="Trim">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 3h11v5H8v6H3z M10 10h10v10H10z" />
+              </svg>
+            </button>
+            <button data-boolean="merge" title="Merge" aria-label="Merge">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 3h10v5h7v12H8v-7H3z M16 3h5v5h-5z" />
+              </svg>
+            </button>
+            <button data-boolean="crop" title="Crop" aria-label="Crop">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 3h11v11H3z M9 9h11v11H9z M9 9h5v5H9z" />
+              </svg>
+            </button>
+            <button data-boolean="outline" title="Outline" aria-label="Outline">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 3h11v11H3z M9 9h11v11H9z" />
+              </svg>
+            </button>
+            <button
+              data-boolean="minus-back"
+              title="Minus Back"
+              aria-label="Minus Back"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 3h11v11H3z M15 9h5v11H9v-5h6z" />
+              </svg>
+            </button>
+          </div>
+          <p class="panel-note" id="boolean-hint">
+            Select two or more shapes to combine.
+          </p>
+        </section>
+      </div>
+    </aside>
+    <aside
+      id="effect-popover"
+      class="effect-popover floating"
+      role="dialog"
+      aria-label="Effect settings"
+      hidden
+    >
+      <section class="panel effect-panel">
+        <div class="panel-heading">
+          <h2 id="effect-popover-title">Drop shadow</h2>
+          <button
+            id="close-effect-popover"
+            class="icon-button"
+            aria-label="Close effect settings"
+            title="Close"
+          >
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div id="shadow-fields" class="effect-shadow-grid">
+          <label class="field" title="X offset">
+            <span>X</span>
+            <input id="effect-x" type="number" step="1" aria-label="X offset" />
+          </label>
+          <label class="field" title="Y offset">
+            <span>Y</span>
+            <input id="effect-y" type="number" step="1" aria-label="Y offset" />
+          </label>
+          <label class="field" title="Blur radius">
+            <span>Blur</span>
+            <input id="effect-blur" type="number" min="0" step="1" aria-label="Blur radius" />
+          </label>
+          <label class="field" title="Spread radius">
+            <span>Spread</span>
+            <input id="effect-spread" type="number" step="1" aria-label="Spread radius" />
+          </label>
+        </div>
+        <div id="shadow-color-section" class="paint-row effect-color-row">
+          <button
+            id="effect-color-preview"
+            class="paint-preview"
+            aria-label="Edit effect color"
+            title="Edit effect color"
+          ></button>
+          <label class="hex-field">
+            <span>#</span>
+            <input
+              id="effect-hex"
+              aria-label="Effect hex"
+              maxlength="7"
+              spellcheck="false"
+            />
+          </label>
+          <label class="effect-opacity-field" title="Effect opacity percentage">
+            <input
+              id="effect-opacity"
+              type="number"
+              min="0"
+              max="100"
+              step="1"
+              aria-label="Effect opacity percentage"
+            /><span>%</span>
+          </label>
+          <input type="color" id="effect-native-color" style="position:absolute;width:0;height:0;opacity:0;pointer-events:none;" />
+        </div>
+        <div id="blur-fields" class="effect-blur-row" hidden>
+          <label class="field" title="Blur radius">
+            <span>Blur</span>
+            <input id="effect-blur-only" type="number" min="0" max="500" step="1" aria-label="Blur radius" />
+          </label>
+        </div>
+      </section>
+    </aside>
+    <aside
+      id="color-popover"
+      class="color-popover floating"
+      role="dialog"
+      aria-label="Color picker"
+      hidden
+    >
+      <section class="panel color-panel">
+        <div class="panel-heading">
+          <h2>Custom</h2>
+          <div class="segmented">
+            <button id="color-fill" class="active">Fill</button
+            ><button id="color-stroke">Stroke</button>
+          </div>
+          <button
+            id="close-color-picker"
+            class="icon-button"
+            aria-label="Close color picker"
+          >
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="color-mode">
+          <span class="solid-color-icon"></span><span>Solid color</span
+          ><button
+            id="picker-eyedropper"
+            class="icon-button"
+            aria-label="Pick color from canvas"
+            title="Eyedropper"
+          >
+            <i data-lucide="pipette"></i>
+          </button>
+        </div>
+        <div
+          id="color-square"
+          class="color-square"
+          tabindex="0"
+          role="slider"
+          aria-label="Saturation and brightness"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow="100"
+        >
+          <span id="color-cursor"></span>
+        </div>
+        <div class="hue-row">
+          <input
+            id="native-color"
+            type="color"
+            aria-label="System color picker"
+          /><input
+            id="hue-slider"
+            type="range"
+            min="0"
+            max="360"
+            value="220"
+            aria-label="Hue"
+          />
+        </div>
+        <div class="color-values">
+          <label class="field color-hex"
+            ><input
+              id="color-hex"
+              aria-label="Color hex"
+              maxlength="7"
+              spellcheck="false" /></label
+          ><label class="field"
+            ><input
+              id="color-r"
+              type="number"
+              min="0"
+              max="255"
+              aria-label="Red" /></label
+          ><label class="field"
+            ><input
+              id="color-g"
+              type="number"
+              min="0"
+              max="255"
+              aria-label="Green" /></label
+          ><label class="field"
+            ><input
+              id="color-b"
+              type="number"
+              min="0"
+              max="255"
+              aria-label="Blue"
+          /></label>
+        </div>
+        <div class="color-value-labels">
+          <span>Hex</span><span>R</span><span>G</span><span>B</span>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-heading">
+          <h2>On this page</h2>
+          <span class="subtle-text">Swatches</span
+          ><button
+            id="add-swatch"
+            class="micro-button"
+            aria-label="Save current color as swatch"
+            title="Save current color"
+          >
+            <i data-lucide="plus"></i>
+          </button>
+        </div>
+        <div id="swatches" class="swatches"></div>
+      </section>
+    </aside>
+    <div
+      id="eyedropper-preview"
+      class="eyedropper-preview floating"
+      hidden
+      aria-hidden="true"
+    >
+      <span id="eyedropper-swatch" class="eyedropper-swatch"
+        ><i data-lucide="pipette"></i
+      ></span>
+      <div>
+        <div id="eyedropper-value" class="eyedropper-value"></div>
+        <div id="eyedropper-caption" class="eyedropper-caption"></div>
+      </div>
+    </div>
+    <div id="toast" role="status" hidden></div>
+    <dialog id="font-dialog" aria-labelledby="font-dialog-title">
+      <div class="dialog-heading">
+        <div>
+          <span class="eyebrow">YOUR TYPE LIBRARY</span>
+          <h2 id="font-dialog-title">Add fonts</h2>
+        </div>
+        <button
+          id="close-font-dialog"
+          class="icon-button"
+          aria-label="Close font library"
+        >
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      <div class="font-source-tabs segmented">
+        <button id="font-source-google" class="active">Google Fonts</button
+        ><button id="font-source-local">Local files</button>
+      </div>
+      <form id="google-font-form">
+        <label class="font-label" for="google-font-name">Font family</label
+        ><input
+          id="google-font-name"
+          class="font-input"
+          placeholder="e.g. DM Sans"
+          list="google-font-suggestions"
+          required
+          maxlength="100"
+        /><datalist id="google-font-suggestions">
+          <option value="DM Sans" />
+          <option value="Roboto" />
+          <option value="Open Sans" />
+          <option value="Poppins" />
+          <option value="Montserrat" />
+          <option value="Lora" />
+          <option value="Playfair Display" />
+          <option value="Space Grotesk" />
+          <option value="Manrope" />
+          <option value="Noto Sans Bengali" />
+        </datalist>
+        <p class="font-note">
+          Enter any Google Fonts family name. An internet connection is needed
+          for the first download.
+        </p>
+        <button id="load-google-font" class="pill primary" type="submit">
+          Add Google font
+        </button>
+      </form>
+      <form id="local-font-form" hidden>
+        <label class="font-label" for="local-font-family"
+          >Family name (optional)</label
+        ><input
+          id="local-font-family"
+          class="font-input"
+          placeholder="Use the filename"
+          maxlength="100"
+        /><label class="font-label" for="local-font-weight">Font weight</label
+        ><select id="local-font-weight" class="font-input">
+          <option value="400">Regular · 400</option>
+          <option value="500">Medium · 500</option>
+          <option value="600">Semibold · 600</option>
+          <option value="700">Bold · 700</option>
+          <option value="100 900">Variable · 100–900</option></select
+        ><label class="font-label" for="local-font-file">Font file</label
+        ><input
+          id="local-font-file"
+          type="file"
+          accept=".ttf,.otf,.woff,.woff2"
+          required
+        />
+        <p class="font-note">
+          TTF, OTF, WOFF, or WOFF2 · up to 20 MB. Files stay on this device.
+        </p>
+        <button id="load-local-font" class="pill primary" type="submit">
+          Import local font
+        </button>
+      </form>
+      <p
+        id="font-status"
+        role="status"
+        class="font-note"
+        aria-live="polite"
+      ></p>
+      <div class="font-library-heading">Available fonts</div>
+      <div id="font-library"></div>
+    </dialog>
+    <dialog id="help-dialog">
+      <div class="dialog-heading">
+        <div>
+          <span class="eyebrow">A FEW HANDY SHORTCUTS</span>
+          <h2>Stay in the flow.</h2>
+        </div>
+        <button
+          id="close-help"
+          class="icon-button"
+          aria-label="Close shortcuts"
+        >
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      <div class="shortcuts">
+        <span>Selection / Direct selection</span
+        ><span><kbd>V</kbd> <kbd>A</kbd></span
+        ><span>Rectangle / Ellipse</span><span><kbd>R</kbd> <kbd>O</kbd></span
+        ><span>Pen / Text / Eyedropper</span
+        ><span><kbd>P</kbd> <kbd>T</kbd> <kbd>I</kbd></span
+        ><span>Shape builder</span><kbd>⇧ M</kbd><span>Pan canvas</span
+        ><kbd>Space + drag</kbd><span>Zoom at cursor</span
+        ><kbd>⌘ / Ctrl + scroll</kbd><span>Fit artboard</span><kbd>⇧ 1</kbd
+        ><span>Select multiple / Select all</span
+        ><span><kbd>⇧ click</kbd> <kbd>⌘ A</kbd></span
+        ><span>Duplicate / Undo / Redo</span
+        ><span><kbd>⌘ D</kbd> <kbd>⌘ Z</kbd> <kbd>⌘ ⇧ Z</kbd></span
+        ><span>Auto layout / Remove</span><span><kbd>⇧ A</kbd> <kbd>⌥ ⇧ A</kbd></span
+        ><span>Nudge / Larger nudge</span
+        ><span><kbd>↑ ↓ ← →</kbd> <kbd>⇧</kbd></span
+        ><span>Finish pen / Cancel</span
+        ><span><kbd>Enter</kbd> <kbd>Esc</kbd></span
+        ><span>Close a path</span><span>Click its first anchor</span
+        ><span>Edit text</span><span>Double-click text</span
+        ><span>Delete shape-builder region</span><kbd>Alt + click</kbd>
+      </div>
+      <p class="dialog-note">
+        Use Ctrl instead of ⌘ on Windows. Your work is saved in this browser.
+      </p>
+    </dialog>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
