@@ -2652,6 +2652,14 @@ svg.addEventListener("pointermove", (event) => {
          state.doc.objects.filter(g => g.groupId === o.groupId).forEach(g => selectedIds.add(g.id));
       }
     });
+    const f = state.doc.artboard;
+    if (f) {
+      const startedOutside = gesture.start.x < f.x || gesture.start.y < f.y || gesture.start.x > f.x + f.width || gesture.start.y > f.y + f.height;
+      const intersects = rect.x < f.x + f.width && rect.x + rect.w > f.x && rect.y < f.y + f.height && rect.y + rect.h > f.y;
+      if (startedOutside && intersects) {
+        selectedIds.add("__artboard__");
+      }
+    }
     state.selected = [...new Set([...gesture.originalSelection, ...selectedIds])];
   } else if (gesture.type === "rotate") {
     let delta =
@@ -4263,6 +4271,7 @@ window.addEventListener("keydown", (event) => {
     state.selected = state.doc.objects
       .filter((o) => o.visible && !o.locked)
       .map((o) => o.id);
+    if (state.doc.artboard) state.selected.push("__artboard__");
     clearBuilder();
     render();
     return;
