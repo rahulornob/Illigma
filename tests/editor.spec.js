@@ -62,7 +62,13 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#objects > g")).toHaveCount(13);
 });
-test.afterEach(async ({ page }) => expect(page._errors).toEqual([]));
+test.afterEach(async ({ page }) => {
+  if (page._errors.length > 0) {
+    console.error("PAGE ERRORS", page._errors);
+    console.error("STACK", page._errors[0].stack);
+  }
+  expect(page._errors).toEqual([]);
+});
 
 test("shell uses exact design tokens and renders editable artwork", async ({
   page,
@@ -246,7 +252,9 @@ test("pen creates curved closed paths and direct selection moves anchors", async
     .click();
   const anchor = page.locator('[data-anchor$=":point"]').first();
   await expect(anchor).toBeVisible();
-  const a = await anchor.boundingBox();
+  // Selection overlays are replaced on animation frames; retry a detached read.
+  let a;
+  await expect.poll(async () => (a = await anchor.boundingBox())).not.toBeNull();
   const before = o.d;
   await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
   await page.mouse.down();
@@ -871,7 +879,7 @@ test("local font imports, applies to text, and survives reload", async ({
   await page
     .getByRole("button", { name: "Close font library", exact: true })
     .click();
-  await expect(page.locator("#font-family")).toHaveValue("Studio Local");
+  await expect(page.locator("#font-family-btn")).toHaveText("Studio Local");
   await page.reload();
   await expect(page.locator("#objects > g")).toHaveCount(13);
   expect(

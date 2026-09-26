@@ -1,10 +1,12 @@
 import { setupInspector } from "./inspector.js";
+import { resizeSnapshot, resizeFrameTree } from "./constraints.js";
 import { computeLayout, layoutPadding } from "./autolayout.js";
 import {
   fontFamilies,
   restoreFonts,
   importLocalFont,
   importGoogleFont,
+  loadSystemFonts,
 } from "./fonts.js";
 import "@fontsource/inter/400.css";
 import "@fontsource/inter/500.css";
@@ -225,7 +227,8 @@ function transaction(fn) {
   save();
 }
 function updateInput(id, value) {
-  if (document.activeElement !== $(id)) $(id).value = value;
+  const el = $(id);
+  if (el && document.activeElement !== el) el.value = value;
 }
 function screenPoint(event) {
   const r = svg.getBoundingClientRect();
@@ -316,6 +319,7 @@ function wrappedTextLines(obj, width) {
   return lines;
 }
 function measureText(obj) {
+  if (obj.constraintTextWrap) return; // Fixed responsive text boxes retain their dimensions while editing.
   const canvas = document.createElement("canvas"),
     ctx = canvas.getContext("2d");
   ctx.font = `${obj.fontWeight} ${obj.fontSize}px ${obj.fontFamily === "monospace" ? "monospace" : JSON.stringify(obj.fontFamily)}`;
@@ -365,15 +369,17 @@ function shapeElement(obj) {
       "fill-rule": "evenodd",
       ...style,
     });
+  const fills = obj.widthSizing === "fill" && !obj.layoutAbsolute;
+  const wraps = fills || obj.constraintTextWrap;
   const text = el("text", {
     "font-family": obj.fontFamily,
     "font-size": obj.fontSize,
     "font-weight": obj.fontWeight,
     "letter-spacing": obj.letterSpacing || 0,
-    transform: obj.widthSizing === "fill" && !obj.layoutAbsolute ? "scale(1 1)" : `scale(${obj.w / obj.baseW} ${obj.h / obj.baseH})`,
+    transform: fills ? "scale(1 1)" : `scale(${obj.w / obj.baseW} ${obj.h / obj.baseH})`,
     ...style,
   });
-  (obj.widthSizing === "fill" && !obj.layoutAbsolute ? wrappedTextLines(obj,obj.w) : obj.text.split("\n"))
+  (wraps ? wrappedTextLines(obj,fills ? obj.w : obj.baseW) : obj.text.split("\n"))
     .forEach((line, i) =>
       text.append(
         el(
@@ -392,6 +398,17 @@ function pageFrames() {
 }
 function frameContents(frame) {
   return state.doc.objects.filter(o => o.frameId === frame.id);
+}
+function captureResize() { return resizeSnapshot(pageFrames(), state.doc.objects); }
+function resizeFrame(frame, bounds, snapshot = captureResize(), ignore = false) {
+  resizeFrameTree(frame, bounds, pageFrames(), state.doc.objects, snapshot, ignore);
+}
+function constraintTargets() {
+  const items = [...selectedObjects(), ...selectedFrames()];
+  return items.length && items.every(item => {
+    const parent = pageFrames().find(f => f.id === (item.width !== undefined ? item.parentId : item.frameId));
+    return parent && !parent.autoLayout?.enabled;
+  }) ? items : [];
 }
 function assignFrame(object) {
   const b = objectBounds(object);
@@ -589,7 +606,10 @@ function applyAutoLayout(frame) {
       for (const member of child.members) { member.x+=item.x-child.x; member.y+=item.y-child.y; }
       continue;
     }
-    if (child.width !== undefined) { child.width = item.w; child.height = item.h; }
+    if (child.width !== undefined) {
+      if (child.x!==item.x || child.y!==item.y || child.width!==item.w || child.height!==item.h)
+        resizeFrame(child, {x:item.x,y:item.y,width:item.w,height:item.h});
+    }
     else {
       const b = layoutBounds(child);
       // Resize in local coordinates, then position using the rendered bounds.
@@ -1326,10 +1346,32 @@ function renderAltMeasurements() {
   }
   if(target) renderMeasurements(boundsOf(items),target,layer,state.zoom);
 }
+function renderConstraintGuides() {
+  const items = constraintTargets();
+  if (items.length !== 1 || state.pointer || state.tool !== "select") return;
+  const item = items[0], isFrame = item.width !== undefined;
+  const parent = pageFrames().find(f => f.id === (isFrame ? item.parentId : item.frameId));
+  const w = isFrame ? item.width : item.w, h = isFrame ? item.height : item.h;
+  const cx = item.x + w/2, cy = item.y + h/2;
+  const line = (x1,y1,x2,y2) => overlay.append(el("line", {
+    x1,y1,x2,y2,stroke:"#0099ff","stroke-width":1/state.zoom,
+    "stroke-dasharray":`${3/state.zoom} ${3/state.zoom}`,opacity:.55,
+    "pointer-events":"none","data-constraint-guide":"true",
+  }));
+  const horizontal = item.constraints?.horizontal || "start";
+  const vertical = item.constraints?.vertical || "start";
+  if (["start","stretch"].includes(horizontal)) line(parent.x,cy,item.x,cy);
+  if (["end","stretch"].includes(horizontal)) line(item.x+w,cy,parent.x+parent.width,cy);
+  if (horizontal === "center") line(parent.x+parent.width/2,parent.y,cx,cy);
+  if (["start","stretch"].includes(vertical)) line(cx,parent.y,cx,item.y);
+  if (["end","stretch"].includes(vertical)) line(cx,item.y+h,cx,parent.y+parent.height);
+  if (vertical === "center") line(parent.x,parent.y+parent.height/2,cx,cy);
+}
 function renderSelection() {
   renderAltMeasurements();
   overlay.replaceChildren();
   if (textEditor) return;
+  renderConstraintGuides();
   for (const frame of selectedFrames()) {
     if (artboardSelected() && frame.id === state.doc.artboard.id) continue;
     overlay.append(el("rect", {x:frame.x,y:frame.y,width:frame.width,height:frame.height,class:"selection-box","data-frame-selection":frame.id}));
@@ -1784,7 +1826,7 @@ function renderProperties() {
   $("text-properties").hidden = !single || obj.type !== "text";
   if (single && obj.type === "text") {
     updateInput("font-size", obj.fontSize);
-    updateInput("font-family", obj.fontFamily);
+    if ($("font-family-btn")) $("font-family-btn").textContent = obj.fontFamily || "Inter";
     updateInput("font-weight", obj.fontWeight);
   }
   const capable = objs.length >= 2 && objs.every((o) => o.type !== "text");
@@ -1816,7 +1858,7 @@ function renderProperties() {
     else closeEffectPopover();
   }
   if (!pendingColor) renderColor();
-  inspectorUI?.update({objects:objs,frames:selectedFrames(),frame:activeFrame,ids:state.selected,
+  inspectorUI?.update({objects:objs,frames:selectedFrames(),frame:activeFrame,ids:state.selected,constraintTargets:constraintTargets(),
     layoutParent:layoutParent?.autoLayout?.enabled ? layoutParent : null,
     controlled:!!layoutParent?.autoLayout?.enabled && !layoutItem?.layoutAbsolute && (single || isFrame)});
 }
@@ -2458,7 +2500,8 @@ function startText(obj, point) {
   input.value = obj.text;
   input.placeholder = "Type something";
   input.setAttribute("aria-label", "Edit canvas text");
-  input.wrap = "off";
+  input.wrap = obj.constraintTextWrap ? "soft" : "off";
+  if (obj.constraintTextWrap) input.style.whiteSpace = "pre-wrap";
   input.spellcheck = false;
   const scaleX = obj.w / obj.baseW,
     scaleY = obj.h / obj.baseH;
@@ -2478,7 +2521,7 @@ function startText(obj, point) {
   const syncEditor = () => {
     input.style.left = `${state.pan.x + origin.x * state.zoom}px`;
     input.style.top = `${state.pan.y + origin.y * state.zoom}px`;
-    input.style.width = `${Math.max(obj.fontSize, obj.baseW + Math.abs(obj.letterSpacing || 0) + 4)}px`;
+    input.style.width = `${obj.constraintTextWrap ? obj.baseW : Math.max(obj.fontSize, obj.baseW + Math.abs(obj.letterSpacing || 0) + 4)}px`;
     input.style.height = `${obj.baseH + 2}px`;
     input.style.fontFamily = obj.fontFamily;
     input.style.fontWeight = obj.fontWeight;
@@ -2498,9 +2541,11 @@ function startText(obj, point) {
   renderSelection();
   input.addEventListener("input", () => {
     obj.text = input.value;
-    measureText(obj);
-    obj.w *= scaleX;
-    obj.h *= scaleY;
+    if (!obj.constraintTextWrap) {
+      measureText(obj);
+      obj.w *= scaleX;
+      obj.h *= scaleY;
+    }
     const half = { x: obj.w / 2, y: obj.h / 2 };
     const rotated = rotatePoint(half, obj.rotation);
     obj.x = origin.x - half.x + rotated.x;
@@ -2574,7 +2619,7 @@ svg.addEventListener("pointerdown", (event) => {
     return;
   }
   if (event.target.dataset.frameHandle && artboardSelected()) {
-    begin(); state.pointer = {type:"frame-resize", handle:event.target.dataset.frameHandle, start:point, original:clone(state.doc.artboard), frame:state.doc.artboard}; return;
+    begin(); state.pointer = {type:"frame-resize", handle:event.target.dataset.frameHandle, start:point, original:clone(state.doc.artboard), frame:state.doc.artboard, resizeSnapshot:captureResize()}; return;
   }
   const frameLabel = event.target.closest("[data-frame-label]");
   if (frameLabel) {
@@ -2707,7 +2752,7 @@ svg.addEventListener("pointerdown", (event) => {
   if (handle && selectedFrames().length) {
     begin();
     const items = clone(selectionBoundsItems());
-    state.pointer = {type:"frames-resize",handle,items,bounds:boundsOf(items)};
+    state.pointer = {type:"frames-resize",handle,items,bounds:boundsOf(items),resizeSnapshot:captureResize()};
     return;
   }
   if (handle && selectedObjects().length) {
@@ -2855,23 +2900,29 @@ window.addEventListener("pointermove", (event) => {
       const nx=x+(original.x-b.x)*w/b.w, ny=y+(original.y-b.y)*height/b.h;
       if (original.isFrame) {
         const frame=pageFrames().find(f=>f.id===original.id);
-        moveFrame(frame,nx,ny); frame.width=original.w*w/b.w; frame.height=original.h*height/b.h;
+        resizeFrame(frame,{x:nx,y:ny,width:original.w*w/b.w,height:original.h*height/b.h},gesture.resizeSnapshot,event.metaKey || event.ctrlKey);
         if(frame.autoLayout?.enabled) {frame.autoLayout.widthSizing="fixed";frame.autoLayout.heightSizing="fixed";}
       } else Object.assign(getObject(original.id),{x:nx,y:ny,w:original.w*w/b.w,h:original.h*height/b.h});
     }
+    applyAllAutoLayouts();
     renderFast(); return;
   }
   if (gesture.type === "frame-resize") {
     const f = gesture.frame, o = gesture.original, h = gesture.handle;
     const dx = point.x - gesture.start.x, dy = point.y - gesture.start.y;
-    f.x = h.includes("w") ? Math.min(o.x + dx, o.x + o.width - 1) : o.x;
-    f.y = h.includes("n") ? Math.min(o.y + dy, o.y + o.height - 1) : o.y;
-    f.width = h.includes("w") ? o.x + o.width - f.x : Math.max(1, o.width + dx);
-    f.height = h.includes("n") ? o.y + o.height - f.y : Math.max(1, o.height + dy);
+    const x = h.includes("w") ? Math.min(o.x + dx, o.x + o.width - 1) : o.x;
+    const y = h.includes("n") ? Math.min(o.y + dy, o.y + o.height - 1) : o.y;
+    resizeFrame(f, {x,y,
+      width:h.includes("w") ? o.x + o.width - x : Math.max(1, o.width + dx),
+      height:h.includes("n") ? o.y + o.height - y : Math.max(1, o.height + dy),
+    }, gesture.resizeSnapshot, event.metaKey || event.ctrlKey);
     if (f.autoLayout?.enabled) {
       f.autoLayout.sizing = "fixed";
+      f.autoLayout.widthSizing = "fixed";
+      f.autoLayout.heightSizing = "fixed";
       applyAutoLayout(f);
     }
+    applyAllAutoLayouts();
     renderFast(); return;
   }
   if (gesture.type === "frame-move") {
@@ -3771,15 +3822,51 @@ window.addEventListener(
       e.stopImmediatePropagation();
       closeEffectPopover();
     }
+    if (e.key === "Escape" && !$("font-popover")?.hidden) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      closeFontPopover();
+    }
   },
   true,
 );
 
+if ($("font-family-btn")) {
+  $("font-family-btn").addEventListener("click", () => {
+    const pop = $("font-popover");
+    pop.hidden = !pop.hidden;
+    if (!pop.hidden) {
+      refreshFontOptions();
+      $("font-search")?.focus();
+    }
+  });
+}
+if ($("font-search")) {
+  $("font-search").addEventListener("input", refreshFontOptions);
+}
+if ($("load-local-fonts-btn")) {
+  $("load-local-fonts-btn").addEventListener("click", () => {
+    loadSystemFonts().then(() => {
+      refreshFontOptions();
+    }).catch(err => {
+      toast(err.message);
+    });
+  });
+}
+document.addEventListener("pointerdown", (e) => {
+  if (
+    $("font-popover") &&
+    !$("font-popover").hidden &&
+    !e.target.closest("#font-popover, #font-family-btn")
+  ) {
+    closeFontPopover();
+  }
+});
 
 
-// Fonts are loaded before changing text metrics and saved locally for future visits.
+
 function refreshFontOptions() {
-  const current = $("font-family").value;
+  const current = $("font-family-btn") ? $("font-family-btn").textContent : "Inter";
   const families = [
     ...new Set([
       ...fontFamilies(),
@@ -3787,29 +3874,65 @@ function refreshFontOptions() {
         .filter((o) => o.type === "text")
         .map((o) => o.fontFamily),
     ]),
-  ];
-  $("font-family").replaceChildren(
-    ...families.map((family) => {
-      const option = document.createElement("option");
-      option.value = option.textContent = family;
-      return option;
-    }),
-  );
-  $("font-family").value = current || "Inter";
-  $("font-library").replaceChildren(
-    ...fontFamilies().map((family) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = family;
-      button.style.fontFamily = JSON.stringify(family);
-      button.title = `Apply ${family}`;
-      button.addEventListener("click", () => {
-        applyFont(family);
-        $("font-dialog").close();
-      });
-      return button;
-    }),
-  );
+  ].sort();
+  
+  if ($("font-library")) {
+    $("font-library").replaceChildren(
+      ...fontFamilies().map((family) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = family;
+        button.style.fontFamily = JSON.stringify(family);
+        button.title = `Apply ${family}`;
+        button.addEventListener("click", () => {
+          applyFont(family);
+          $("font-dialog").close();
+        });
+        return button;
+      }),
+    );
+  }
+
+  const query = ($("font-search")?.value || "").toLowerCase();
+  const filterFn = (f) => f.toLowerCase().includes(query);
+  const docFiltered = families.filter(filterFn);
+  
+  if ($("font-list-document")) {
+    $("font-list-document").replaceChildren(
+      ...docFiltered.map((family) => {
+        const btn = document.createElement("button");
+        btn.className = "font-item-btn";
+        if (family === current) btn.classList.add("active");
+        btn.textContent = family;
+        btn.style.fontFamily = JSON.stringify(family);
+        btn.onclick = () => { applyFont(family); closeFontPopover(); };
+        return btn;
+      })
+    );
+  }
+  
+  loadSystemFonts().then((sysFonts) => {
+    if (!sysFonts) return;
+    const allFamilies = [...new Set([...families, ...sysFonts])].sort();
+    const allFiltered = allFamilies.filter(filterFn);
+    if ($("font-list-all")) {
+      $("font-list-all").replaceChildren(
+        ...allFiltered.map((family) => {
+          const btn = document.createElement("button");
+          btn.className = "font-item-btn";
+          if (family === current) btn.classList.add("active");
+          btn.textContent = family;
+          btn.style.fontFamily = JSON.stringify(family);
+          btn.onclick = () => { applyFont(family); closeFontPopover(); };
+          return btn;
+        })
+      );
+    }
+  }).catch(() => {});
+}
+
+function closeFontPopover() {
+  if ($("font-popover")) $("font-popover").hidden = true;
 }
 function applyFont(
   family,
@@ -3898,11 +4021,7 @@ for (const key of ["x", "y", "w", "h", "rotation", "opacity"]) {
         if (key === "x" || key === "y") {
           const f = state.doc.artboard; moveFrame(f, key === "x" ? value : f.x, key === "y" ? value : f.y); return;
         }
-        state.doc.artboard[key === "w" ? "width" : "height"] = clamp(
-          value,
-          1,
-          50000,
-        );
+        resizeFrame(state.doc.artboard, {[key === "w" ? "width" : "height"]:clamp(value,1,50000)});
         if (state.doc.artboard.autoLayout?.enabled) {
           state.doc.artboard.autoLayout[key === "w" ? "widthSizing" : "heightSizing"] = "fixed";
           applyAutoLayout(state.doc.artboard);
@@ -4091,7 +4210,6 @@ document.querySelectorAll(".al-matrix .al-dot").forEach((dot) => {
 });
 for (const [id, key] of [
   ["font-size", "fontSize"],
-  ["font-family", "fontFamily"],
   ["font-weight", "fontWeight"],
 ])
   $(id).addEventListener("change", (e) =>
@@ -4892,6 +5010,9 @@ try {
   /* Font import reports storage errors when used. */
 }
 inspectorUI = setupInspector({
+  changeConstraint:(axis,value)=>transaction(()=>{
+    constraintTargets().forEach(item=>{item.constraints={...item.constraints,[axis]:value};});
+  }),
   refresh:renderProperties,
   resize:()=>{renderView();renderSelection();},
   selectionChanged:()=>{closeColorPicker();closeEffectPopover();},
