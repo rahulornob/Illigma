@@ -252,7 +252,7 @@ svg.lucide {
 }
 #workspace {
   position: absolute;
-  top: 64px;
+  top: 0;
   bottom: 0;
   left: 272px;
   right: 300px;
@@ -487,7 +487,7 @@ svg.lucide {
 }
 .inspector {
   position: absolute;
-  top: 64px;
+  top: 0;
   bottom: 0;
   right: 0;
   width: 268px;
@@ -1333,7 +1333,7 @@ kbd {
 /* The layer tree stays independent of the right-hand design inspector. */
 .layers-sidebar {
   position: absolute;
-  top: 64px;
+  top: 0;
   bottom: 0;
   left: 0;
   width: 240px;
