@@ -1224,12 +1224,9 @@ kbd {
 @media (max-width: 760px) {
   .inspector {
     width: 236px;
-    right: 8px;
-    top: 72px;
-    bottom: 8px;
   }
   #workspace {
-    right: 252px;
+    right: 236px;
   }
   .topbar {
     height: 56px;
@@ -1289,7 +1286,7 @@ kbd {
     width: 205px;
   }
   #workspace {
-    right: 220px;
+    right: 205px;
   }
   .document-name {
     display: none;
@@ -1379,16 +1376,10 @@ kbd {
 }
 @media (max-width: 1050px) {
   .layers-sidebar {
-    left: 12px;
     width: 192px;
-    bottom: 80px;
-  }
-  .inspector {
-    bottom: 80px;
   }
   #workspace {
-    left: 216px;
-    bottom: 64px;
+    left: 192px;
   }
   .toolbar {
     position: fixed;
@@ -1404,12 +1395,10 @@ kbd {
 }
 @media (max-width: 760px) {
   .layers-sidebar {
-    top: 72px;
-    left: 8px;
     width: 168px;
   }
   #workspace {
-    left: 184px;
+    left: 168px;
   }
   .toolbar {
     gap: 5px;
@@ -1420,7 +1409,7 @@ kbd {
     width: 136px;
   }
   #workspace {
-    left: 152px;
+    left: 136px;
   }
   .toolbar {
     gap: 3px;
