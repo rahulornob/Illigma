@@ -1270,3 +1270,96 @@ test("frame effects and svg export filter generation", async ({ page }) => {
 
 
 
+
+test('nested frames move and duplicate descendants, and nested layouts size inside out', async ({page}) => {
+  await blank(page);
+  await draw(page, 'Rectangle', [150,150], [230,200]);
+  await selectAll(page);
+  await page.keyboard.press('Shift+a');
+  let s = await state(page);
+  const inner = s.doc.artboards.find(f=>f.autoLayout?.enabled);
+  const outer = s.doc.artboards.find(f=>f.id===inner.parentId);
+  expect(outer).toBeDefined();
+  const outerRow = page.locator(`[data-frame-id="${outer.id}"]`);
+  await expect(outerRow.locator('..').locator(`[data-frame-id="${inner.id}"]`)).toHaveCount(1);
+  await outerRow.click();
+  await expect(outerRow).toHaveClass(/selected/);
+  await page.locator('#add-autolayout').click();
+  s = await state(page);
+  const parent = s.doc.artboards.find(f=>f.id===outer.id);
+  expect(parent.width).toBeCloseTo(inner.width + 32, 0);
+  await page.locator('#al-width-sizing').selectOption('fixed');
+  await page.locator('#prop-w').fill('500'); await page.locator('#prop-w').press('Tab');
+  s = await state(page);
+  expect(s.doc.artboards.find(f=>f.id===outer.id).width).toBe(500);
+  expect(s.doc.artboards.find(f=>f.id===outer.id).height).toBeCloseTo(inner.height+32,0);
+  const before=s.doc.objects[0].x;
+  await page.locator('#prop-x').fill('80');await page.locator('#prop-x').press('Tab');
+  s=await state(page);expect(s.doc.objects[0].x).toBeCloseTo(before+80,0);
+  await page.locator('#duplicate').click();
+  s=await state(page);expect(s.doc.artboards).toHaveLength(4);expect(s.doc.objects).toHaveLength(2);
+  await page.reload();await expect(page.locator('[data-frame-id]')).toHaveCount(4);
+});
+
+test('auto layout canvas drag reorders children, hidden children collapse, and layer order matches layout', async ({page}) => {
+  await blank(page);
+  await draw(page,'Rectangle',[100,100],[160,160]);
+  await draw(page,'Rectangle',[180,100],[240,160]);
+  await draw(page,'Rectangle',[260,100],[320,160]);
+  await selectAll(page);await page.keyboard.press('Shift+a');
+  let s=await state(page);
+  const f=s.doc.artboards.find(f=>f.autoLayout?.enabled), children=s.doc.objects.filter(o=>o.frameId===f.id);
+  const first=children[0], last=children[2];
+  const row=page.locator(`[data-layer="${first.id}"]`);
+  await row.click();
+  await drag(page,[first.x+first.w/2, first.y+first.h/2],[last.x+last.w*.75, last.y+last.h/2]);
+  s=await state(page);
+  expect(s.doc.objects.filter(o=>o.frameId===f.id).at(-1).id).toBe(first.id);
+  const treeOrder=await page.locator(`[data-frame-id="${f.id}"]`).locator('..').locator('[data-layer]').evaluateAll(rows=>rows.map(r=>r.dataset.layer));
+  expect(treeOrder).toEqual(s.doc.objects.filter(o=>o.frameId===f.id).map(o=>o.id));
+  const width=s.doc.artboards.find(frame=>frame.id===f.id).width;
+  await row.locator('[data-visibility]').click();s=await state(page);
+  expect(s.doc.artboards.find(frame=>frame.id===f.id).width).toBeCloseTo(width-first.w-16,0);
+});
+
+test('layer drag nests frames, rejects cycles, and persists hierarchy through undo and reload', async ({page}) => {
+  await blank(page);
+  await page.locator('#add-artboard').click();
+  let s=await state(page);const [parent,child]=s.doc.artboards;
+  const dragRow=async(source,target)=>{
+    const data=await page.evaluateHandle(()=>new DataTransfer());
+    await page.locator(`[data-frame-id="${source}"]`).dispatchEvent('dragstart',{dataTransfer:data});
+    await page.locator(`[data-frame-id="${target}"]`).dispatchEvent('drop',{dataTransfer:data});
+  };
+  await dragRow(child.id,parent.id);
+  s=await state(page);expect(s.doc.artboards.find(f=>f.id===child.id).parentId).toBe(parent.id);
+  await dragRow(parent.id,child.id);
+  s=await state(page);expect(s.doc.artboards.find(f=>f.id===parent.id).parentId).toBeFalsy();
+  await page.locator('#undo').click();
+  s=await state(page);expect(s.doc.artboards.find(f=>f.id===child.id).parentId).toBeFalsy();
+  await page.locator('#redo').click();await page.reload();
+  await expect(page.locator(`[data-frame-id="${parent.id}"]`).locator('..').locator(`[data-frame-id="${child.id}"]`)).toHaveCount(1);
+});
+
+test('fill container shares available space and updates after parent resize', async ({page}) => {
+  await blank(page);
+  await draw(page,'Rectangle',[100,100],[160,160]);
+  await draw(page,'Rectangle',[180,100],[240,160]);
+  await selectAll(page);await page.keyboard.press('Shift+a');
+  let s=await state(page);const frame=s.doc.artboards.find(f=>f.autoLayout?.enabled);
+  const children=s.doc.objects.filter(o=>o.frameId===frame.id);
+  await page.locator('#al-width-sizing').selectOption('fixed');
+  await page.locator('#prop-w').fill('400');await page.locator('#prop-w').press('Tab');
+  for (const child of children) {
+    await page.locator(`[data-layer="${child.id}"]`).click();
+    await page.locator('#child-width-sizing').selectOption('fill');
+  }
+  s=await state(page);
+  for (const child of s.doc.objects.filter(o=>o.frameId===frame.id)) expect(child.w).toBeCloseTo(176,0);
+  await page.locator(`[data-frame-id="${frame.id}"]`).click();
+  await page.locator('#prop-w').fill('500');await page.locator('#prop-w').press('Tab');
+  s=await state(page);
+  for (const child of s.doc.objects.filter(o=>o.frameId===frame.id)) expect(child.w).toBeCloseTo(226,0);
+  await page.reload();
+  const restored=await state(page);expect(restored.doc.objects.filter(o=>o.widthSizing==='fill')).toHaveLength(2);
+});

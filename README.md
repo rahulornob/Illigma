@@ -57,7 +57,7 @@ Changes are automatically saved in this browser's local storage. Undo history ho
 
 SVG export includes the active page’s visible artwork and artboard background, without editor controls. Text remains editable and references its font family; install the corresponding fonts in external tools for matching text rendering.
 
-This MVP supports multiple pages with one artboard per page, a two-level artboard/object layer hierarchy, solid fills and strokes, and text using built-in or imported fonts. It does not include arbitrary SVG import, nested groups, gradient editing, text outlining, collaboration, or a backend. Desktop and tablet-sized windows are the primary editing targets.
+This MVP supports multiple pages with multiple nested frames per page, a hierarchical frame/object layer tree, solid fills and strokes, and text using built-in or imported fonts. It does not include arbitrary SVG import, nested groups, gradient editing, text outlining, collaboration, or a backend. Desktop and tablet-sized windows are the primary editing targets.
 
 ## Source layout
 
@@ -94,10 +94,11 @@ Turn any frame into an Auto Layout container, or select multiple objects and pre
 
 - **Shortcuts:** `Shift+A` to add/enable Auto Layout; `Option+Shift+A` (or `Alt+Shift+A`) to remove Auto Layout.
 - **Direction:** Switch between Horizontal (`→`) and Vertical (`↓`) layouts with instant reflow.
-- **Sizing:** Choose between **Hug contents** (frame resizes to fit children plus padding) and **Fixed size** (frame dimensions stay fixed while children align inside). Manual frame resizing automatically switches sizing to fixed.
+- **Sizing:** Width and height independently support Hug contents or Fixed. Children, including nested auto-layout frames, support Fill container. Choosing Fill fixes the corresponding parent axis to prevent circular sizing. Hidden children do not consume space.
 - **3×3 Interactive Alignment Matrix:** Click any of the 9 alignment points (Top Left, Top Center, Top Right, Center Left, Center, Center Right, Bottom Left, Bottom Center, Bottom Right) to position children along primary and cross axes.
 - **Gap & Padding:** Set custom pixel spacing between items, horizontal padding, and vertical padding with live canvas updates.
-- **Child Reordering:** Drag children along the layout axis or press arrow keys (`←`/`→` for horizontal, `↑`/`↓` for vertical) to reorder items inside the auto layout frame.
+- **Child Reordering:** Drag children along the layout axis, reorder rows in Layers, or press arrow keys (`←`/`→` for horizontal, `↑`/`↓` for vertical). The auto-layout layer list follows layout order. Drag frame rows onto another frame to nest them; cycles are blocked. Nested layouts measure from the inside out, and moving or duplicating a parent includes descendants. Shift-click selects a layer range; Cmd/Ctrl-click toggles individual objects.
+- **Current limits:** Auto layout supports horizontal and vertical stacks; wrapping, constraints, and absolute-positioned layout children are not implemented.
 - **Context Menu:** Right-click canvas selections or layers to quickly add or remove Auto Layout.
 
 ### Canvas background color (Figma Page / Canvas Background)

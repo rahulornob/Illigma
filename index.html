@@ -336,6 +336,10 @@
             ><span id="selection-name">Blue orbit</span
             ><span id="selection-count"></span>
           </div>
+          <div id="child-layout-sizing" class="al-axis-sizing" hidden>
+            <label>Width <select id="child-width-sizing" aria-label="Child width sizing"><option value="fixed">Fixed</option><option value="fill">Fill container</option></select></label>
+            <label>Height <select id="child-height-sizing" aria-label="Child height sizing"><option value="fixed">Fixed</option><option value="fill">Fill container</option></select></label>
+          </div>
           <label id="frame-properties" hidden><input id="clip-content" type="checkbox" checked /> Clip content</label>
           <div class="field-grid">
             <label class="field"
@@ -594,6 +598,10 @@
                   <i data-lucide="maximize-2"></i>
                 </button>
               </div>
+            </div>
+            <div class="al-axis-sizing">
+              <label>Width <select id="al-width-sizing" aria-label="Auto layout width sizing"><option value="hug">Hug contents</option><option value="fixed">Fixed</option><option value="fill">Fill container</option></select></label>
+              <label>Height <select id="al-height-sizing" aria-label="Auto layout height sizing"><option value="hug">Hug contents</option><option value="fixed">Fixed</option><option value="fill">Fill container</option></select></label>
             </div>
             <div class="al-config-grid">
               <div

@@ -260,7 +260,23 @@ export function validDocument(doc) {
           ![frame.x, frame.y].every(n => Number.isFinite(n) && Math.abs(n) <= 1000000) ||
           ![frame.width, frame.height].every(n => Number.isFinite(n) && n > 0 && n <= 50000) ||
           !color(frame.fill) || !validEffects(frame.effects) || (frame.name !== undefined && (typeof frame.name !== "string" || frame.name.length > 100))) return false;
+      if (frame.autoLayout !== undefined) {
+        const al = frame.autoLayout;
+        if (!al || typeof al.enabled !== "boolean" ||
+            (al.direction !== undefined && !["horizontal", "vertical"].includes(al.direction)) ||
+            ["gap", "paddingX", "paddingY"].some(key => al[key] !== undefined && (!Number.isFinite(al[key]) || al[key] < 0 || al[key] > 50000)) ||
+            ["sizing", "widthSizing", "heightSizing"].some(key => al[key] !== undefined && !["hug", "fixed", "fill"].includes(al[key])) ||
+            (al.childOrder !== undefined && (!Array.isArray(al.childOrder) || al.childOrder.length > 3100 || !al.childOrder.every(id => typeof id === "string")))) return false;
+      }
       frameIds.add(frame.id);
+    }
+    for (const frame of doc.artboards) {
+      const seen = new Set([frame.id]); let current = frame;
+      while (current.parentId != null) {
+        if (typeof current.parentId !== "string" || seen.has(current.parentId)) return false;
+        seen.add(current.parentId); current = doc.artboards.find(f => f.id === current.parentId);
+        if (!current) return false;
+      }
     }
   }
   const ids = new Set();

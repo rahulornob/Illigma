@@ -254,8 +254,8 @@ svg.lucide {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 272px;
-  right: 300px;
+  left: 240px;
+  right: 268px;
   overflow: hidden;
 }
 .workspace-heading {
@@ -812,8 +812,11 @@ svg.lucide {
   position: relative;
   user-select: none;
 }
-.frame-children .layer-row {
-  padding-left: 32px;
+.frame-children {
+  margin-left: 16px;
+}
+.frame-children > .layer-row {
+  padding-left: 24px;
 }
 .layer-row:hover {
   background: #333333;
@@ -1192,7 +1195,7 @@ kbd {
     width: 284px;
   }
   #workspace {
-    right: 316px;
+    right: 284px;
   }
   .color-square {
     height: 145px;
@@ -1880,7 +1883,7 @@ kbd {
 }
 .layers-sidebar,
 .inspector {
-  top: 16px;
+  top: 0;
 }
 .sidebar-document {
   padding: 15px;
@@ -1969,7 +1972,7 @@ kbd {
 @media (max-width: 760px) {
   .layers-sidebar,
   .inspector {
-    top: 8px;
+    top: 0;
   }
   .sidebar-brand-row {
     flex-wrap: wrap;
@@ -2135,3 +2138,9 @@ kbd {
   height: 12px;
   color: #777;
 }
+
+.al-axis-sizing {display:flex;gap:8px;margin-bottom:12px;}
+.al-axis-sizing label {flex:1;min-width:0;color:var(--text-muted);font-size:11px;}
+.al-axis-sizing select {display:block;width:100%;margin-top:5px;background:var(--hover-active);border:1px solid var(--border);border-radius:5px;padding:5px;font-size:11px;}
+
+#child-layout-sizing[hidden] { display:none; }

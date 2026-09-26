@@ -360,13 +360,69 @@ function frameContents(frame) {
 }
 function assignFrame(object) {
   const b = objectBounds(object);
-  const frame = [...pageFrames()].reverse().find(f => b.x + b.w / 2 >= f.x && b.y + b.h / 2 >= f.y && b.x + b.w / 2 <= f.x + f.width && b.y + b.h / 2 <= f.y + f.height);
+  const frame = [...pageFrames()].sort((a,b) => frameAncestors(b).length-frameAncestors(a).length || a.width*a.height-b.width*b.height).find(f => b.x + b.w / 2 >= f.x && b.y + b.h / 2 >= f.y && b.x + b.w / 2 <= f.x + f.width && b.y + b.h / 2 <= f.y + f.height);
   object.frameId = frame?.id || null;
 }
-function moveFrame(frame, x, y, contents = frameContents(frame)) {
+function frameAncestors(frame) {
+  const result = [], seen = new Set([frame.id]);
+  let parent = pageFrames().find(f => f.id === frame.parentId);
+  while (parent && !seen.has(parent.id)) {
+    result.push(parent); seen.add(parent.id); parent = pageFrames().find(f => f.id === parent.parentId);
+  }
+  return result;
+}
+function frameSubtree(frame) {
+  return pageFrames().filter(f => f.id === frame.id || frameAncestors(f).some(p => p.id === frame.id));
+}
+function moveFrame(frame, x, y) {
   const dx = x - frame.x, dy = y - frame.y;
-  contents.forEach(o => { o.x += dx; o.y += dy; });
-  frame.x = x; frame.y = y;
+  const frames = frameSubtree(frame), ids = new Set(frames.map(f => f.id));
+  state.doc.objects.filter(o => ids.has(o.frameId)).forEach(o => { o.x += dx; o.y += dy; });
+  frames.forEach(f => { f.x += dx; f.y += dy; });
+}
+function duplicateFrame(original, offset = original.width + 100) {
+  const frames = frameSubtree(original), ids = new Map(frames.map(f => [f.id, crypto.randomUUID()]));
+  const copies = frames.map(f => ({...clone(f), id:ids.get(f.id), parentId:ids.get(f.parentId) || f.parentId || null, x:f.x + offset, name:`${f.name} copy`}));
+  const objectCopies = state.doc.objects.filter(o => ids.has(o.frameId)).map(o => {
+    const id = crypto.randomUUID(); ids.set(o.id, id);
+    return {...clone(o), id, frameId:ids.get(o.frameId), x:o.x+offset};
+  });
+  copies.forEach(f => { if (f.autoLayout?.childOrder) f.autoLayout.childOrder = f.autoLayout.childOrder.map(id => ids.get(id)).filter(Boolean); });
+  state.doc.objects.push(...objectCopies);
+  pageFrames().push(...copies); return copies[0];
+}
+function assignFrameParent(frame) {
+  const excluded = new Set(frameSubtree(frame).map(f => f.id));
+  const parent = [...pageFrames()].filter(f => !excluded.has(f.id) && frame.x >= f.x && frame.y >= f.y && frame.x + frame.width <= f.x + f.width && frame.y + frame.height <= f.y + f.height).sort((a,b) => a.width*a.height-b.width*b.height)[0];
+  frame.parentId = parent?.id || null;
+}
+function layoutChildren(frame) {
+  const children = [...frameContents(frame).filter(o => o.visible), ...pageFrames().filter(f => f.parentId === frame.id)];
+  const order = frame.autoLayout?.childOrder || [];
+  const ranks = new Map(children.map((child,i) => [child.id, order.includes(child.id) ? order.indexOf(child.id) : order.length+i]));
+  return children.sort((a,b) => ranks.get(a.id)-ranks.get(b.id));
+
+}
+function placeLayoutChild(frame, id, targetId = null, after = true) {
+  if (!frame?.autoLayout?.enabled) return;
+  const order = layoutChildren(frame).map(o => o.id).filter(item => item !== id);
+  const index = order.indexOf(targetId);
+  order.splice(index < 0 ? order.length : index + (after ? 1 : 0), 0, id);
+  frame.autoLayout.childOrder = order;
+}
+function layoutBounds(child) {
+  return child.width !== undefined ? {x:child.x,y:child.y,w:child.width,h:child.height} : objectBounds(child);
+}
+function shiftLayoutChild(child, dx, dy) {
+  if (child.width !== undefined) moveFrame(child, child.x + dx, child.y + dy);
+  else { child.x += dx; child.y += dy; }
+}
+function frameClipBounds(frame, includeSelf = true) {
+  let x = -1e7, y = -1e7, right = 1e7, bottom = 1e7;
+  for (const f of [...(includeSelf ? [frame] : []), ...frameAncestors(frame)].filter(f => f.clipContent !== false)) {
+    x = Math.max(x,f.x); y = Math.max(y,f.y); right = Math.min(right,f.x+f.width); bottom = Math.min(bottom,f.y+f.height);
+  }
+  return {x,y,width:Math.max(0,right-x),height:Math.max(0,bottom-y)};
 }
 function activateFrame(id) {
   const frame = pageFrames().find(f => f.id === id);
@@ -461,17 +517,32 @@ function applyAutoLayout(frame) {
   const align = al.align || "top-left";
   const sizing = al.sizing || "hug";
 
-  const contents = frameContents(frame);
+  const contents = layoutChildren(frame);
+  const hugWidth = (al.widthSizing || sizing) === "hug";
+  const hugHeight = (al.heightSizing || sizing) === "hug";
   if (!contents.length) {
-    if (sizing === "hug") {
-      frame.width = Math.max(100, paddingX * 2);
-      frame.height = Math.max(100, paddingY * 2);
-    }
+    if (hugWidth) frame.width = Math.max(1, paddingX * 2);
+    if (hugHeight) frame.height = Math.max(1, paddingY * 2);
     return;
   }
 
+  // Resolve fill against a fixed parent axis before positioning children.
+  const sizingOf = (child, axis) => child.width !== undefined ? child.autoLayout?.[`${axis}Sizing`] : child[`${axis}Sizing`];
+  for (const axis of ["width", "height"]) {
+    const horizontal = axis === "width", main = horizontal === (direction === "horizontal");
+    if (horizontal ? hugWidth : hugHeight) continue;
+    const padding = horizontal ? paddingX : paddingY;
+    const fillers = contents.filter(child => sizingOf(child, axis) === "fill");
+    const available = Math.max(1, frame[axis] - padding * 2);
+    const occupied = main ? contents.filter(child => sizingOf(child,axis) !== "fill").reduce((sum,child) => sum + layoutBounds(child)[horizontal ? "w" : "h"], 0) + Math.max(0,contents.length-1)*gap : 0;
+    for (const child of fillers) {
+      const size = Math.max(1, (available-occupied) / (main ? fillers.length : 1));
+      if (child.width !== undefined) child[axis] = size;
+      else child[horizontal ? "w" : "h"] = size;
+    }
+  }
   const { valign, halign } = parseAlign(align);
-  const boundsList = contents.map(o => objectBounds(o));
+  const boundsList = contents.map(layoutBounds);
 
   if (direction === "horizontal") {
     const totalChildW = boundsList.reduce((sum, b) => sum + b.w, 0);
@@ -479,10 +550,8 @@ function applyAutoLayout(frame) {
     const contentW = totalChildW + totalGaps;
     const maxChildH = Math.max(...boundsList.map(b => b.h), 0);
 
-    if (sizing === "hug") {
-      frame.width = Math.max(1, contentW + paddingX * 2);
-      frame.height = Math.max(1, maxChildH + paddingY * 2);
-    }
+    if (hugWidth) frame.width = Math.max(1, contentW + paddingX * 2);
+    if (hugHeight) frame.height = Math.max(1, maxChildH + paddingY * 2);
 
     const availW = frame.width - paddingX * 2;
     const availH = frame.height - paddingY * 2;
@@ -506,8 +575,7 @@ function applyAutoLayout(frame) {
 
       const dx = currX - b.x;
       const dy = targetY - b.y;
-      child.x += dx;
-      child.y += dy;
+      shiftLayoutChild(child, dx, dy);
       currX += b.w + gap;
     });
   } else {
@@ -516,10 +584,8 @@ function applyAutoLayout(frame) {
     const contentH = totalChildH + totalGaps;
     const maxChildW = Math.max(...boundsList.map(b => b.w), 0);
 
-    if (sizing === "hug") {
-      frame.width = Math.max(1, maxChildW + paddingX * 2);
-      frame.height = Math.max(1, contentH + paddingY * 2);
-    }
+    if (hugWidth) frame.width = Math.max(1, maxChildW + paddingX * 2);
+    if (hugHeight) frame.height = Math.max(1, contentH + paddingY * 2);
 
     const availW = frame.width - paddingX * 2;
     const availH = frame.height - paddingY * 2;
@@ -543,30 +609,29 @@ function applyAutoLayout(frame) {
 
       const dx = targetX - b.x;
       const dy = currY - b.y;
-      child.x += dx;
-      child.y += dy;
+      shiftLayoutChild(child, dx, dy);
       currY += b.h + gap;
     });
   }
 }
 function applyAllAutoLayouts() {
-  pageFrames().forEach((frame) => {
-    if (frame.autoLayout?.enabled) {
-      applyAutoLayout(frame);
-    }
-  });
+  const frames = [...pageFrames()].sort((a,b) => frameAncestors(b).length-frameAncestors(a).length);
+  frames.forEach(applyAutoLayout);
+  [...frames].reverse().forEach(applyAutoLayout);
 }
 function reorderAutoLayoutChildren(frame) {
   if (!frame?.autoLayout?.enabled) return;
-  const contents = frameContents(frame);
+  const contents = layoutChildren(frame);
   if (contents.length <= 1) return;
   const isHoriz = (frame.autoLayout.direction || "horizontal") === "horizontal";
   const sorted = [...contents].sort((a, b) => isHoriz ? a.x - b.x : a.y - b.y);
+  frame.autoLayout.childOrder = sorted.map(o => o.id);
   const ids = new Set(sorted.map(o => o.id));
+  const sortedObjects = sorted.filter(o => o.width === undefined);
   const firstIndex = state.doc.objects.findIndex(o => ids.has(o.id));
   if (firstIndex >= 0) {
     state.doc.objects = state.doc.objects.filter(o => !ids.has(o.id));
-    state.doc.objects.splice(firstIndex, 0, ...sorted);
+    state.doc.objects.splice(firstIndex, 0, ...sortedObjects);
   }
 }
 function enableAutoLayout(frame) {
@@ -664,6 +729,7 @@ function wrapSelectionInAutoLayout() {
     const frame = {
       id: crypto.randomUUID(),
       name: nextFrameName(),
+      parentId: objs.every(o => o.frameId === objs[0].frameId) ? objs[0].frameId : null,
       x: b.x - pad,
       y: b.y - pad,
       width: b.w + pad * 2,
@@ -873,7 +939,6 @@ function createFilterElement(id, effects, rotation = 0) {
   return filter;
 }
 function renderObjects() {
-  applyAllAutoLayouts();
   const defs = $("frame-clips");
   defs.replaceChildren();
   pageFrames().forEach((f, i) => {
@@ -881,8 +946,10 @@ function renderObjects() {
       id: `frame-clip-${i}`,
       clipPathUnits: "userSpaceOnUse",
     });
-    clip.append(el("rect", { x: f.x, y: f.y, width: f.width, height: f.height }));
+    clip.append(el("rect", frameClipBounds(f)));
     defs.append(clip);
+    const parentClip = el("clipPath", {id:`frame-parent-clip-${i}`,clipPathUnits:"userSpaceOnUse"});
+    parentClip.append(el("rect", frameClipBounds(f, false))); defs.append(parentClip);
   });
   const filterDefs = $("effect-filters");
   if (filterDefs) filterDefs.replaceChildren();
@@ -958,7 +1025,7 @@ function renderObjects() {
     if (objectLayer.children[index] !== group)
       objectLayer.insertBefore(group, objectLayer.children[index] || null);
     const frameIndex = pageFrames().findIndex((f) => f.id === obj.frameId);
-    if (frameIndex >= 0 && pageFrames()[frameIndex].clipContent !== false)
+    if (frameIndex >= 0)
       group.setAttribute("clip-path", `url(#frame-clip-${frameIndex})`);
     else group.removeAttribute("clip-path");
     group.style.visibility = textEditor?.obj.id === obj.id ? "hidden" : "";
@@ -1012,11 +1079,12 @@ function renderView() {
   const grids = $("extra-pixel-grids");
   grids.replaceChildren();
   const extras = $("extra-artboards");
+  const activeRect = $("artboard");
+  activeRect.remove();
   extras.replaceChildren();
   const filterDefs = $("effect-filters");
-  frames
-    .filter((f) => f.id !== active.id)
-    .forEach((frame) => {
+  [...frames].sort((a,b) => frameAncestors(a).length-frameAncestors(b).length).forEach((frame) => {
+      if (frame.id === active.id) { activeRect.setAttribute("clip-path", `url(#frame-parent-clip-${frames.indexOf(frame)})`); extras.append(activeRect); return; }
       if (filterDefs) {
         const extraFilter = createFilterElement(
           `effect-filter-${frame.id}`,
@@ -1044,6 +1112,7 @@ function renderView() {
         frameRect.style.backdropFilter = `blur(${frameBgBlur.blur}px)`;
         frameRect.style.webkitBackdropFilter = `blur(${frameBgBlur.blur}px)`;
       }
+      frameRect.setAttribute("clip-path", `url(#frame-parent-clip-${frames.indexOf(frame)})`);
       extras.append(frameRect);
     extras.append(el("text", {x: 0, y: -18, transform: `translate(${frame.x} ${frame.y}) scale(${1 / state.zoom})`, fill: "#999999", "font-size": 12, "font-family": "Inter", "data-frame-label": frame.id, role: "button", tabindex: 0}, frame.name));
     if (pixelGridVisible && state.zoom >= 4) grids.append(el("rect", {x: frame.x, y: frame.y, width: frame.width, height: frame.height, fill: "url(#pixel-grid-pattern)", "pointer-events": "none"}));
@@ -1466,6 +1535,12 @@ function renderProperties() {
   document.querySelectorAll(".align-row [data-align]").forEach((btn) => {
     btn.disabled = !obj;
   });
+  const childParent = single && obj?.frameId ? pageFrames().find(f => f.id === obj.frameId) : null;
+  $("child-layout-sizing").hidden = !childParent?.autoLayout?.enabled;
+  if (childParent?.autoLayout?.enabled) {
+    updateInput("child-width-sizing", obj.widthSizing || "fixed");
+    updateInput("child-height-sizing", obj.heightSizing || "fixed");
+  }
   $("frame-properties").hidden = !artboardSelected();
   $("clip-content").checked = state.doc.artboard.clipContent !== false;
   if (artboardSelected()) {
@@ -1490,6 +1565,9 @@ function renderProperties() {
       $("al-dir-horizontal").classList.toggle("active", (al.direction || "horizontal") === "horizontal");
       $("al-dir-vertical").classList.toggle("active", al.direction === "vertical");
 
+      for (const axis of ["width", "height"]) $(`al-${axis}-sizing`).querySelector('[value="fill"]').disabled = !pageFrames().find(f => f.id === activeFrame.parentId)?.autoLayout?.enabled;
+      updateInput("al-width-sizing", al.widthSizing || al.sizing || "hug");
+      updateInput("al-height-sizing", al.heightSizing || al.sizing || "hug");
       $("al-sizing-hug").classList.toggle("active", al.sizing !== "fixed");
       $("al-sizing-fixed").classList.toggle("active", al.sizing === "fixed");
 
@@ -1721,9 +1799,9 @@ function renderLayers() {
   const frames = pageFrames();
   $("add-artboard").disabled = frames.length >= 100;
   if ($("artboard-tree")) $("artboard-tree").style.display = frames.length > 1 ? "none" : "";
-  const structure = JSON.stringify([frames.map(f => [f.id, f.name, collapsedFrames.has(f.id)]), state.doc.objects.map(o => [o.id, o.name, o.type, o.visible, o.locked, o.frameId])]);
+  const structure = JSON.stringify([frames.map(f => [f.id, f.name, f.parentId, collapsedFrames.has(f.id)]), state.doc.objects.map(o => [o.id, o.name, o.type, o.visible, o.locked, o.frameId]), frames.map(f => [!!f.autoLayout?.enabled,f.autoLayout?.childOrder])]);
   if (structure === layerStructure) {
-    document.querySelectorAll(".frame-row").forEach(row => row.classList.toggle("selected", artboardSelected() && row.dataset.frameId === state.doc.artboard.id));
+    document.querySelectorAll("[data-frame-id]").forEach(row => row.classList.toggle("selected", artboardSelected() && row.dataset.frameId === state.doc.artboard.id));
     document.querySelectorAll("[data-layer]").forEach((row) => {
       row.classList.toggle(
         "selected",
@@ -1741,10 +1819,11 @@ function renderLayers() {
     scroll = layers.scrollTop;
   layers.replaceChildren();
   const containers = new Map();
-  frames.forEach(frame => {
+  [...frames].sort((a,b) => frameAncestors(a).length-frameAncestors(b).length).forEach(frame => {
     const section = document.createElement("div"); section.className = "frame-section";
-    const row = document.createElement("div"); row.className = `layer-row${artboardSelected() && frame.id === state.doc.artboard.id ? " selected" : ""}`; row.dataset.frameId = frame.id;
-    row.addEventListener("click", () => activateFrame(frame.id));
+    const row = document.createElement("div"); row.className = `layer-row${artboardSelected() && frame.id === state.doc.artboard.id ? " selected" : ""}`; row.dataset.frameId = frame.id; row.draggable = true;
+    row.tabIndex = 0; row.setAttribute("role", "option"); row.setAttribute("aria-label", frame.name);
+    row.addEventListener("click", () => { activateFrame(frame.id); svg.focus({preventScroll:true}); });
     row.addEventListener("dblclick", () => { activateFrame(frame.id); renameArtboard(); });
     const toggle = document.createElement("button"); toggle.className = "layer-toggle";
     toggle.append(icon(collapsedFrames.has(frame.id) ? "chevron-right" : "chevron-down"));
@@ -1755,11 +1834,17 @@ function renderLayers() {
     name.addEventListener("dblclick", (e) => { e.stopPropagation(); activateFrame(frame.id); renameArtboard(); });
     row.append(toggle, icon("frame"), name);
     const children = document.createElement("div"); children.className = "frame-children"; children.hidden = collapsedFrames.has(frame.id);
-    section.append(row, children); layers.append(section); containers.set(frame.id, children);
+    section.append(row, children); (containers.get(frame.parentId) || layers).append(section); containers.set(frame.id, children);
     row.addEventListener("dragover", event => { if (draggedLayer) event.preventDefault(); });
     row.addEventListener("drop", event => {
       if (!draggedLayer) return; event.preventDefault(); event.stopPropagation();
-      transaction(() => { getObject(draggedLayer).frameId = frame.id; }); draggedLayer = null;
+      const sourceFrame = pageFrames().find(f => f.id === draggedLayer);
+      if (sourceFrame && frameSubtree(sourceFrame).some(f => f.id === frame.id)) { draggedLayer = null; return; }
+      transaction(() => {
+        if (sourceFrame) sourceFrame.parentId = frame.id;
+        else getObject(draggedLayer).frameId = frame.id;
+        placeLayoutChild(frame, draggedLayer);
+      }); draggedLayer = null;
     });
   });
   for (const obj of [...state.doc.objects].reverse()) {
@@ -1803,8 +1888,15 @@ function renderLayers() {
     );
     eye.append(icon(obj.visible ? "eye" : "eye-off"));
     row.append(eye);
-    (containers.get(obj.frameId) || layers).append(row);
+    const parent = containers.get(obj.frameId) || layers;
+    if (frames.find(f => f.id === obj.frameId)?.autoLayout?.enabled) parent.prepend(row);
+    else parent.append(row);
   }
+  frames.filter(f => f.autoLayout?.enabled).forEach(frame => {
+    const container = containers.get(frame.id);
+    const nodes = new Map([...container.children].map(node => [node.dataset.layer || node.querySelector("[data-frame-id]")?.dataset.frameId, node]));
+    layoutChildren(frame).forEach(child => { if (nodes.has(child.id)) container.append(nodes.get(child.id)); });
+  });
   layers.scrollTop = scroll;
   $("layer-total").textContent = state.doc.objects.length;
   $("layers-empty").hidden = state.doc.objects.length > 0;
@@ -2030,8 +2122,10 @@ function deleteSelection() {
     if (pageFrames().length === 1) { toast("Keep at least one frame on this page."); return; }
     transaction(() => {
       const frames = pageFrames();
-      state.doc.objects = state.doc.objects.filter(o => o.frameId !== state.doc.artboard.id);
-      frames.splice(frames.indexOf(state.doc.artboard), 1);
+      const ids = new Set(frameSubtree(state.doc.artboard).map(f => f.id));
+      if (ids.size === frames.length) { toast("Keep at least one frame on this page."); return; }
+      state.doc.objects = state.doc.objects.filter(o => !ids.has(o.frameId));
+      for (let i=frames.length-1;i>=0;i--) if (ids.has(frames[i].id)) frames.splice(i,1);
       state.doc.artboard = frames[0]; state.selected = [];
     });
     return;
@@ -2047,10 +2141,7 @@ function deleteSelection() {
 function duplicateSelection() {
   if (artboardSelected()) {
     transaction(() => {
-      const original = state.doc.artboard;
-      const frame = {...clone(original), id:crypto.randomUUID(), x:original.x + original.width + 100, name: `${original.name} copy`};
-      const copies = frameContents(original).map(o => ({...clone(o), id:crypto.randomUUID(), frameId:frame.id, x:o.x + frame.x - original.x}));
-      pageFrames().push(frame); state.doc.objects.push(...copies); state.doc.artboard = frame;
+      state.doc.artboard = duplicateFrame(state.doc.artboard);
     });
     fitCanvas(); return;
   }
@@ -2530,30 +2621,12 @@ svg.addEventListener("pointermove", (event) => {
     const dx = point.x - gesture.start.x, dy = point.y - gesture.start.y;
     if (event.altKey && !gesture.duplicated && Math.hypot(dx, dy) > 2) {
       gesture.duplicated = true;
-      const f = gesture.frame;
-      f.x = gesture.x;
-      f.y = gesture.y;
-      gesture.contents.forEach(original => { const o = getObject(original.id); o.x = original.x; o.y = original.y; });
-      const newFrame = clone(f);
-      newFrame.id = crypto.randomUUID();
-      if (!newFrame.name.endsWith(" copy")) newFrame.name += " copy";
-      state.doc.artboards.push(newFrame);
-      state.doc.artboard = newFrame;
-      const newContents = [];
-      gesture.contents.forEach(original => {
-        const o = getObject(original.id);
-        const dup = clone(o);
-        dup.id = crypto.randomUUID();
-        dup.frameId = newFrame.id;
-        state.doc.objects.push(dup);
-        newContents.push({ id: dup.id, x: dup.x, y: dup.y });
-      });
-      gesture.frame = newFrame;
-      gesture.contents = newContents;
+      moveFrame(gesture.frame, gesture.x, gesture.y);
+      gesture.frame = duplicateFrame(gesture.frame, 0);
+      state.doc.artboard = gesture.frame;
       renderLayers();
     }
-    gesture.frame.x = gesture.x + dx; gesture.frame.y = gesture.y + dy;
-    gesture.contents.forEach(original => { const o = getObject(original.id); o.x = original.x + dx; o.y = original.y + dy; });
+    moveFrame(gesture.frame, gesture.x + dx, gesture.y + dy);
     renderFast(); return;
   }
   if (gesture.type === "pan") {
@@ -2835,6 +2908,7 @@ function finishGesture(event, cancelled = false) {
       gesture.frame.width = 1000;
       gesture.frame.height = 720;
     }
+    assignFrameParent(gesture.frame);
     state.doc.objects.forEach(assignFrame);
     setTool("select");
     save();
@@ -2852,18 +2926,21 @@ function finishGesture(event, cancelled = false) {
     if (normalized) Object.assign(old, normalized, { id: old.id });
     path.remove();
   }
+  if (["draw-frame", "frame-move"].includes(gesture.type)) assignFrameParent(gesture.frame);
   if (gesture.type === "frame-resize" && gesture.frame?.autoLayout?.enabled) {
+    gesture.frame.autoLayout.widthSizing = "fixed";
+    gesture.frame.autoLayout.heightSizing = "fixed";
     gesture.frame.autoLayout.sizing = "fixed";
     applyAutoLayout(gesture.frame);
   }
   if (["move", "draw", "resize"].includes(gesture.type)) {
     const affectedFrames = new Set();
     selectedObjects().forEach((o) => { if (o.frameId) affectedFrames.add(o.frameId); });
-    selectedObjects().forEach(assignFrame);
+    if (["move", "draw"].includes(gesture.type)) selectedObjects().forEach(assignFrame);
     selectedObjects().forEach((o) => { if (o.frameId) affectedFrames.add(o.frameId); });
     pageFrames().forEach((f) => {
       if (affectedFrames.has(f.id) && f.autoLayout?.enabled) {
-        reorderAutoLayoutChildren(f);
+        if (["move", "draw"].includes(gesture.type)) reorderAutoLayoutChildren(f);
         applyAutoLayout(f);
       }
     });
@@ -3552,7 +3629,7 @@ for (const key of ["x", "y", "w", "h", "rotation", "opacity"]) {
           50000,
         );
         if (state.doc.artboard.autoLayout?.enabled) {
-          state.doc.artboard.autoLayout.sizing = "fixed";
+          state.doc.artboard.autoLayout[key === "w" ? "widthSizing" : "heightSizing"] = "fixed";
           applyAutoLayout(state.doc.artboard);
         }
       });
@@ -3644,9 +3721,32 @@ $("al-dir-vertical")?.addEventListener("click", () => {
     });
   }
 });
+for (const axis of ["width", "height"]) {
+  $(`child-${axis}-sizing`).addEventListener("change", event => {
+    const child = selectedObjects()[0], parent = pageFrames().find(f => f.id === child?.frameId);
+    if (!child || !parent?.autoLayout?.enabled) return;
+    transaction(() => {
+      child[`${axis}Sizing`] = event.target.value;
+      if (event.target.value === "fill") parent.autoLayout[`${axis}Sizing`] = "fixed";
+    });
+  });
+  $(`al-${axis}-sizing`).addEventListener("change", event => {
+    if (!artboardSelected() || !state.doc.artboard.autoLayout?.enabled) return;
+    transaction(() => {
+      const parent = pageFrames().find(f => f.id === state.doc.artboard.parentId);
+      if (event.target.value === "fill") {
+        if (!parent?.autoLayout?.enabled) return;
+        parent.autoLayout[`${axis}Sizing`] = "fixed";
+      }
+      state.doc.artboard.autoLayout[`${axis}Sizing`] = event.target.value;
+    });
+  });
+}
 $("al-sizing-hug")?.addEventListener("click", () => {
   if (artboardSelected() && state.doc.artboard.autoLayout?.enabled) {
     transaction(() => {
+      state.doc.artboard.autoLayout.widthSizing = "hug";
+      state.doc.artboard.autoLayout.heightSizing = "hug";
       state.doc.artboard.autoLayout.sizing = "hug";
       applyAutoLayout(state.doc.artboard);
     });
@@ -3655,6 +3755,8 @@ $("al-sizing-hug")?.addEventListener("click", () => {
 $("al-sizing-fixed")?.addEventListener("click", () => {
   if (artboardSelected() && state.doc.artboard.autoLayout?.enabled) {
     transaction(() => {
+      state.doc.artboard.autoLayout.widthSizing = "fixed";
+      state.doc.artboard.autoLayout.heightSizing = "fixed";
       state.doc.artboard.autoLayout.sizing = "fixed";
       applyAutoLayout(state.doc.artboard);
     });
@@ -3832,7 +3934,8 @@ $("native-color").addEventListener("change", () => {
   save();
 });
 
-// Layer order is the SVG paint order; the frontmost object is shown at the top.
+// Normal layers follow paint order; auto-layout children follow layout order.
+let layerSelectionAnchor = null;
 $("layers").addEventListener("click", (event) => {
   const visibility = event.target.closest("[data-visibility]"),
     lock = event.target.closest("[data-lock]"),
@@ -3856,7 +3959,16 @@ $("layers").addEventListener("click", (event) => {
     // Layer selection exits drawing mode and commits any pending pen path.
     // Otherwise the draft overlay hides selection and the next drag keeps drawing.
     if (state.tool !== "select" && state.tool !== "direct") setTool("select");
-    selectObject(obj, event.shiftKey);
+    if (event.shiftKey && layerSelectionAnchor) {
+      const rows = [...$("layers").querySelectorAll("[data-layer]")].filter(row => row.getClientRects().length);
+      const start = rows.findIndex(row => row.dataset.layer === layerSelectionAnchor);
+      const end = rows.findIndex(row => row.dataset.layer === obj.id);
+      if (start >= 0 && end >= 0) state.selected = rows.slice(Math.min(start,end),Math.max(start,end)+1).map(row => getObject(row.dataset.layer)).filter(o => o.visible && !o.locked).map(o => o.id);
+      else selectObject(obj, true);
+    } else {
+      selectObject(obj, event.metaKey || event.ctrlKey);
+      layerSelectionAnchor = obj.id;
+    }
     if (obj.locked) toast("Unlock this layer to edit it.");
     else if (!obj.visible) toast("Show this layer to select it on the canvas.");
     render();
@@ -3873,6 +3985,7 @@ $("layers").addEventListener("keydown", (event) => {
 $("layers").addEventListener("dblclick", (event) => {
   const name = event.target.closest(".layer-name");
   if (!name) return;
+  if (!name.closest("[data-layer]")) return;
   const row = name.closest("[data-layer]"),
     obj = getObject(row.dataset.layer),
     input = document.createElement("input");
@@ -3903,16 +4016,17 @@ $("layers").addEventListener("dblclick", (event) => {
   });
 });
 $("layers").addEventListener("dragstart", (event) => {
-  const row = event.target.closest("[data-layer]");
+  const row = event.target.closest("[data-layer], [data-frame-id]");
   if (!row) return;
-  draggedLayer = row.dataset.layer;
+  draggedLayer = row.dataset.layer || row.dataset.frameId;
   event.dataTransfer.setData("text/plain", draggedLayer);
   event.dataTransfer.effectAllowed = "move";
 });
 $("layers").addEventListener("dragover", (event) => {
   const row = event.target.closest("[data-layer]");
-  if (!row || !draggedLayer) return;
+  if (!draggedLayer) return;
   event.preventDefault();
+  if (!row) return;
   document
     .querySelectorAll(".drag-over")
     .forEach((r) => r.classList.remove("drag-over"));
@@ -3921,7 +4035,12 @@ $("layers").addEventListener("dragover", (event) => {
 $("layers").addEventListener("drop", (event) => {
   event.preventDefault();
   const row = event.target.closest("[data-layer]");
-  if (!row || !draggedLayer || row.dataset.layer === draggedLayer) return;
+  if (!draggedLayer || row?.dataset.layer === draggedLayer) return;
+  if (!row && !event.target.closest("[data-frame-id]")) {
+    transaction(() => { const frame = pageFrames().find(f => f.id === draggedLayer); if (frame) frame.parentId = null; else getObject(draggedLayer).frameId = null; });
+    draggedLayer = null; return;
+  }
+  if (!row) return;
   const target = getObject(row.dataset.layer),
     source = getObject(draggedLayer),
     after =
@@ -3932,7 +4051,9 @@ $("layers").addEventListener("drop", (event) => {
     state.doc.objects = state.doc.objects.filter((o) => o.id !== source.id);
     const index = state.doc.objects.findIndex((o) => o.id === target.id);
     source.frameId = target.frameId;
-    state.doc.objects.splice(index + (after ? 0 : 1), 0, source);
+    placeLayoutChild(pageFrames().find(f => f.id === target.frameId), source.id, target.id, after);
+    const layoutOrder = pageFrames().find(f => f.id === target.frameId)?.autoLayout?.enabled;
+    state.doc.objects.splice(index + (layoutOrder ? (after ? 1 : 0) : (after ? 0 : 1)), 0, source);
   });
   clearBuilder();
   draggedLayer = null;
@@ -4136,8 +4257,10 @@ export function exportSvg() {
       id: `export-frame-${i}`,
       clipPathUnits: "userSpaceOnUse",
     });
-    clip.append(el("rect", { x: f.x, y: f.y, width: f.width, height: f.height }));
+    clip.append(el("rect", frameClipBounds(f)));
     defs.append(clip);
+    const parentClip = el("clipPath", {id:`export-parent-${i}`,clipPathUnits:"userSpaceOnUse"});
+    parentClip.append(el("rect", frameClipBounds(f, false))); defs.append(parentClip);
   });
   frames.forEach((f) => {
     const filter = createFilterElement(`export-filter-${f.id}`, f.effects, 0);
@@ -4166,6 +4289,7 @@ export function exportSvg() {
       fill: f.fill,
       ...(hasFilter ? { filter: `url(#export-filter-${f.id})` } : {}),
     });
+    rect.setAttribute("clip-path", `url(#export-parent-${frames.indexOf(f)})`);
     output.append(rect);
   });
   state.doc.objects
@@ -4181,7 +4305,7 @@ export function exportSvg() {
       group.append(el("title", {}, o.name));
       group.append(shapeElement(o));
       const index = frames.findIndex(
-        (f) => f.id === o.frameId && f.clipContent !== false,
+        (f) => f.id === o.frameId,
       );
       const wrapper = el(
         "g",
@@ -4271,7 +4395,7 @@ window.addEventListener("keydown", (event) => {
     state.selected = state.doc.objects
       .filter((o) => o.visible && !o.locked)
       .map((o) => o.id);
-    if (state.doc.artboard) state.selected.push("__artboard__");
+
     clearBuilder();
     render();
     return;
@@ -4359,6 +4483,7 @@ window.addEventListener("keydown", (event) => {
               const i = state.doc.objects.indexOf(objs[0]);
               const j = state.doc.objects.indexOf(targetSibling);
               [state.doc.objects[i], state.doc.objects[j]] = [state.doc.objects[j], state.doc.objects[i]];
+              placeLayoutChild(frame, objs[0].id, targetSibling.id, moveNext);
               applyAutoLayout(frame);
             }
           });
