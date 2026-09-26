@@ -612,6 +612,34 @@ function removeAutoLayout(frame) {
   });
   toast("Removed auto layout");
 }
+function groupSelection() {
+  const objs = selectedObjects();
+  if (objs.length < 2) return;
+  finishPageEditing();
+  transaction(() => {
+    const groupId = crypto.randomUUID();
+    objs.forEach(o => o.groupId = groupId);
+    const sortedIds = new Set(objs.map(o => o.id));
+    const firstIdx = state.doc.objects.findIndex(o => sortedIds.has(o.id));
+    state.doc.objects = state.doc.objects.filter(o => !sortedIds.has(o.id));
+    state.doc.objects.splice(Math.max(0, firstIdx), 0, ...objs);
+  });
+  render();
+  toast("Grouped selection");
+}
+function ungroupSelection() {
+  const objs = selectedObjects();
+  const groupIds = new Set(objs.filter(o => o.groupId).map(o => o.groupId));
+  if (groupIds.size === 0) return;
+  finishPageEditing();
+  transaction(() => {
+    state.doc.objects.forEach(o => {
+      if (groupIds.has(o.groupId)) delete o.groupId;
+    });
+  });
+  render();
+  toast("Ungrouped");
+}
 function wrapSelectionInAutoLayout() {
   const objs = selectedObjects();
   if (!objs.length) return;
@@ -1947,11 +1975,20 @@ function selectObject(obj, additive = false) {
     if (!additive) state.selected = [];
     return;
   }
-  if (additive)
-    state.selected = state.selected.includes(obj.id)
-      ? state.selected.filter((id) => id !== obj.id)
-      : [...state.selected, obj.id];
-  else state.selected = [obj.id];
+  let targetIds = [obj.id];
+  if (obj.groupId) {
+    targetIds = state.doc.objects.filter(o => o.groupId === obj.groupId && !o.locked && o.visible).map(o => o.id);
+  }
+  if (additive) {
+    const allSelected = targetIds.every(id => state.selected.includes(id));
+    if (allSelected) {
+      state.selected = state.selected.filter(id => !targetIds.includes(id));
+    } else {
+      state.selected = [...new Set([...state.selected, ...targetIds])];
+    }
+  } else {
+    state.selected = targetIds;
+  }
   if (state.tool === "direct") transaction(() => convertToPath(obj));
 }
 function applyPaint(color, kind = state.paint, live = false) {
@@ -2609,7 +2646,13 @@ svg.addEventListener("pointermove", (event) => {
         );
       })
       .map((o) => o.id);
-    state.selected = [...new Set([...gesture.originalSelection, ...ids])];
+    const selectedIds = new Set(ids);
+    state.doc.objects.forEach(o => {
+      if (o.groupId && selectedIds.has(o.id)) {
+         state.doc.objects.filter(g => g.groupId === o.groupId).forEach(g => selectedIds.add(g.id));
+      }
+    });
+    state.selected = [...new Set([...gesture.originalSelection, ...selectedIds])];
   } else if (gesture.type === "rotate") {
     let delta =
       (Math.atan2(point.y - gesture.center.y, point.x - gesture.center.x) *
@@ -2942,6 +2985,11 @@ function openContextMenu(event) {
       else wrapSelectionInAutoLayout();
     }, true, "⇧A");
   }
+  separator();
+  const canGroup = selected.length > 1;
+  const canUngroup = selected.some(o => o.groupId);
+  add("Group", groupSelection, canGroup, "⌘/Ctrl G");
+  add("Ungroup", ungroupSelection, canUngroup, "⌘/Ctrl ⇧ G");
   separator();
   const reorder = front => transaction(() => {
     const ids = new Set(selected.map(o => o.id));
@@ -4229,6 +4277,12 @@ window.addEventListener("keydown", (event) => {
   if (mod && key === "d") {
     event.preventDefault();
     duplicateSelection();
+    return;
+  }
+  if (mod && key === "g") {
+    event.preventDefault();
+    if (event.shiftKey) ungroupSelection();
+    else groupSelection();
     return;
   }
   if (mod && key === "s") {
