@@ -15,6 +15,7 @@ Inspected 2026-09-27. This is a navigation aid, not a guarantee of parity. Re-re
 | Input | Pointer listeners and `finishGesture` in `src/main.js` | Window move/up handling survives transient capture loss; keyboard shortcuts must respect editors |
 | Layers and pages | `renderLayers`, `renderPages` | DOM hierarchy and model hierarchy need to stay consistent |
 | Auto layout | `src/autolayout.js`: `computeLayout`, `layoutPadding`; `src/main.js`: `applyAutoLayout`, `applyAllAutoLayouts` | Pure solver plus adapter; world coordinates, nested frames, hidden/ignored children |
+| Responsive constraints | `src/constraints.js`: `constraintAxis`, `resizeFrameTree`; `src/main.js`: `resizeFrame`, `constraintTargets`, `renderConstraintGuides` | Optional per-child axis rules; snapshot-based nested resize, inspector pin diagram; see [contract](features/responsive-constraints.md) |
 | Spacing/guides | `spacingItems`, `renderSpacing`, `snapMove`, `renderRulers`, `renderAltMeasurements` | Distinguish geometry snapping from overlays and selected-unit spacing |
 | Text | `measureText`, `wrappedTextLines`, `shapeElement`, `startText`, `finishText` | Text dimensions, font measurement, SVG output, and textarea overlay must agree |
 | Fonts | `src/fonts.js` | Local/Google font loading and caching; explicit imports rather than Figma's OS font service |
@@ -54,7 +55,7 @@ rg -n 'frame|selection|auto layout|pointer' tests
 | Auto layout | Horizontal/vertical/grid, wrap, sizing, padding, gap, limits, ignored children | See [layout limitations](../auto-layout-2026.md); on-canvas track controls, baseline, stroke accounting, and full intrinsic sizing differ |
 | Smart selection | Numeric spacing for selected units | Not a complete Figma smart-selection/tidy-up interaction model |
 | Rulers, smart guides, measurements, pixel grid | Present | Do not assume editable ruler guides, layout-guide styles, or pixel preview exist |
-| Freeform constraints | Not a complete system | Needs explicit child constraint data and parent-resize rules |
+| Freeform constraints | Edge, center, dual-edge and scale modes on both axes; nested frames; numeric and pointer resizing; Command/Ctrl bypass | Uses stored layout boxes for rotated objects; no layout-guide-relative constraints; auto-layout parents use layout sizing instead. See [contract](features/responsive-constraints.md) |
 | Pen and vector editing | SVG/Paper.js paths and anchors | Not arbitrary vector networks; audit advanced tools individually |
 | Booleans/Pathfinder | Destructive geometry outputs, Illustrator-style operations | Figma's editable boolean groups are a separate feature |
 | Masks | Frame clipping exists; full mask system absent | Alpha/vector/luminance mask scopes need a model and rendering |

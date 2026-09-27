@@ -138,3 +138,18 @@ export async function importGoogleFont(name) {
   await activate(record);
   return family;
 }
+
+let systemFontCache = null;
+export async function loadSystemFonts() {
+  if (systemFontCache) return systemFontCache;
+  if (!("queryLocalFonts" in window)) {
+    throw new Error("Your browser does not support local font access.");
+  }
+  const fonts = await window.queryLocalFonts();
+  const families = new Set();
+  for (const font of fonts) {
+    families.add(font.family);
+  }
+  systemFontCache = Array.from(families).sort();
+  return systemFontCache;
+}

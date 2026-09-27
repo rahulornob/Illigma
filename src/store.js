@@ -253,6 +253,9 @@ export function validDocument(doc) {
     });
   };
   const validLayoutItem = item =>
+    (item.constraints===undefined || (item.constraints && typeof item.constraints==='object' && !Array.isArray(item.constraints) &&
+      ['horizontal','vertical'].every(axis=>item.constraints[axis]===undefined || ['start','end','stretch','center','scale'].includes(item.constraints[axis])))) &&
+    (item.constraintTextWrap===undefined || typeof item.constraintTextWrap==='boolean') &&
     ["minWidth","maxWidth","minHeight","maxHeight"].every(key=>item[key]===undefined || (Number.isFinite(item[key]) && item[key]>=1 && item[key]<=50000)) &&
     ["widthSizing","heightSizing"].every(key=>item[key]===undefined || ["hug","fixed","fill"].includes(item[key])) &&
     (item.layoutAbsolute===undefined || typeof item.layoutAbsolute==="boolean") &&

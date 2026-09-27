@@ -23,6 +23,32 @@ export function setupInspector(api) {
   const positionGrid=document.createElement('div');positionGrid.className='field-grid';
   positionGrid.append(fields.x,fields.y,fields.rotation);body(position).append(positionGrid);
   body(position).append($('layout-ignore-row'));
+  const constraints=document.createElement('div');constraints.id='inspector-constraints';constraints.hidden=true;
+  constraints.innerHTML=`<div class="constraints-heading"><span>Constraints</span><span class="constraints-hint" title="Hold Command or Ctrl while resizing a frame to ignore constraints">On resize</span></div>
+    <div class="constraints-controls">
+      <div class="constraint-diagram" role="group" aria-label="Constraint pins">
+        <span class="constraint-object" aria-hidden="true"></span>
+        <button type="button" data-pin="start" data-axis="horizontal" aria-label="Pin left" title="Pin left · Shift-click for both edges"></button>
+        <button type="button" data-pin="end" data-axis="horizontal" aria-label="Pin right" title="Pin right · Shift-click for both edges"></button>
+        <button type="button" data-pin="start" data-axis="vertical" aria-label="Pin top" title="Pin top · Shift-click for both edges"></button>
+        <button type="button" data-pin="end" data-axis="vertical" aria-label="Pin bottom" title="Pin bottom · Shift-click for both edges"></button>
+        <button type="button" data-pin="center" data-axis="horizontal" aria-label="Constrain horizontal center" title="Horizontal center"></button>
+        <button type="button" data-pin="center" data-axis="vertical" aria-label="Constrain vertical center" title="Vertical center"></button>
+      </div>
+      <div class="constraint-selects">
+        <label><span aria-hidden="true">↔</span><select id="constraint-horizontal" aria-label="Horizontal constraints"><option value="" disabled>Mixed</option><option value="start">Left</option><option value="end">Right</option><option value="stretch">Left and right</option><option value="center">Center</option><option value="scale">Scale</option></select></label>
+        <label><span aria-hidden="true">↕</span><select id="constraint-vertical" aria-label="Vertical constraints"><option value="" disabled>Mixed</option><option value="start">Top</option><option value="end">Bottom</option><option value="stretch">Top and bottom</option><option value="center">Center</option><option value="scale">Scale</option></select></label>
+      </div>
+    </div>`;
+  body(position).append(constraints);
+  for(const axis of ['horizontal','vertical'])$(`constraint-${axis}`).addEventListener('change',event=>api.changeConstraint(axis,event.target.value));
+  constraints.querySelectorAll('[data-pin]').forEach(button=>button.addEventListener('click',event=>{
+    const {axis,pin}=button.dataset,current=$(`constraint-${axis}`).value;
+    const opposite=pin==='start'?'end':'start';
+    const value=event.shiftKey && pin!=='center' && [opposite,'stretch'].includes(current)
+      ? current==='stretch'?opposite:'stretch' : pin;
+    api.changeConstraint(axis,value);
+  }));
   const layout=section('inspector-layout','Layout');
   const dimensions=document.createElement('div');dimensions.className='field-grid';dimensions.append(fields.w,fields.h);body(layout).append(dimensions);
   body(layout).append($('child-layout-sizing'));
@@ -54,7 +80,7 @@ export function setupInspector(api) {
   const flow=advanced.querySelector('.al-axis-sizing');flow.classList.add('flow-settings');
   $('al-cross-gap').closest('label').id='al-cross-gap-row';
   const grid=$('al-grid-options');grid.classList.add('grid-settings');
-  const input=(id,value,mixed=false)=>{const node=$(id);if(document.activeElement!==node)node.value=mixed?'':value??'';node.placeholder=mixed?'Mixed':'';};
+  const input=(id,value,mixed=false)=>{const node=$(id);if(!node)return;if(document.activeElement!==node)node.value=mixed?'':value??'';node.placeholder=mixed?'Mixed':'';};
   for(const [id,key] of [['prop-radius','radius'],['prop-line-height','lineHeight'],['prop-letter-spacing','letterSpacing']]) {
     $(id).addEventListener('change',event=>{
       if(!event.target.value.trim()) {api.refresh();return;}
@@ -76,6 +102,17 @@ export function setupInspector(api) {
   let lastSelection='';
   return root.inspectorController = {update(context) {
     const {objects,frames,frame,ids}=context;
+    const targets=context.constraintTargets || [];
+    constraints.hidden=!targets.length;
+    if(targets.length)for(const axis of ['horizontal','vertical']){
+      const first=targets[0].constraints?.[axis] || 'start';
+      const value=targets.every(item=>(item.constraints?.[axis] || 'start')===first)?first:'';
+      $(`constraint-${axis}`).value=value;
+      constraints.querySelectorAll(`[data-axis="${axis}"]`).forEach(button=>{
+        const active=value===button.dataset.pin || (value==='stretch' && button.dataset.pin!=='center');
+        button.setAttribute('aria-pressed',String(active));
+      });
+    }
     const selected=objects.length+frames.length>0, page=!selected, allText=objects.length>0&&!frames.length&&objects.every(o=>o.type==='text');
     header.hidden=page;position.hidden=page;layout.hidden=page;appearance.hidden=page;typography.hidden=!allText;
     stroke.hidden=page || (!!frames.length&&!objects.length);effects.hidden=page || $('effects-section').hidden;

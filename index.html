@@ -453,14 +453,21 @@
             <p class="panel-note" id="spacing-note">Gap between selected items. Groups stay together.</p>
           </div>
           <div id="text-properties" hidden>
-            <label class="field full"
-              ><span>Font</span
-              ><select id="font-family" aria-label="Font family">
-                <option>Inter</option>
-                <option>Georgia</option>
-                <option>monospace</option>
-              </select></label
-            >
+            <div class="field full font-picker-container">
+              <span>Font</span>
+              <button id="font-family-btn" class="font-picker-btn">Inter</button>
+              <div id="font-popover" class="font-popover" hidden>
+                <div class="font-search-row">
+                  <i data-lucide="search" class="tiny"></i>
+                  <input type="text" id="font-search" placeholder="Search fonts...">
+                </div>
+                <div class="font-list-scroll">
+                  <div class="font-list-section" id="font-list-document"></div>
+                  <div class="font-list-section" id="font-list-all"></div>
+                </div>
+                <button id="load-local-fonts-btn" class="pill secondary">Load system fonts</button>
+              </div>
+            </div>
             <button id="add-fonts" class="font-add-button">
               <i data-lucide="plus"></i>Add fonts
             </button>
