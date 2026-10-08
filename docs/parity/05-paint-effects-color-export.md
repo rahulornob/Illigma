@@ -919,3 +919,211 @@ All items: status **Not started**. Format: `ID name — expected Figma behavior.
 - [ ] **PE-252** Mode switching — changing a variable mode re-resolves all bound paint colors, stop colors, effect values, stroke weights and opacity. _Data:_ bound variables _Test:_ light/dark modes on a frame; all bindings update. _M6·P1·[API]_
 
 ---
+## 7. Cross-area dependencies
+
+| Depends on / feeds | What this area needs or provides |
+| --- | --- |
+| **M0 Renderer** | Premultiplied compositing with all 19 blend modes and isolation rules (§3.1.3); Gaussian blur (σ = radius/2), progressive blur, morphological dilation for spread; gradient shaders for 4 types; image sampling with filters; color-managed output (document profile → display); offscreen layers for opacity/effects; render-bounds computation shared with export. |
+| **M0 Document model / persistence** | Paint/effect/export arrays with lossless unknown-field preservation; content-addressed image/video asset store inside the file package; `documentColorProfile`; undo transactions that coalesce gestures (§3.12). |
+| **M0 UI kit** | Numeric fields (scrub, arrow nudge, math, Mixed state), popovers that retain targets, dropdowns with hover preview, sliders, swatches, color area. |
+| **M1 Selection & inspector** | Mixed-value aggregation across multi-selection; Appearance/Fill/Stroke/Effects/Export section visibility per node type (§2.3); layer opacity number-key shortcuts must not fire while a text field has focus. |
+| **M1 Shapes/frames/sections** | Default paints per created node (§3.2.2); `clipsContent` (clips child effects, affects spread support and export bounds); Section paint capability. |
+| **M2 Vectors** | Fill regions of vector networks (closed regions only), per-vertex `strokeCap`/`strokeJoin`, outline stroke → vector, boolean groups own paints, masks use paint alpha/luminance (`maskType`), flatten. |
+| **M3 Text** | Per-range fills (`getRangeFills`), text strokes, gradients spanning the text box, SVG outline-text export, PDF glyph export, text bounds for `useAbsoluteBounds`. |
+| **M4 Layout** | `strokesIncludedInLayout`; effects never affect layout; image Fill/Fit recompute on resize; individual stroke weights on auto-layout frames. |
+| **M5 Components** | Overrides for fills/strokes/effects/opacity/blend/export settings; reset; variant swaps preserving paint overrides; image paints in instances. |
+| **M6 Design systems** | Paint styles (`fillStyleId`/`strokeStyleId`), effect styles, variable bindings (paint color, stop color, effect color/radius/spread/offsets, stroke weights, opacity), Libraries tab in the picker, eyedropper Shift+click style/variable, selection colors style modal, blend restriction for bound paints. |
+| **M7 Prototyping** | Video playback (`UPDATE_MEDIA_RUNTIME`), GIF animation in presentation, animation export (MP4/GIF/WebM), keyframable effect fields (`EffectKeyframeFieldName`). |
+| **M8 Interop & hardening** | SVG/PDF/.fig import of paints (REST `gradientHandlePositions`, `STRETCH`, `gifRef`, `verticalAlignment`, LEGACY profile), clipboard to/from other apps (PNG/SVG), performance with many blurs/large images, accessibility of color picker (keyboard operation of color area, contrast). |
+| **Visual spec (Framer)** | Look of swatches, checkerboard for transparency, sliders, handles — behavior here, looks there. |
+
+---
+
+## 8. Needs live Figma verification
+
+No experiment below has been run. Each must be executed in current Figma Design (UI3), desktop app and browser where relevant, on macOS and Windows for shortcuts, and recorded in `docs/figma/observations/` as before/action/after with exported files kept as fixtures. Until then, the linked checklist items must not be claimed as parity.
+
+### 8.1 Experiments
+
+| ID | Setup | Action | Record | Items |
+| --- | --- | --- | --- | --- |
+| V-01 | Rectangle, plugin console or REST access | Add red fill, then `+` and set blue | Row order in panel; `fills` array order from plugin/REST JSON | PE-001 |
+| V-02 | Fresh file | Draw rect, ellipse, polygon, star, frame, line, arrow, pen path, text, section; on each: remove fills/strokes, press Fill `+` twice and Stroke `+` | Default paint type/color/opacity per node; default stroke color/weight/position/cap | PE-002, PE-003, PE-125 |
+| V-03 | White background; rect with red bottom fill and 50 % blue Multiply top fill; same rect inside a Normal frame and a Pass-through frame over a gradient | Export 1x PNG | Pixel values at fixed points; compare to §3.1.3 formula | PE-009 |
+| V-04 | Frame with Inside 10 px stroke, inner shadow and a child crossing the edge; rect with stroke + inner shadow | Export 4x PNG | Whether stroke and inner shadow draw above/below children and above/below each other | PE-149, PE-169 |
+| V-05 | Rect with drop shadow, inner shadow, noise, texture, glass, layer blur together | Toggle each effect; reorder rows | Whether stacking depends on row order or fixed type order | §3.1.3, PE-178–PE-181 |
+| V-06 | Picker open on a fill | Press Esc; click outside; change selection with picker open; scroll panel | Picker closes/retargets; value reverted or kept; page-swatch list order and size limit | PE-033, PE-034 |
+| V-07 | Picker on blue | Drag color area to black, back up | Hue retained or reset to 0 | PE-021 |
+| V-08 | Hex field and CSS field | Type `f`, `fc`, `f0c`, `f0c8`, `ff00cc80`, `12345`, `zz`, `#FFF`, `rebeccapurple`, `rgb(255 0 0 / 50%)`, `hsl(120 50% 50%)` | Resulting color/opacity, rejection behavior, history entries | PE-025, PE-027 |
+| V-09 | Image and semi-transparent layers on canvas | Eyedropper with selection, without selection, on 50 %-alpha pixel; Shift+click on styled/variable paint; look at loupe; try "create" flows | Applied hex & opacity; clipboard content; loupe content; style/variable creation UI | PE-040, PE-041, PE-044, PE-046 |
+| V-10 | Rect with solid red 60 % Multiply | Switch to each gradient type; inspect stop list; drag each handle with/without Shift; look for flip/rotate; switch back to solid | Seed stops and transform (plugin `gradientTransform`, REST handles); stop-list columns; Shift snapping; flip/rotate presence; which stop color survives | PE-011, PE-048, PE-053, PE-058, PE-059, PE-068 |
+| V-11 | 20 gradients of each type with random handles | Read plugin `gradientTransform` and REST `gradientHandlePositions`; export 2x PNG | Validate §3.3.3 conversion and evaluation formulas against pixels | PE-047, PE-061, PE-062 |
+| V-12 | Linear gradients: red→blue, red 100 %→blue 0 %, white→#00000000, black→white | Export 1x PNG 256 px wide | Midpoint and quarter-point pixel values → interpolation space & premultiplication | PE-051, PE-063 |
+| V-13 | 20 px Outside stroke with linear gradient; 2-line text with gradient | Export | Gradient mapping box for strokes and text | PE-065, PE-066 |
+| V-14 | Selection with 6 colors (fills, strokes, nested, one hidden paint), 2 styles, 2 variables; separate 1500-color selection | Inspect Selection colors; edit one entry; undo | Ordering, truncation ("three most frequent"), hidden-paint inclusion, scope of edit, undo steps, >1000 behavior; Fill section "mixed" UI | PE-191, PE-193, PE-194, PE-195 |
+| V-15 | Image files 800×600 PNG, JPG | Drop on empty canvas, on a shape with fill, use Place image (click, drag, click-on-shape, multiple files), replace image on a Tile+filtered paint, delete asset | Layer name, size, position, replace-vs-add, aspect-lock state, settings kept on replace, missing-image placeholder | PE-071, PE-072, PE-073, PE-087, PE-090, PE-093 |
+| V-16 | Files: WebP, HEIC, TIFF, BMP, AVIF, SVG, 8000×3000 PNG, 4097×10 PNG | Import each | Accepted formats; stored pixel size (rounding); any notice | PE-075, PE-076 |
+| V-17 | Image layer | Find all ways to enter crop (double-click, Enter, picker, toolbar); exit with Enter/Esc/click; switch Fill→Crop; Tile 50 % with odd layer size | Gestures/keys; framing continuity; tile origin and partial tiles | PE-080, PE-081, PE-082 |
+| V-18 | Gray ramp + color chart image | Each adjustment at −100, −50, +50, +100; export 1x; canvas screenshots at 50 %/800 % | Per-channel transfer curves (fit formulas); canvas filtering | PE-085, PE-091 |
+| V-19 | MP4 and animated GIF | Import; observe canvas; export PNG; check picker type | Poster frame, GIF animation on canvas, category (image vs video), exported frame | PE-095, PE-098, PE-099 |
+| V-20 | Pattern with source star | Delete source; hide source; move source to another page; try selecting the patterned layer itself or its parent as source | Rendering/error states; cycle prevention | PE-106 |
+| V-21 | Open pen path, line, text | Open stroke position menu | Which positions are offered/what they render; text stroke default position | PE-128, PE-148 |
+| V-22 | Rect r = 20 | Individual sides: choose Top with weight 4; Custom 2/10/2/10 Inside/Center/Outside | Resulting per-side values; inner contour shape | PE-132, PE-134 |
+| V-23 | Open path 200 px, weights 1/4/10 | Every end-point option for start and end; swap; select a closed rect | UI labels ↔ enum mapping (incl. REST names); arrow sizes vs weight; swap behavior; caps UI on closed shapes | PE-139, PE-140, PE-141 |
+| V-24 | Line 100 px, rect 100×100, ellipse | Dash 10 gap 10 (and 7/3) | Dash phase at start/end; corner distribution on closed shapes | PE-144 |
+| V-25 | Rect | Effects `+` repeatedly; change type of a configured shadow; add glass repeatedly; add inner shadow, blurs, noise, texture | Default type & values per effect; parameter carry-over; per-type maxima incl. glass; mixed-effects UI on multi-selection | PE-159, PE-160, PE-161, PE-162, PE-197 |
+| V-26 | sRGB and P3 files; P3-tagged PNG; legacy file | Import image; convert/assign profile; export PNG/JPG/PDF with each `colorProfile` | Stored values after Convert; ICC tags in outputs; pixel values | PE-094, PE-201, PE-204 |
+| V-27 | Black 100×100 rect, frame without fill with children, transparent PNG | Shadows with blur 0/10/40, spread ±10, overlapping red/blue shadows in both orders, inner shadow spread ±4 | Shadow profiles (fit σ), silhouette source, stacking | PE-163, PE-164, PE-168, PE-170 |
+| V-28 | Rect 100 %, rect 50 % fill, stroke-only rect, star, frame with/without fill/clip | Look for "Show behind transparent areas" and spread controls | Availability conditions and disabled states | PE-166, PE-167 |
+| V-29 | Rect, group with shadow | Layer blur 0/4/20/100; type 10000 and −5 | σ fit; whether blur includes shadows; UI clamp | PE-172, PE-177 |
+| V-30 | Photo layer | Progressive layer blur start 0 → end 40, move handles; try progressive background blur | Handle UI; radius profile along axis (linear?); availability for background blur | PE-173, PE-174, PE-176 |
+| V-31 | Frame with children; circle | Noise (3 types), texture clip on/off; K-scale 200 %; child outside clipping mask | Noise statistics; texture extents; scaling behavior; clipped-effects behavior | PE-178, PE-180, PE-186 |
+| V-32 | Frame, rect with mixed radii, text | Apply glass; inspect all controls and ranges; try binding a variable | Controls incl. splay, ranges/units, variable support, plugin-read values | PE-181, PE-182, PE-187 |
+| V-33 | Rect, frame, section, group | Inspect blend menu and opacity per node; bind fill to variable/style; hover modes; click on 0 % layer | Section blend/opacity/effects availability (API says none); disabled states; hover preview; hit-testing at 0 % | PE-013, PE-038, PE-115, PE-119, PE-122 |
+| V-34 | 19-mode swatch grid over gradient backdrop; Multiply child in Pass-through vs Normal frame | Export 1x PNG | Per-mode pixel values; isolation semantics | PE-113, PE-114 |
+| V-35 | Layer "Icon", layer "a/b" ×2 | Export `+` ×3; export at 2x without suffix; duplicate names | Default settings added; file names; folders/conflict handling | PE-205, PE-209, PE-226 |
+| V-36 | Transparent frame; Plus darker/lighter layers | Export JPG; export PDF at High/Medium/Low | JPG background color; PDF handling of unsupported modes; where quality/resampling are stored (plugin `exportSettings` read-back) | PE-124, PE-212, PE-213 |
+| V-37 | Layers: 33.3×10 rect; 10 px Outside stroke; shadow y 20 blur 20; clipped frame with child overflow and frame shadow; text with large line height | Export at 1x/1.5x/512w; toggle Include bounding box; scales 0.001x, 10x, 20000w | Output pixel sizes (rounding), bounds rules, mapping of "Include bounding box" to `useAbsoluteBounds`, limits | PE-130, PE-185, PE-208, PE-216, PE-217, PE-233 |
+| V-38 | Page with 5 frames having export settings | Shift+Cmd+E with/without selection; File menu export items | Dialog contents/scope; multi-page PDF availability | PE-228, PE-230 |
+| V-39 | Layers with angular/diamond gradients, noise, texture, glass, background & progressive blur | Export SVG | How each is encoded (raster `<image>`, filter, dropped) | PE-221 |
+| V-40 | 100×100 rect with gradient, shadow, blur | Copy as PNG; Copy as SVG; Copy as code (CSS) | PNG scale; SVG equality to export defaults; CSS property mapping (blur halving, gradient angle) | PE-237, PE-238, PE-239 |
+| V-41 | Styled rect (2 fills, stroke dashed, 2 effects, 50 % Multiply, export settings) | Copy/paste properties onto ellipse; select single fill/effect row and Cmd+C/Cmd+V onto another layer | Exact transferred property set; row-level paste support | PE-240, PE-241 |
+| V-42 | Rect | Script of 12 edits (picker drag, hue drag, scrub, typed hex, add/remove/reorder/hide, eyedropper, crop drag, gradient handle drag, model switch); undo with picker open | History entry count; picker state after undo | PE-244, PE-245 |
+| V-43 | Component with image fill + export settings; instance | Override fill/effects/export; change main image and scale mode; reset | Override persistence and granularity; export settings inheritance | PE-232, PE-246, PE-248 |
+| V-44 | Rect selected (no text focus), macOS and Windows | Press 5; 4 then 5 quickly/slowly; 0 0; Shift+X; outline-stroke shortcut; look up remove-fill/remove-stroke shortcuts in Figma's shortcut panel | Opacity results and timing threshold; swap behavior incl. weights; shortcuts per OS | PE-117, PE-152, PE-153, §5 |
+| V-45 | Rect with 3 fills | Remove middle; drag reorder; inline hex/opacity typing; open/close picker 10× on r = 0.123456; continuous drag then undo | Order, history entries, value stability | PE-004, PE-006, PE-031, PE-032, PE-035 |
+| V-46 | 3-stop linear gradient | Type switch round-trip; click canvas line at 25 %; Delete stop; type position 33; coincident stops; short axis | Stop data, hard edge, pad behavior beyond ends | PE-049, PE-052, PE-055, PE-056, PE-057, PE-064 |
+| V-47 | 400×400 photo in 100×100 rect; 16×16 pixel art; OS screenshot on clipboard | Paste; export 4x with Detailed and Basic | Pasted layer size; export detail; resampling differences | PE-074, PE-092, PE-214 |
+| V-48 | Frame 50 % with overlapping children; group with shadow; child shadow crossing clipped frame edge | Export | Group-opacity, combined container shadow, child effect clipping | PE-118, PE-184, PE-189 |
+| V-49 | Two rects with different opacity/stroke weights/effects | Type values; scrub Mixed field | Mixed display and resulting values | PE-121, PE-196 |
+| V-50 | P3 file on P3 display | Type #FF0000; compare to sRGB file; read plugin color values | Display rendering and stored values | PE-202, PE-203 |
+| V-51 | Frame with hidden child, hidden paint, hidden effect, visible layout grid, guides | Export PNG/SVG/PDF; copy image layer into another file | Exclusion of hidden content and overlays; asset carried across files | PE-223, PE-235, PE-243 |
+| V-52 | Instance with overridden paints; styled paint; eyedropper on styled paint; picker model persistence across restarts; HSB area extremes | Reset overrides; plain-click sample; restart app | Reset result; raw vs style application; model persistence; area mapping | PE-020, PE-024, PE-043, PE-045, PE-247 |
+
+### 8.2 Items resting only on [KNOW] or third-party sources (must not ship as "parity" before the listed experiment)
+
+PE-003 (V-02), PE-004 (V-45), PE-006 (V-45), PE-009 (V-03), PE-011 (V-10), PE-020 (V-52), PE-021 (V-07), PE-024 (V-52), PE-031 (V-45), PE-032 (V-45), PE-035 (V-45), PE-041 (V-09), PE-043 (V-52), PE-044 (V-09), PE-045 (V-52), PE-048 (V-10), PE-049 (V-46), PE-051 (V-12), PE-052 (V-46), PE-055 (V-46), PE-056 (V-46), PE-057 (V-46), PE-058 (V-10), PE-063 (V-12), PE-064 (V-46), PE-065 (V-13), PE-066 (V-13), PE-068 (V-10), PE-071 (V-15), PE-072 (V-15), PE-073 (V-15), PE-074 (V-47), PE-081 (V-17), PE-087 (V-15), PE-090 (V-15), PE-091 (V-18), PE-092 (V-47), PE-093 (V-15), PE-094 (V-26), PE-098 (V-19), PE-099 (V-19), PE-106 (V-20), PE-114 (V-34), PE-115 (V-33), PE-117 (V-44), PE-118 (V-48), PE-119 (V-33), PE-121 (V-49), PE-128 (V-21), PE-130 (V-37), PE-132 (V-22), PE-134 (V-22), PE-141 (V-23), PE-148 (V-21), PE-149 (V-04), PE-152 (V-44), PE-159 (V-25), PE-160 (V-25), PE-161 (V-25), PE-162 (V-25), PE-163 (V-27), PE-164 (V-27), PE-169 (V-04), PE-170 (V-27), PE-174 (V-30), PE-182 (V-32), PE-184 (V-48), PE-185 (V-37), PE-186 (V-31), PE-189 (V-48), PE-191 (V-14), PE-196 (V-49), PE-197 (V-25), PE-202 (V-50), PE-203 (V-50), PE-208 (V-37), PE-212 (V-36), PE-214 (V-47), PE-217 (V-37), PE-221 (V-39), PE-223 (V-51), PE-226 (V-35), PE-228 (V-38), PE-230 (V-38), PE-232 (V-43), PE-235 (V-51), PE-237 (V-40), PE-238 (V-40), PE-239 (V-40), PE-240 (V-41), PE-241 (V-41), PE-243 (V-51), PE-244 (V-42), PE-245 (V-42), PE-246 (V-43), PE-247 (V-52), PE-248 (V-43).
+
+Additionally, these items have official/API support for the *existence* of the feature but [KNOW]-level details that affect correctness: PE-002/PE-125 default colors (V-02), PE-025 1/2/4/5/7-digit hex handling (V-08), PE-040 sampled alpha (V-09), PE-053/PE-059 handle and stop-list UI (V-10), PE-061/PE-062 transform conventions (V-11), PE-076 rounding (V-16), PE-080 crop gestures (V-17), PE-082 tile origin (V-17), PE-139/PE-140 cap labels and sizes (V-23), PE-144 dash phase (V-24), PE-166/PE-167 availability conditions (V-28), PE-172/PE-177 σ mapping and clamps (V-29), PE-173/PE-176 progressive UI (V-30), PE-178/PE-180 noise/texture appearance (V-31), PE-181/PE-187 glass ranges and binding conflict (V-32), PE-013/PE-122 Section blend conflict (V-33), PE-205/PE-209 export naming (V-35), PE-213 storage of quality/resampling (V-36), PE-216 bounding-box mapping (V-37).
+
+### 8.3 Known source conflicts to resolve
+
+1. Glass variables: typings say no binding [API]; press says variables supported [SRC createwith] → V-32.
+2. Glass depth: API `depth ≥ 1` vs third-party UI range 0–100 [SRC pub.dev] → V-32.
+3. Section blend modes: Help Center mentions sections with blend modes [DOC:360040667874 excerpt]; `SectionNode` has no blend/opacity/effects mixins [API] → V-33.
+4. Animated GIFs: filed under video in one Help Center excerpt, under image in another [DOC:360041003694 excerpt] → V-19.
+5. Effects article: official crawl lists four effect types; a newer mirror lists six with per-type limits [SRC helpjuice mirror] → V-25.
+6. Shortcuts: one third-party page lists Option+Cmd+C as "copy as PNG"; Figma community support gives Shift+Cmd+C [SRC] → V-44.
+7. Copy as PNG scale (2x per a blog) → V-40.
+
+---
+
+## 9. Sources
+
+### 9.1 Typings (authoritative data model)
+
+Figma Plugin API typings v1.141.0 — `refs/_figma_plugin-typings/package/plugin-api.d.ts`:
+
+| Symbol | Line |
+| --- | --- |
+| `figma.mixed` | 891 |
+| `getSelectionColors()` (null if > 1000 colors) | 1535–1552 |
+| `createNodeFromSvg` | 1734 |
+| `createImage` (PNG/JPEG/GIF, max 4096 px) | 1736–1742 |
+| `createImageAsync`, `getImageByHash` | 1778, 1782 |
+| `createVideoAsync` (MP4/MOV/WebM, max 100 MB) | 1786–1792 |
+| `loadBrushesAsync` | 2137 |
+| `setBoundVariableForPaint`, `setBoundVariableForEffect` | 2263, 2275 |
+| `UtilAPI.rgb/rgba/solidPaint` | 2900–2986 |
+| `RGB`, `RGBA` | 3942, 3950 |
+| `DropShadowEffect` | 4293 |
+| `InnerShadowEffect` | 4336 |
+| `BlurEffectBase` / `Normal` / `Progressive` | 4375 / 4398 / 4407 |
+| `NoiseEffectBase` / `Monotone` / `Duotone` / `Multitone` | 4432 / 4471 / 4481 / 4495 |
+| `TextureEffect` | 4513 |
+| `GlassEffect` | 4549 |
+| `ShaderEffect` | 4592 |
+| `Effect` union | 4621 |
+| `ColorStop` | 4643 |
+| `ImageFilters` | 4662 |
+| `SolidPaint` | 4674 |
+| `GradientPaint` | 4729 |
+| `ImagePaint` | 4749 |
+| `VideoPaint` | 4785 |
+| `PatternPaint` | 4821 |
+| `ShaderPaint` | 4855 |
+| `Paint` union | 4883 |
+| `ShaderPropertyValue`, `ShaderPropertyDefinition`, `Shader` | 4889, ~4935, 4969 |
+| `ExportSettingsConstraints`, `ExportSettingsImage` | 5065, 5072 |
+| `ExportSettingsSVGBase` / `SVG` / `SVG_STRING` / `PDF` / `REST` | 5120 / 5145 / 5155 / 5164 / 5178 |
+| `ExportSettingsMP4` / `GIF` / `WEBM` (scale presets) | 5219 / 5253 / 5287 |
+| `ExportSettings` union | 5321 |
+| `BlendMode` | 5478 |
+| `UPDATE_MEDIA_RUNTIME` actions | 5708–5722 |
+| `EffectKeyframeFieldName` (incl. SPLAY) | 6118 |
+| `ConnectorStrokeCap` | 6290 |
+| `VariableBindableNodeField` / paint / color stop / effect fields | 6910 / 6947 / 6949 / 6950 |
+| `BlendMixin` (`isMask`, `maskType`, `effects`, `effectStyleId`) | 7539–7598 |
+| `DeprecatedBackgroundMixin` | 7609 |
+| `StrokeCap`, `StrokeJoin` | 7622, 7631 |
+| `strokesIncludedInLayout` | 7811 |
+| `MinimalStrokesMixin` (strokeAlign remark: doubled weight + mask) | 8648–8712 |
+| `IndividualStrokesMixin` | 8717 |
+| `MinimalFillsMixin` | 8730 |
+| `VariableWidthPoint`, preset/custom width properties | 8767, 8776, 8783 |
+| `ComplexStrokeProperties`, scatter/stretch brush, dynamic | 8797, 8806, 8839, 8873 |
+| `GeometryMixin` (`strokeCap`, `strokeMiterLimit`, `outlineStroke`) | 8886–8911 |
+| `ComplexStrokesMixin` | 8913 |
+| `ExportMixin` / `exportAsync` | 8982 / 9069 |
+| `DefaultShapeMixin`, `BaseFrameMixin` | 9360, 9372 |
+| `MinimalBlendMixin` (`opacity`, `blendMode`) | 9436 |
+| `getRangeFills` / `setRangeFills` | 9898 / 9904 |
+| `DocumentNode.documentColorProfile` | 10416 |
+| `PageNode.backgrounds` / `prototypeBackgrounds` | 10645 |
+| `GroupNode`, `SliceNode`, `RectangleNode`, `LineNode` | 10768, 10817, 10827, 10846 |
+| `BooleanOperationNode` | 11284 |
+| `SectionNode` (fills + strokes, no blend) | 12256 |
+| `PaintStyle`, `EffectStyle` | 12513, 12602 |
+| `Image`, `Video` | 12684, 12701 |
+
+Figma REST API types v0.44.0 — `refs/_figma_rest-api-spec/package/dist/api_types.ts`: `HasBlendModeAndOpacityTrait` 485; `HasExportSettingsTrait` 497; `HasGeometryTrait` (`strokeCap` REST names, `strokeMiterAngle` default 28.96°) 504–549; `MinimalFillsTrait` 551; `MinimalStrokesTrait` (`strokeDashes`) 564; `IndividualStrokesTrait` 600; `HasEffectsTrait` 634; `RGBA` 1296; `Constraint` 1364; `ExportSetting` 1383; `BlendMode` (with group comments) 1431; `ColorStop` 1470; `Transform` 1520; `ImageFilters` 1525; `BasePaint` 1541; `SolidPaint` 1559; `GradientPaint` (`gradientHandlePositions`) 1577; `ImagePaint` (`STRETCH`, `gifRef`) 1600–1644; `PatternPaint` (`verticalAlignment`) 1646; `BaseShadowEffect` 1810; `DropShadowEffect` 1864; `InnerShadowEffect` 1877; `BlurEffect` 1885; `TextureEffect` 1947; `NoiseEffect` 2042; `Effect` 2044; `StrokeWeights` 2113; `PaintOverride` 2138; `GetImagesQueryParams` (scale 0.01–4, SVG flags, `contents_only`, `use_absolute_bounds`) 7132–7187.
+
+### 9.2 Official Figma Help Center articles (IDs from the 2026-09-27 catalog; only search excerpts were seen — bodies not read)
+
+| ID | Title (catalog / current) | Used for |
+| --- | --- | --- |
+| 360041003694 | Guide to fills | five fill types, default solid, closed-region fills, video formats |
+| 360041003774 | Update fills using the color picker / "Apply paints with the color picker" | opening picker, shared vs mixed colors, eyedropper scope |
+| 360043042113 | About color models / "Color models in Figma Design" | five models, Hex default, #RRGGBBAA, RGB ints, CSS, scrubbing |
+| 27643269375767 | Sample colors with the eyedropper tool | I / Control+C, sample/apply/create variables & styles |
+| 34208860210199 | Use gradients as a fill or stroke | four types, ≥ 2 stops, stop selection, UI3 note |
+| 31616030150167 | Use patterns as a fill or stroke | source selection, options, live update, strokes |
+| 360042553434 | View and adjust colors in a mixed selection | Selection colors rules |
+| 360041098433 | Adjust the properties of an image | Fill/Fit/Crop/Tile, rotation, adjustments, GIF limitation |
+| 360040667874 | Apply blend modes… / "Use blend modes to create unique effects" | 19 modes & groups, defaults, restrictions, frames/sections |
+| 360049283914 | Apply and adjust stroke properties | position defaults, shared settings, dashes, caps, SVG note, hover preview |
+| 360041488473 | Apply effects to layers | effect types (official crawl: four; mirror: six + limits) |
+| 360039825114 | Color management (profiles) | sRGB/P3, defaults, Assign/Convert, Unmanaged removal, export default |
+| 13402894554519 | Export formats and settings for static designs | PNG/PDF specifics, scale syntax, settings TOC |
+| 360040028114 | Export static designs from Figma | exportable objects, multiple settings, preview limitation, save location |
+| 30965205437975 | What's new from Config 2025 | brushes, dynamic strokes, noise & texture |
+| 41175721167767 | (shader article; locale variants seen) | shader fills, open beta — attribution uncertain |
+| 33052305733015 | Convert strokes to vector paths | title only |
+| 360041064814 | Change the background color of the canvas | title only |
+| 8878274530455 | Use videos in prototypes | title only |
+| 4412765442967 | Copy and paste properties (linked from old feature guide) | title/link only |
+
+Other catalog articles relevant but not consulted in this session: 360040675194 (Crop an image), 360040028034 (Add images and videos), 360041486873 (animated GIFs in prototypes), 360038746534 (styles), 360040027794 (imports), 360040030374 (copy assets between design tools), 41307983648407 (export animations), 31440438150935 / 31440427042839 (Figma Draw).
+
+### 9.3 Other sources (search excerpts only)
+
+- Help-article mirrors: figma-signup.helpjuice.com/apply-effects-to-layers; …/export-formats-and-settings; …/view-and-adjust-colors-in-a-mixed-selection (DNS-blocked for direct fetch).
+- Figma developer docs (search excerpts): developers.figma.com/docs/plugins/api/BlendMode; developers.figma.com/docs/plugins/updates/2025/05/07/version-1-update-110/; developers.figma.com/docs/plugins/adding-pattern-fills-and-strokes.
+- Forum threads (forum.figma.com): set-starting-defaults-for-design-fill-stroke-effects/617; color-picker-color-model-resets-to-css-58618; color-picker-should-apply-color-style/1540; color-picker-eyedropper-should-apply-color-style-34313; problem-with-managing-image-colour-profiles-34569; dashed-stroke-incompatible-with-stroke-inside-outside-56095; none-scalable-effects-new-effects-43032; noise-effect-is-applied-to-every-element-within-a-frame-41874; progressive-blur-gradient-controls-48326; feature-suggestion-radial-custom-blur-maps-47404; glass-effect-api-missing-light-reflection-border-when-applied-via-plugin-42969; ignore-overlapping-layers-export-option-is-not-respected-in-slice-export/63390; figma-exports-framed-icon-with-incorrect-sizes-30924; how-to-bring-back-copy-as-png-in-figma-26969; feature-request-add-copy-svg-code-option-in-export-57587; paste-svg-code-no-longer-available-29257; is-there-a-way-to-export-the-new-texture-feature-of-figma-as-vector-41146 (title only); can-t-export/87464; underline-colour-variable-in-selection-colors-shows-an-incomplete-variable-list-on-swap-56344; copy-and-reuse-image-adjustment-settings-across-multiple-image-layers-41977.
+- Press / third party: createwith.com (glass out of beta; glass updates with corners & variables); designcompass.org 2025-07-18 (glass launch); alternativeto.net 2025-07 (glass); pub.dev/packages/figma_glass (ranges); uxcel.com lessons (strokes, shadows & blurs, layer blur); grida.co (blur semantics); figmalion.com/topics/import-export (quality/resampling); imagecompressor.tools (4096 downsizing, 72 DPI × scale); blog.logrocket.com/ux-design/figma-blend-modes; webdesign.tutsplus.com (SVG export of gradients); yummygum.com (copy as PNG @2x); convert.remotion.dev/docs/figma (Copy/Paste as → Copy as SVG); dev.to/dishank (Shift+Cmd+E); meshworld.in (Slice = S); bjango.com (color management); figma.com/blog/photo-filters-come-to-figma (adjustments list, title/excerpt).
+
+### 9.4 Research limits of this draft
+
+- help.figma.com, figma.com, developers.figma.com and the helpjuice mirror were not fetchable (DNS); all [DOC] tags are search excerpts.
+- The shared web-search budget for this run was exhausted part-way through research; topics not searched at all: variable-width/brush UI details, stroke end-point labels, image import formats and placement, crop gestures, copy-as-code, copy/paste properties, export dialog contents, remove-fill/stroke shortcuts. These rest on [KNOW] and are covered by §8.
+- No live Figma session was used for this document; the only live evidence is the 2026-09-27 read-only observation [OBS].
