@@ -1166,9 +1166,9 @@ Every item is **Not started**. Each _Test_ is run in Figma first, to confirm the
 - [ ] **AL-111** Text Fill width — The text width = resolved Fill width; the text wraps and its height hugs; parent Hug height updates. _Data:_ `layoutGrow` or `STRETCH` + `HEIGHT` _Test:_ H frame Fixed W=300, avatar 40, gap 12, text Fill → text w=248; height = lines × line-height (V-18). _M4·P0·[KNOW]_
 - [ ] **AL-112** Text Fill height — The text box height = resolved Fill height (fixed box); content overflows or truncates. _Data:_ `textAutoResize='NONE'` _Test:_ V frame Fixed H=200, text Fill-H → h = inner remaining (V-18). _M4·P1·[KNOW]_
 - [ ] **AL-113** Text Hug width with max — Hug-width text with maxWidth grows until max, then wraps with Hug height. _Data:_ `maxWidth` _Test:_ maxW 200 with a long string → w=200, multi-line (V-17). _M4·P1·[KNOW]_
-- [ ] **AL-114** Truncation caps height — `textTruncation=ENDING` + `maxLines=2` in an auto layout child limits the hugged height to 2 lines. _Data:_ `textTruncation`, `maxLines` _Test:_ 5-line text → height = 2 × line-height; ellipsis shown. _M3·P1·[API]_
+- [ ] **AL-114** Truncation caps height — `textTruncation=ENDING` + `maxLines=2` in an auto layout child limits the hugged height to 2 lines. _Data:_ `textTruncation`, `maxLines` _Test:_ 5-line text → height = 2 × line-height; ellipsis shown. _M4·P1·[API]_
 - [ ] **AL-115** Live text edit reflow — Typing in a Hug text reflows all Hug ancestors on every keystroke, within the same undo step as the text edit. _Data:_ — _Test:_ type in a button label → button width grows live; ⌘Z reverts text and size together. _M4·P0·[KNOW]_
-- [ ] **AL-116** Leading trim affects layout — Changing leadingTrim (CAP_HEIGHT) changes the text box height and thus the auto layout geometry. _Data:_ `leadingTrim` _Test:_ toggle cap-height trim in a Hug button → height changes as in Figma. _M3·P1·[API]_
+- [ ] **AL-116** Leading trim affects layout — Changing leadingTrim (CAP_HEIGHT) changes the text box height and thus the auto layout geometry. _Data:_ `leadingTrim` _Test:_ toggle cap-height trim in a Hug button → height changes as in Figma. _M4·P1·[API]_
 
 ### 6.10 Wrap
 
@@ -1207,7 +1207,7 @@ Every item is **Not started**. Each _Test_ is run in Figma first, to confirm the
 - [ ] **AL-143** Hidden child collapses — A `visible=false` child takes no space and adds no gap; Hug shrinks. _Data:_ `visible` _Test:_ F19 → W=110. _M4·P0·[KNOW→V-21]_
 - [ ] **AL-144** Unhide restores position — Showing a hidden child restores it at its original flow index. _Data:_ — _Test:_ hide B, then show B → order A, B, C. _M4·P0·[KNOW]_
 - [ ] **AL-145** Opacity 0 still occupies space — Opacity 0 (or a fully transparent fill) does not remove the child from layout. _Data:_ `opacity` _Test:_ B opacity 0 → W unchanged (V-21). _M4·P1·[KNOW]_
-- [ ] **AL-146** Visibility by boolean property/variable — Toggling a boolean component property or a bound boolean variable collapses or expands the layout. _Data:_ `componentPropertyReferences.visible`, `boundVariables.visible` _Test:_ button instance "Show icon" off → width shrinks by icon + gap. _M5·P0·[API][KNOW]_
+- [ ] **AL-146** Visibility by boolean property/variable — Toggling a boolean component property or a bound boolean variable collapses or expands the layout. _Data:_ `componentPropertyReferences.visible`, `boundVariables.visible` _Test:_ button instance "Show icon" off → width shrinks by icon + gap. _M6·P0·[API][KNOW]_
 - [ ] **AL-147** Hidden child in grid — In manual grids, a hidden child keeps or frees its cell exactly as Figma does. _Data:_ — _Test:_ hide a grid child, then append a new child → record the placement (V-35). _M4·P2·[KNOW]_
 
 ### 6.13 Strokes in layout & layout version
@@ -1231,7 +1231,7 @@ Every item is **Not started**. Each _Test_ is run in Figma first, to confirm the
 - [ ] **AL-161** Stacking unavailable for grid — Whether the canvas stacking setting is offered for Grid frames matches Figma (reported missing 2026-03). _Data:_ — _Test:_ open settings on a grid → record (V-20). _M4·P2·[SRC:forum-grid-stacking]_
 - [ ] **AL-162** Clip content — `clipsContent` clips overflowing flow children, negative-gap overflow and absolute children at the frame bounds. _Data:_ `clipsContent` _Test:_ child overflowing by 20 → hidden when on, visible when off. _M4·P0·[API][OBS]_
 - [ ] **AL-163** Clip default on new auto layout frames — The clip content default for frames created by Shift+A and by Suggest auto layout matches Figma. _Data:_ — _Test:_ create → read clipsContent (V-27). _M4·P1·[KNOW]_
-- [ ] **AL-164** Export honors stacking & clipping — PNG/SVG/PDF exports render overlaps in canvas-stacking order and apply clipping. _Data:_ — _Test:_ export F8 under both stacking settings → compare pixels with a Figma export. _M2·P1·[KNOW]_
+- [ ] **AL-164** Export honors stacking & clipping — PNG/SVG/PDF exports render overlaps in canvas-stacking order and apply clipping. _Data:_ — _Test:_ export F8 under both stacking settings → compare pixels with a Figma export. _M4·P1·[KNOW]_
 
 ### 6.15 Reordering & insertion
 
@@ -1273,7 +1273,7 @@ Every item is **Not started**. Each _Test_ is run in Figma first, to confirm the
 - [ ] **AL-194** Constraints inside Fill non-auto-layout frames — A non-auto-layout frame resized by auto layout (Fill) applies constraints to its own children. _Data:_ `constraints` _Test:_ Fill frame containing a Right-constrained icon → widen parent → icon stays right-aligned. _M4·P0·[API]_
 - [ ] **AL-195** Convergence & idempotence — Layout reaches a fixed point in one pass; re-running layout or reopening changes nothing; no Hug/Fill oscillation. _Data:_ — _Test:_ randomized nested fixtures: layout ×2 → identical floats. _M4·P0·[SRC:old-notes][KNOW]_
 - [ ] **AL-196** Mixed flows — Grid inside vertical, horizontal inside grid, and grid inside grid lay out per their own rules. _Data:_ — _Test:_ dashboard fixture with three nesting kinds → compare all child rects with Figma. _M4·P1·[DOC:31441443713047 excerpt]_
-- [ ] **AL-197** Deep select in nested auto layout — ⌘/Ctrl-click selects the deepest layer inside nested auto layout frames. _Data:_ — _Test:_ ⌘-click a nested text → the text is selected. _M1·P1·[DOC:31441443713047 excerpt]_
+- [ ] **AL-197** Deep select in nested auto layout — ⌘/Ctrl-click selects the deepest layer inside nested auto layout frames. _Data:_ — _Test:_ ⌘-click a nested text → the text is selected. _M4·P1·[DOC:31441443713047 excerpt]_
 - [ ] **AL-198** Interactive performance — Live reflow during drags (resize, handle drag, reorder) stays interactive on a 500-node nested auto layout tree. _Data:_ — _Test:_ Illigma benchmark ≥ 30 fps at 500 nodes (Illigma target; Figma is the qualitative reference). _M8·P1·[KNOW]_
 
 ### 6.18 Grid flow
@@ -1322,7 +1322,7 @@ Every item is **Not started**. Each _Test_ is run in Figma first, to confirm the
 - [ ] **AL-234** Copy/paste preserves auto layout — Copying an auto layout frame (in Illigma, or to another Illigma doc) preserves all container/child fields, min/max and bindings. _Data:_ — _Test:_ paste the F1–F25 fixtures → identical fields and geometry. _M4·P0·[KNOW]_
 - [ ] **AL-235** Paste former flow child into freeform — The child keeps its geometry; Fill/Hug relative to the old parent become Fixed in the UI. _Data:_ — _Test:_ copy a Fill child → paste into a freeform frame → W Fixed at the same size (V-23). _M4·P1·[KNOW]_
 - [ ] **AL-236** Copy/paste properties — ⌘⌥C / ⌘⌥V transfer auto layout properties if, and only if, Figma does (V-39). _Data:_ — _Test:_ copy properties from an auto layout frame → paste onto a freeform frame → record. _M4·P2·[KNOW]_
-- [ ] **AL-237** Export uses resolved geometry — Raster/SVG/PDF exports of auto layout frames match their on-canvas geometry exactly. _Data:_ — _Test:_ export F1, F15, F21 → pixel diff vs Figma export = 0 (antialiasing tolerance). _M2·P0·[KNOW]_
+- [ ] **AL-237** Export uses resolved geometry — Raster/SVG/PDF exports of auto layout frames match their on-canvas geometry exactly. _Data:_ — _Test:_ export F1, F15, F21 → pixel diff vs Figma export = 0 (antialiasing tolerance). _M4·P0·[KNOW]_
 - [ ] **AL-238** Import maps legacy fields — Import maps deprecated `layoutAlign` MIN/CENTER/MAX, `horizontalPadding`/`verticalPadding`, and preserves unknown future enum values. _Data:_ — _Test:_ import a REST JSON fixture containing each → round-trip preserved. _M8·P1·[API]_
 - [ ] **AL-239** Legacy version on import — Imported Figma frames keep their layout version (Legacy vs Updated) and are laid out accordingly. _Data:_ `layoutVersion` _Test:_ import a .fig containing both versions → geometry matches Figma within 0.01px. _M8·P2·[SRC:forum-56357]_
 

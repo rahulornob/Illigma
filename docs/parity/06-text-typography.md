@@ -944,10 +944,10 @@ All items: status **Not started**. IDs are stable once published; new items are 
 
 ### 6.31 Export, flatten & rendering accuracy
 
-- [ ] **TX-225** Flatten text to vectors — ⌘E converts a text layer to a vector whose paths equal the rendered glyphs (incl. decorations, list markers, ellipsis) with fills/strokes/effects kept. _Data:_ resulting `VECTOR` _Test:_ flatten fixture; compare paths/bounds to Figma. _M2·P1·[KNOW]_
-- [ ] **TX-226** SVG export of text — default outlines text; option to export as `<text>`; geometry matches canvas. _Data:_ export settings _Test:_ export fixture both ways; diff. _M2·P1·[KNOW]_
+- [ ] **TX-225** Flatten text to vectors — ⌘E converts a text layer to a vector whose paths equal the rendered glyphs (incl. decorations, list markers, ellipsis) with fills/strokes/effects kept. _Data:_ resulting `VECTOR` _Test:_ flatten fixture; compare paths/bounds to Figma. _M3·P1·[KNOW]_
+- [ ] **TX-226** SVG export of text — default outlines text; option to export as `<text>`; geometry matches canvas. _Data:_ export settings _Test:_ export fixture both ways; diff. _M3·P1·[KNOW]_
 - [ ] **TX-227** PDF export of text — text remains selectable/searchable with embedded font subsets. _Data:_ export _Test:_ export; select text in a PDF viewer. _M8·P2·[KNOW]_
-- [ ] **TX-228** Raster parity — PNG export and canvas rendering of text match Figma pixel-wise within tolerance at 1×/2×. _Data:_ render _Test:_ golden image diff (ΔE, ≤1% pixels). _M2·P1·[KNOW]_
+- [ ] **TX-228** Raster parity — PNG export and canvas rendering of text match Figma pixel-wise within tolerance at 1×/2×. _Data:_ render _Test:_ golden image diff (ΔE, ≤1% pixels). _M3·P1·[KNOW]_
 - [ ] **TX-229** Deterministic layout — identical line breaks/glyph positions across macOS/Windows/Linux and all zoom levels. _Data:_ layout cache _Test:_ same file on 3 OSes; compare layout dumps. _M3·P0·[KNOW]_
 - [ ] **TX-230** Fractional geometry — text box sizes are not rounded to integers. _Data:_ `width`, `height` _Test:_ Inter 13 px "Hello"; record width decimals vs Figma. _M3·P0·[KNOW]_
 - [ ] **TX-231** Golden layout fixture — a fixture of ≥ 50 text layers covering §2 lays out within 0.01 px (box) / 0.1 px (glyph) of Figma with identical fonts. _Data:_ all _Test:_ compare exported REST/plugin dumps (`absoluteRenderBounds`, line breaks). _M3·P0·[KNOW]_

@@ -13,7 +13,9 @@
 >
 > **Research limits (honest disclosure).** The shared per-turn WebSearch budget for this workflow was exhausted after 14 queries by this author. Topics that therefore could **not** be confirmed by search and rest only on [API] and [KNOW]: videos in prototypes, variable modes in prototypes, the "State management for prototypes" article body, sections in prototyping, accessible prototypes, offline presentation, connections from main components, viewing connections, animated GIFs, and the exact keyboard shortcuts of presentation view. No live Figma session, video or article body was inspected.
 >
-> **Adversarial review (2026-10-08).** A second pass ran 8 further WebSearch queries (videos in prototypes, sections in prototyping, accessible prototypes, 2025–2026 prototyping release notes, the Feb-2024 "15+ prototyping improvements" post, presentation-view options/arrow keys, state management, Scroll-to offsets). Their excerpts corrected several claims (video defaults, Scroll-to offsets, sections as destinations, multiple After delay triggers, NOT/negative numbers in expressions) and added items PR-276…PR-313. Still no article body, live Figma session or video was inspected. See §10.
+> **Adversarial review (2026-10-08).** A second pass ran 8 further WebSearch queries (videos in prototypes, sections in prototyping, accessible prototypes, 2025–2026 prototyping release notes, the Feb-2024 "15+ prototyping improvements" post, presentation-view options/arrow keys, state management, Scroll-to offsets). Their excerpts corrected several claims (video defaults, Scroll-to offsets, sections as destinations, multiple After delay triggers, NOT/negative numbers in expressions). Still no article body, live Figma session or video was inspected. The pass was interrupted by a usage limit. Its saved note said it also added a block of items after PR-275 and a review log in §10. **Neither was saved**: the file ends at PR-275 and has no §10. Treat the in-place corrections as unreviewed.
+>
+> **Final audit (2026-10-08).** PR-217 was re-tagged from M5 to M7, because it needs prototype connections. No items were added. The §10 review log is still owed by review pass RV-09.
 
 ---
 
@@ -972,7 +974,7 @@ Format: `- [ ] **PR-NNN** Name — expected Figma behavior. _Data:_ … _Test:_ 
 - [ ] **PR-214** Nested interactive instances — An interactive instance inside another interactive component keeps its own interactions; the deepest handler wins per trigger. _Data:_ nested reactions. _Test:_ checkbox inside list-item component, both with On click. _M7·P1·[SRC:forum.figma.com/archive-21/prototyping-limits-nested-interactive-component-interactions-12308] [KNOW]_
 - [ ] **PR-215** Instance-level interactions — Regular interactions can be added on an instance in a screen in addition to its variant interactions; precedence for the same trigger per V-30. _Data:_ instance `reactions`. _Test:_ V-30. _M7·P1·[SRC:smashingmagazine.com]_
 - [ ] **PR-216** After delay on variants — After delay on a variant runs when an instance shows that variant, enabling loops (spinner A→B→A). _Data:_ `AFTER_TIMEOUT` on variant. _Test:_ V-12 (2-variant loop at 500 ms). _M7·P1·[KNOW]_
-- [ ] **PR-217** Boolean consolidation drops connections — Converting variants into a boolean property removes prototype connections that pointed between them. _Data:_ reactions. _Test:_ reproduce in Figma; record warning. _M5·P2·[SRC: search excerpt of DOC:5579474826519]_
+- [ ] **PR-217** Boolean consolidation drops connections — Converting variants into a boolean property removes prototype connections that pointed between them. _Data:_ reactions. _Test:_ reproduce in Figma; record warning. _M7·P2·[SRC: search excerpt of DOC:5579474826519]_
 - [ ] **PR-218** Missing variant target — If the Change to destination variant is deleted, the action becomes inert (V-33). _Data:_ dangling `destinationId`. _Test:_ V-33. _M7·P1·[KNOW]_
 
 ### 6.15 Reactions on components & instances

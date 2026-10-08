@@ -812,7 +812,7 @@ All items: **Not started**. Format: `ID name — expected Figma behavior. Data. 
 
 ### 6.18 Cross-cutting
 
-- [ ] **VC-226** Undo granularity — creation, each completed drag, each committed field value, each pen click, each bend/heal/delete, each boolean/flatten/outline/mask command is exactly one undo step. _Data:_ history _Test:_ scripted sequence → count ⌘Z presses to return to start. _M0·P0·[KNOW]_
+- [ ] **VC-226** Undo granularity — creation, each completed drag, each committed field value, each pen click, each bend/heal/delete, each boolean/flatten/outline/mask command is exactly one undo step. _Data:_ history _Test:_ scripted sequence → count ⌘Z presses to return to start. _M2·P0·[KNOW]_
 - [ ] **VC-227** Live field preview vs commit — dragging a numeric scrubber (radius, count, ratio) previews live and commits one undo step on release. _Data:_ history _Test:_ scrub radius 0→30 → one ⌘Z returns to 0. _M1·P1·[KNOW]_
 - [ ] **VC-228** Copy/paste fidelity — primitives, arcs, networks with region fills/vertex overrides, booleans and mask groups paste with identical data (new ids). _Data:_ all §2 properties _Test:_ copy/paste each type within and across files; deep-compare. _M1·P0·[KNOW]_
 - [ ] **VC-229** SVG import — pasting/dropping SVG creates editable vector layers (paths → VECTOR, preserving fills/strokes). _Data:_ `createNodeFromSvg` equivalent (returns a FRAME) _Test:_ import an SVG icon → frame with vectors. _M8·P1·[API][KNOW]_

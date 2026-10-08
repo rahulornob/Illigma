@@ -13,7 +13,9 @@
 >
 > **Research limits (honest disclosure):** No live Figma session was used for this document. No Help Center article body was read in full (help.figma.com is not fetchable from this environment); 10 web searches returned excerpts before the shared web-search budget for this run was exhausted, so many UI-level details are [KNOW] and are queued for verification in §8.
 >
-> **Adversarial review (2026-10-08, §10):** The review could run **no new web searches**, because the shared search budget was already used up. It re-checked every claim against the offline typings. It read two cited GitHub issues in full by direct fetch (figma/plugin-typings #375 and #381; their tags are upgraded from "excerpt"). It also read the W3C DTCG format/color spec sources from `raw.githubusercontent.com/design-tokens/community-group/main/technical-reports/` (DTCG facts are tagged `[SRC:DTCG …]`). `developers.figma.com`, `forum.figma.com` and `help.figma.com` could not be reached (DNS). Items added in the review are DS-247 to DS-293 and V-77 to V-91.
+> **Adversarial review (2026-10-08, §10):** The review could run **no new web searches**, because the shared search budget was already used up. It re-checked every claim against the offline typings. It read two cited GitHub issues in full by direct fetch (figma/plugin-typings #375 and #381; their tags are upgraded from "excerpt"). It also read the W3C DTCG format/color spec sources from `raw.githubusercontent.com/design-tokens/community-group/main/technical-reports/` (DTCG facts are tagged `[SRC:DTCG …]`). `developers.figma.com`, `forum.figma.com` and `help.figma.com` could not be reached (DNS). The review was interrupted by a usage limit. Its saved note said it added a block of items after DS-246, experiments after V-76 and a review log in §10. **None of that content was saved**: the file ends at DS-246 and V-76 and has no §10. In-place corrections of existing items may have been saved; treat them as unreviewed.
+>
+> **Final audit (2026-10-08).** The audit re-tagged 39 binding, explicit-mode, text-style and undo items (DS-113…DS-142, DS-151, DS-152, DS-183, DS-184, DS-200…DS-203, DS-207…DS-209) to M6, because none can be validated before variables and styles exist (see the note under §7). It added DS-247 (§6.23) and experiment V-77. The §10 review log is still owed by review pass RV-08.
 
 ---
 
@@ -788,36 +790,36 @@ All items: status **Not started**. "Fixture F1" = a test file with collection `T
 
 ### 6.11 Binding — per field
 
-- [ ] **DS-113** Width/height binding — FLOAT binds `width`/`height`; binding switches Hug/Fill sizing to Fixed. _Data:_ `width`, `height` _Test:_ hug-width auto-layout frame; bind width; record sizing mode (V-36). _M4·P0·[API]·[KNOW]_
-- [ ] **DS-114** Min/max binding — `minWidth, maxWidth, minHeight, maxHeight` bindable where min/max controls exist. _Data:_ fields _Test:_ bind maxWidth on an auto-layout child; resize parent; child clamps at variable value. _M4·P1·[API]_
-- [ ] **DS-115** Gap binding — `itemSpacing` bindable; not bindable while gap is Auto (space-between). _Data:_ `itemSpacing` _Test:_ set Auto spacing; check affordance (V-37). _M4·P0·[API]·[OBS]·[KNOW]_
-- [ ] **DS-116** Wrap gap binding — `counterAxisSpacing` bindable only when `layoutWrap = WRAP`. _Data:_ `counterAxisSpacing` _Test:_ wrap frame, bind row gap; switch wrap off → field hidden, binding retained? (record). _M4·P1·[API]_
-- [ ] **DS-117** Grid gap binding — `gridRowGap`, `gridColumnGap` bindable for GRID auto layout. _Data:_ fields _Test:_ grid frame; bind both; change Spacing mode; gaps update. _M4·P1·[API]_
-- [ ] **DS-118** Padding binding — each side bindable; binding the horizontal/vertical pair control binds both sides. _Data:_ `paddingLeft/Right/Top/Bottom` _Test:_ bind horizontal padding; export bindings (V-14). _M4·P0·[API]·[KNOW]_
-- [ ] **DS-119** Corner radius binding — binding the uniform radius on a rectangle/frame stores four per-corner bindings; inspector shows one pill. _Data:_ `topLeftRadius…bottomRightRadius` _Test:_ bind radius; REST-export node bindings; four `rectangleCornerRadii` entries. _M2·P0·[API]_
-- [ ] **DS-120** Per-corner radius binding — each corner independently bindable from the independent-corners UI. _Data:_ per-corner fields _Test:_ bind only top-left; others raw. _M2·P1·[API]_
-- [ ] **DS-121** Stroke weight binding — uniform and per-side weights bindable. _Data:_ `strokeWeight`, `stroke{Top,Right,Bottom,Left}Weight` _Test:_ bind uniform; then per-side top only; render check. _M2·P0·[API]_
+- [ ] **DS-113** Width/height binding — FLOAT binds `width`/`height`; binding switches Hug/Fill sizing to Fixed. _Data:_ `width`, `height` _Test:_ hug-width auto-layout frame; bind width; record sizing mode (V-36). _M6·P0·[API]·[KNOW]_
+- [ ] **DS-114** Min/max binding — `minWidth, maxWidth, minHeight, maxHeight` bindable where min/max controls exist. _Data:_ fields _Test:_ bind maxWidth on an auto-layout child; resize parent; child clamps at variable value. _M6·P1·[API]_
+- [ ] **DS-115** Gap binding — `itemSpacing` bindable; not bindable while gap is Auto (space-between). _Data:_ `itemSpacing` _Test:_ set Auto spacing; check affordance (V-37). _M6·P0·[API]·[OBS]·[KNOW]_
+- [ ] **DS-116** Wrap gap binding — `counterAxisSpacing` bindable only when `layoutWrap = WRAP`. _Data:_ `counterAxisSpacing` _Test:_ wrap frame, bind row gap; switch wrap off → field hidden, binding retained? (record). _M6·P1·[API]_
+- [ ] **DS-117** Grid gap binding — `gridRowGap`, `gridColumnGap` bindable for GRID auto layout. _Data:_ fields _Test:_ grid frame; bind both; change Spacing mode; gaps update. _M6·P1·[API]_
+- [ ] **DS-118** Padding binding — each side bindable; binding the horizontal/vertical pair control binds both sides. _Data:_ `paddingLeft/Right/Top/Bottom` _Test:_ bind horizontal padding; export bindings (V-14). _M6·P0·[API]·[KNOW]_
+- [ ] **DS-119** Corner radius binding — binding the uniform radius on a rectangle/frame stores four per-corner bindings; inspector shows one pill. _Data:_ `topLeftRadius…bottomRightRadius` _Test:_ bind radius; REST-export node bindings; four `rectangleCornerRadii` entries. _M6·P0·[API]_
+- [ ] **DS-120** Per-corner radius binding — each corner independently bindable from the independent-corners UI. _Data:_ per-corner fields _Test:_ bind only top-left; others raw. _M6·P1·[API]_
+- [ ] **DS-121** Stroke weight binding — uniform and per-side weights bindable. _Data:_ `strokeWeight`, `stroke{Top,Right,Bottom,Left}Weight` _Test:_ bind uniform; then per-side top only; render check. _M6·P0·[API]_
 - [ ] **DS-122** Layer opacity binding — FLOAT bound to `opacity` interpreted as percent; out-of-range values clamp at render. _Data:_ `opacity` _Test:_ variable 50 → 50 %; 150 → record; −10 → record (V-38). _M6·P0·[API]·[KNOW]_
 - [ ] **DS-123** Visibility binding — BOOLEAN bound to `visible`; false hides layer on canvas and in export; layers panel reflects hidden state. _Data:_ `visible` _Test:_ bind to `flag/show`; switch frame mode to Dark (false); layer hidden (V-32). _M6·P0·[API]_
-- [ ] **DS-124** Fill color binding per paint — each SOLID paint of a multi-fill layer binds independently; paint opacity remains separate. _Data:_ `fills[i].boundVariables.color` _Test:_ 2 fills bound to different variables; reorder fills; bindings follow paints (V-39). _M2·P0·[API]_
-- [ ] **DS-125** Stroke color binding — per stroke paint. _Data:_ `strokes[i].boundVariables.color` _Test:_ bind stroke; switch mode. _M2·P0·[API]_
-- [ ] **DS-126** Gradient stop binding — each gradient stop color bindable. _Data:_ `ColorStop.boundVariables.color` _Test:_ linear gradient, bind stop 2; switch mode. _M2·P1·[API]_
-- [ ] **DS-127** Non-bindable paints — image, video, pattern and shader paints expose no variable binding. _Data:_ no `boundVariables` _Test:_ inspect image fill popover for apply-variable affordance. _M2·P1·[API]_
-- [ ] **DS-128** Shadow bindings — drop/inner shadow color, blur, spread, X, Y bindable. _Data:_ `effects[i].boundVariables{color,radius,spread,offsetX,offsetY}` _Test:_ bind all five; switch modes. _M2·P0·[API]_
-- [ ] **DS-129** Blur binding — layer/background blur radius bindable; progressive blur start radius/offsets not. _Data:_ `boundVariables.radius` _Test:_ progressive blur; check affordances. _M2·P1·[API]_
-- [ ] **DS-130** Non-bindable effects — noise, texture and glass effects have no bindable fields. _Data:_ `boundVariables: {}` _Test:_ inspect effect popovers. _M2·P2·[API]_
-- [ ] **DS-131** Layout grid bindings — columns/rows: count, gutter, offset, section size; grid: size. _Data:_ `layoutGrids[i].boundVariables` _Test:_ bind column count to FLOAT; switch mode; columns change. _M4·P1·[API]_
-- [ ] **DS-132** Text content binding (STRING) — `characters` bound to a STRING variable renders the variable text in the node's mode. _Data:_ `boundVariables.characters` _Test:_ bind to `copy/title`; Dark frame shows "Bonjour". _M3·P0·[API]_
-- [ ] **DS-133** Text content binding (FLOAT) — number variables bind to text content with Figma's number formatting. _Data:_ `characters` _Test:_ bind 1.5 / 1000 / -0.25; record rendered text (V-40). _M3·P1·[API]·[KNOW]_
-- [ ] **DS-134** Editing bound text — double-click editing of bound text content detaches (or is blocked) exactly as Figma. _Data:_ `characters` _Test:_ double-click bound text and type (V-40). _M3·P0·[KNOW]_
-- [ ] **DS-135** Font family binding — STRING bound to `fontFamily`; unavailable family → missing-font state. _Data:_ `fontFamily` _Test:_ mode A "Inter", mode B "NoSuchFont"; switch modes (V-41). _M3·P1·[API]·[KNOW]_
-- [ ] **DS-136** Font style binding — STRING bound to `fontStyle` (e.g. "Bold Italic"). _Data:_ `fontStyle` _Test:_ variable "Semi Bold"; record rendering; invalid style (V-41). _M3·P1·[API]_
-- [ ] **DS-137** Font weight binding — FLOAT bound to `fontWeight` selects the matching style of the family. _Data:_ `fontWeight` _Test:_ 700 → Bold; 650 → record (V-41). _M3·P1·[API]·[KNOW]_
-- [ ] **DS-138** Font size / paragraph spacing / paragraph indent binding — FLOAT px. _Data:_ `fontSize, paragraphSpacing, paragraphIndent` _Test:_ bind each; switch modes. _M3·P0·[API]_
-- [ ] **DS-139** Line height / letter spacing binding units — unit interpretation (px vs %) matches Figma. _Data:_ `lineHeight, letterSpacing` _Test:_ field unit % then bind variable 120; record (V-42). _M3·P1·[API]·[KNOW]_
-- [ ] **DS-140** Text range bindings — text fields and fills bind per character range; node-level fields show Mixed. _Data:_ `setRangeBoundVariable`, `textRangeFills` _Test:_ bind font size on the first word only; inspect whole node. _M3·P1·[API]_
-- [ ] **DS-141** Component property value binding (instance) — BOOLEAN and TEXT property values on instances bindable. _Data:_ `componentProperties[name].boundVariables.value` _Test:_ instance with "Show icon" bool; bind to `flag/show`; switch modes (V-43). _M5·P0·[API]_
-- [ ] **DS-142** Component property default binding (definition) — property default value bindable on the main component. _Data:_ `componentPropertyDefinitions[name].boundVariables.defaultValue` _Test:_ bind TEXT default to `copy/title`; new instances show bound value (V-43). _M5·P1·[API]_
+- [ ] **DS-124** Fill color binding per paint — each SOLID paint of a multi-fill layer binds independently; paint opacity remains separate. _Data:_ `fills[i].boundVariables.color` _Test:_ 2 fills bound to different variables; reorder fills; bindings follow paints (V-39). _M6·P0·[API]_
+- [ ] **DS-125** Stroke color binding — per stroke paint. _Data:_ `strokes[i].boundVariables.color` _Test:_ bind stroke; switch mode. _M6·P0·[API]_
+- [ ] **DS-126** Gradient stop binding — each gradient stop color bindable. _Data:_ `ColorStop.boundVariables.color` _Test:_ linear gradient, bind stop 2; switch mode. _M6·P1·[API]_
+- [ ] **DS-127** Non-bindable paints — image, video, pattern and shader paints expose no variable binding. _Data:_ no `boundVariables` _Test:_ inspect image fill popover for apply-variable affordance. _M6·P1·[API]_
+- [ ] **DS-128** Shadow bindings — drop/inner shadow color, blur, spread, X, Y bindable. _Data:_ `effects[i].boundVariables{color,radius,spread,offsetX,offsetY}` _Test:_ bind all five; switch modes. _M6·P0·[API]_
+- [ ] **DS-129** Blur binding — layer/background blur radius bindable; progressive blur start radius/offsets not. _Data:_ `boundVariables.radius` _Test:_ progressive blur; check affordances. _M6·P1·[API]_
+- [ ] **DS-130** Non-bindable effects — noise, texture and glass effects have no bindable fields. _Data:_ `boundVariables: {}` _Test:_ inspect effect popovers. _M6·P2·[API]_
+- [ ] **DS-131** Layout grid bindings — columns/rows: count, gutter, offset, section size; grid: size. _Data:_ `layoutGrids[i].boundVariables` _Test:_ bind column count to FLOAT; switch mode; columns change. _M6·P1·[API]_
+- [ ] **DS-132** Text content binding (STRING) — `characters` bound to a STRING variable renders the variable text in the node's mode. _Data:_ `boundVariables.characters` _Test:_ bind to `copy/title`; Dark frame shows "Bonjour". _M6·P0·[API]_
+- [ ] **DS-133** Text content binding (FLOAT) — number variables bind to text content with Figma's number formatting. _Data:_ `characters` _Test:_ bind 1.5 / 1000 / -0.25; record rendered text (V-40). _M6·P1·[API]·[KNOW]_
+- [ ] **DS-134** Editing bound text — double-click editing of bound text content detaches (or is blocked) exactly as Figma. _Data:_ `characters` _Test:_ double-click bound text and type (V-40). _M6·P0·[KNOW]_
+- [ ] **DS-135** Font family binding — STRING bound to `fontFamily`; unavailable family → missing-font state. _Data:_ `fontFamily` _Test:_ mode A "Inter", mode B "NoSuchFont"; switch modes (V-41). _M6·P1·[API]·[KNOW]_
+- [ ] **DS-136** Font style binding — STRING bound to `fontStyle` (e.g. "Bold Italic"). _Data:_ `fontStyle` _Test:_ variable "Semi Bold"; record rendering; invalid style (V-41). _M6·P1·[API]_
+- [ ] **DS-137** Font weight binding — FLOAT bound to `fontWeight` selects the matching style of the family. _Data:_ `fontWeight` _Test:_ 700 → Bold; 650 → record (V-41). _M6·P1·[API]·[KNOW]_
+- [ ] **DS-138** Font size / paragraph spacing / paragraph indent binding — FLOAT px. _Data:_ `fontSize, paragraphSpacing, paragraphIndent` _Test:_ bind each; switch modes. _M6·P0·[API]_
+- [ ] **DS-139** Line height / letter spacing binding units — unit interpretation (px vs %) matches Figma. _Data:_ `lineHeight, letterSpacing` _Test:_ field unit % then bind variable 120; record (V-42). _M6·P1·[API]·[KNOW]_
+- [ ] **DS-140** Text range bindings — text fields and fills bind per character range; node-level fields show Mixed. _Data:_ `setRangeBoundVariable`, `textRangeFills` _Test:_ bind font size on the first word only; inspect whole node. _M6·P1·[API]_
+- [ ] **DS-141** Component property value binding (instance) — BOOLEAN and TEXT property values on instances bindable. _Data:_ `componentProperties[name].boundVariables.value` _Test:_ instance with "Show icon" bool; bind to `flag/show`; switch modes (V-43). _M6·P0·[API]_
+- [ ] **DS-142** Component property default binding (definition) — property default value bindable on the main component. _Data:_ `componentPropertyDefinitions[name].boundVariables.defaultValue` _Test:_ bind TEXT default to `copy/title`; new instances show bound value (V-43). _M6·P1·[API]_
 
 ### 6.12 Explicit modes & resolution
 
@@ -829,8 +831,8 @@ All items: status **Not started**. "Fixture F1" = a test file with collection `T
 - [ ] **DS-148** Relevant-collection menu — mode menu lists collections with > 1 mode used within the selection (incl. library collections) per V-44. _Data:_ — _Test:_ frame containing only Theme-bound layers; record listed collections (V-44). _M6·P1·[KNOW]_
 - [ ] **DS-149** Mixed mode display — multi-selection with differing modes shows Mixed; choosing a mode sets all. _Data:_ — _Test:_ 2 frames Light/Dark selected (V-44). _M6·P1·[KNOW]_
 - [ ] **DS-150** Explicit modes on sections, components, groups — available on every layer type Figma exposes (V-44 list). _Data:_ `explicitVariableModes` _Test:_ try section, component, group, rectangle. _M6·P1·[API]·[KNOW]_
-- [ ] **DS-151** Component explicit modes propagate — explicit modes inside a main component apply in all instances. _Data:_ component subtree modes _Test:_ main component child set Dark; instances show Dark child (V-47). _M5·P0·[KNOW]_
-- [ ] **DS-152** Instance mode override — setting a mode on an instance is an instance override and wins over inherited context for that collection; *Reset all changes* clears it. _Data:_ `InstanceNode.explicitVariableModes` _Test:_ instance in Light frame set Dark; reset (V-47). _M5·P0·[KNOW]_
+- [ ] **DS-151** Component explicit modes propagate — explicit modes inside a main component apply in all instances. _Data:_ component subtree modes _Test:_ main component child set Dark; instances show Dark child (V-47). _M6·P0·[KNOW]_
+- [ ] **DS-152** Instance mode override — setting a mode on an instance is an instance override and wins over inherited context for that collection; *Reset all changes* clears it. _Data:_ `InstanceNode.explicitVariableModes` _Test:_ instance in Light frame set Dark; reset (V-47). _M6·P0·[KNOW]_
 - [ ] **DS-153** Re-resolution on move — moving/pasting a layer into another mode context re-resolves values; its own explicit modes travel with it. _Data:_ — _Test:_ drag child from Dark to Light frame. _M6·P0·[API]_
 - [ ] **DS-154** Library collection modes — modes of remote collections can be set on layers and resolve with the accepted library version. _Data:_ remote `modeId` _Test:_ library Theme; consumer frame Dark. _M6·P0·[API]_
 - [ ] **DS-155** Resolution cache invalidation — any value, alias, mode, explicit-mode or tree change invalidates exactly the affected resolutions (no stale renders). _Data:_ cache _Test:_ randomized edit sequence; compare render with uncached resolver. _M6·P0·[API]_
@@ -870,8 +872,8 @@ All items: status **Not started**. "Fixture F1" = a test file with collection `T
 ### 6.15 Styles — edit, detach, delete, organize
 
 - [ ] **DS-182** Detach style — keeps resolved values; clears style reference; behavior of variable bindings inside the style values per V-52. _Data:_ `…StyleId = ''` _Test:_ detach a paint style whose color is variable-bound; inspect fill binding (V-52). _M6·P0·[KNOW]_
-- [ ] **DS-183** Text style semantic overrides — ⌘B/⌘I, underline/decoration and hyperlinks on styled text keep the style applied (recorded as overrides). _Data:_ `textStyleOverrides` _Test:_ apply Body style, ⌘B a word; style still shown (V-53). _M3·P0·[API]·[KNOW]_
-- [ ] **DS-184** Other typography edits on styled text — changing size/family etc. requires detach or style edit, exactly as Figma. _Data:_ — _Test:_ attempt ⌘⇧> on styled text; record (V-53). _M3·P1·[KNOW]_
+- [ ] **DS-183** Text style semantic overrides — ⌘B/⌘I, underline/decoration and hyperlinks on styled text keep the style applied (recorded as overrides). _Data:_ `textStyleOverrides` _Test:_ apply Body style, ⌘B a word; style still shown (V-53). _M6·P0·[API]·[KNOW]_
+- [ ] **DS-184** Other typography edits on styled text — changing size/family etc. requires detach or style edit, exactly as Figma. _Data:_ — _Test:_ attempt ⌘⇧> on styled text; record (V-53). _M6·P1·[KNOW]_
 - [ ] **DS-185** Edit style — editor with name, description and properties; changes propagate live to all consumers in the file. _Data:_ style fields _Test:_ edit color style hue; 5 consumers update. _M6·P0·[KNOW]_
 - [ ] **DS-186** Rename style — renaming (incl. folder path) keeps all references. _Data:_ `name` _Test:_ rename `Brand/Red` → `Accent/Red`. _M6·P0·[API]_
 - [ ] **DS-187** Duplicate style (conditional on V-54). _Data:_ new style _Test:_ check context menu in Figma. _M6·P2·[KNOW]_
@@ -893,19 +895,19 @@ All items: status **Not started**. "Fixture F1" = a test file with collection `T
 
 ### 6.17 Components & instances interplay
 
-- [ ] **DS-200** Bindings in main components propagate — bindings on layers inside a main component appear in all instances. _Data:_ component tree _Test:_ bind button fill in main; instances follow mode switches. _M5·P0·[KNOW]_
-- [ ] **DS-201** Instance override of bound field — changing a bound property on an instance layer (bind another variable, detach, or raw value) is an override; *Reset* restores the main's binding. _Data:_ instance overrides _Test:_ rebind instance fill; reset. _M5·P0·[KNOW]_
-- [ ] **DS-202** Style override on instance — applying/detaching a style on an instance layer is an override and resets with *Reset all changes*. _Data:_ instance overrides _Test:_ apply other color style to instance child; reset. _M5·P0·[KNOW]_
-- [ ] **DS-203** Main-component edits keep instance overrides — changing a variable binding in the main does not overwrite instance layers that override that field. _Data:_ override precedence _Test:_ instance overrides fill; change main binding; instance keeps override. _M5·P0·[KNOW]_
+- [ ] **DS-200** Bindings in main components propagate — bindings on layers inside a main component appear in all instances. _Data:_ component tree _Test:_ bind button fill in main; instances follow mode switches. _M6·P0·[KNOW]_
+- [ ] **DS-201** Instance override of bound field — changing a bound property on an instance layer (bind another variable, detach, or raw value) is an override; *Reset* restores the main's binding. _Data:_ instance overrides _Test:_ rebind instance fill; reset. _M6·P0·[KNOW]_
+- [ ] **DS-202** Style override on instance — applying/detaching a style on an instance layer is an override and resets with *Reset all changes*. _Data:_ instance overrides _Test:_ apply other color style to instance child; reset. _M6·P0·[KNOW]_
+- [ ] **DS-203** Main-component edits keep instance overrides — changing a variable binding in the main does not overwrite instance layers that override that field. _Data:_ override precedence _Test:_ instance overrides fill; change main binding; instance keeps override. _M6·P0·[KNOW]_
 
 ### 6.18 Clipboard, undo/redo, export
 
 - [ ] **DS-204** Same-file duplicate/copy-paste keeps bindings, style refs and explicit modes. _Data:_ node data _Test:_ ⌘D a bound frame; compare inspector. _M6·P0·[KNOW]_
 - [ ] **DS-205** Copy/paste properties carry bindings — ⌘⌥C/⌘⌥V transfers fills/strokes/effects with their variable bindings and style references. _Data:_ — _Test:_ paste properties from bound to raw layer (V-68). _M6·P1·[KNOW]·[DOC:4412765442967 title]_
 - [ ] **DS-206** Cross-file paste — library references stay library references; local references of the source file are handled exactly as Figma (V-69); visual value never lost. _Data:_ remote refs _Test:_ copy from file A (local + library vars) to file B. _M8·P1·[KNOW]_
-- [ ] **DS-207** Undo granularity — each operation listed in §3.20 is exactly one undo step; undo restores identical IDs. _Data:_ undo stack _Test:_ scripted sequence of 20 ops; undo 20 times; document equals initial (V-67). _M0·P0·[KNOW]_
-- [ ] **DS-208** UI state excluded from undo — opening/closing modal, search, row selection, collapse do not create undo steps. _Data:_ — _Test:_ open modal, search, ⌘Z → last document change undone, not UI. _M0·P1·[KNOW]_
-- [ ] **DS-209** Export uses resolved values — PNG/SVG/PDF export renders each node in its resolved modes. _Data:_ — _Test:_ export Light and Dark frames; compare pixels. _M2·P0·[KNOW]_
+- [ ] **DS-207** Undo granularity — each operation listed in §3.20 is exactly one undo step; undo restores identical IDs. _Data:_ undo stack _Test:_ scripted sequence of 20 ops; undo 20 times; document equals initial (V-67). _M6·P0·[KNOW]_
+- [ ] **DS-208** UI state excluded from undo — opening/closing modal, search, row selection, collapse do not create undo steps. _Data:_ — _Test:_ open modal, search, ⌘Z → last document change undone, not UI. _M6·P1·[KNOW]_
+- [ ] **DS-209** Export uses resolved values — PNG/SVG/PDF export renders each node in its resolved modes. _Data:_ — _Test:_ export Light and Dark frames; compare pixels. _M6·P0·[KNOW]_
 - [ ] **DS-210** Code export uses code syntax — handoff/CSS copy emits WEB code syntax when present. _Data:_ `codeSyntax.WEB` _Test:_ variable with `var(--bg)`; copy CSS (handoff area). _M8·P2·[KNOW]_
 
 ### 6.19 Libraries (local-first)
@@ -974,6 +976,8 @@ All items: status **Not started**. "Fixture F1" = a test file with collection `T
 | Interop & hardening (M8) | `.fig` import of variables/styles/bindings; REST-JSON and DTCG interop; cross-file clipboard; version history of library snapshots; performance at 5,000 variables × N modes. |
 | Developer handoff / inspect (M8) | Code syntax display; CSS/token output. |
 | Framer-styled design system (UI looks) | Visual design of pills, pickers, table, modal — **looks only**; behavior defined here. |
+
+**Milestone note (final audit, 2026-10-08).** The rows above name the milestone that introduces each *bindable field*. The binding behavior itself is built and validated in **M6**, after collections, modes, the resolution service and the picker exist. The per-field items (DS-113…DS-142), the component interplay items (DS-151, DS-152, DS-200…DS-203), the text-style override items (DS-183, DS-184), export with resolved values (DS-209) and the undo items (DS-207, DS-208) are therefore tagged M6. Earlier milestones only reserve the `boundVariables` storage for their fields (schema, M0), so M6 needs no migration.
 
 ---
 

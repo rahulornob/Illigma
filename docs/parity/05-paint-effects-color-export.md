@@ -719,7 +719,7 @@ All items: status **Not started**. Format: `ID name — expected Figma behavior.
 - [ ] **PE-085** Adjustment directions & math — exposure −/+ darkens/brightens; contrast − mutes; saturation −100 = grayscale; temperature − cooler / + warmer; tint − green / + magenta; pixel output matches Figma. _Data:_ `filters` _Test:_ gray-ramp + color-chart fixture at ±50/±100 per slider vs Figma exports (V-18). _M2·P1·[DOC:360041098433 excerpt]_
 - [ ] **PE-086** No adjustments on animated GIFs — adjustment controls are unavailable for animated GIF paints. _Data:_ `filters` _Test:_ select GIF layer: sliders disabled/hidden. _M2·P2·[DOC:360041098433 excerpt]_
 - [ ] **PE-087** Replace image — choosing a new image for an existing image paint swaps the asset while keeping scale mode, rotation, filters, opacity and blend mode (verify crop handling). _Data:_ `imageHash` _Test:_ Tile 50 %, exposure +30, replace → settings kept (V-15). _M2·P1·[KNOW]_
-- [ ] **PE-088** Images on strokes and text — image paints are valid stroke paints and text fills. _Data:_ `strokes[IMAGE]`, text `fills[IMAGE]` _Test:_ 20 px stroke with image, text with image fill render like Figma. _M2·P1·[API]·[KNOW]_
+- [ ] **PE-088** Images on strokes and text — image paints are valid stroke paints and text fills. _Data:_ `strokes[IMAGE]`, text `fills[IMAGE]` _Test:_ 20 px stroke with image, text with image fill render like Figma. _M3·P1·[API]·[KNOW]_
 - [ ] **PE-089** Image paint opacity & blend — image paints obey per-paint opacity and blend mode. _Data:_ `opacity`, `blendMode` _Test:_ image 50 % Multiply over red fill matches Figma. _M2·P0·[API]_
 - [ ] **PE-090** Missing image placeholder — a paint whose asset is missing/unloaded renders Figma's placeholder state and keeps the paint data. _Data:_ `imageHash` unresolved _Test:_ delete blob from package; open: placeholder, no crash, data preserved (look: V-15). _M0·P1·[KNOW]_
 - [ ] **PE-091** Canvas image sampling — images are smoothly filtered when scaled on canvas at normal zooms and show pixels at high zoom like Figma. _Data:_ render _Test:_ compare 50 % and 800 % zoom screenshots (V-18). _M0·P1·[KNOW]_
@@ -838,7 +838,7 @@ All items: status **Not started**. Format: `ID name — expected Figma behavior.
 - [ ] **PE-186** Effects under scaling — K-scale (scale tool) scales shadow/blur values; noise/texture/progressive blur scaling behavior matches Figma. _Data:_ effect fields _Test:_ K-scale 200 %: compare values (V-31). _M2·P2·[SRC:https://forum.figma.com/share-your-feedback-26/none-scalable-effects-new-effects-43032]·[KNOW]_
 - [ ] **PE-187** Effect variable bindings — color, radius, spread, offsetX, offsetY are bindable for shadows; radius for blurs; none for noise/texture (glass per V-32). _Data:_ `VariableBindableEffectField` _Test:_ binding UI offered exactly for these fields. _M6·P1·[API]_
 - [ ] **PE-188** Effect styles — effects can be linked to an effect style and detached (keeps values). _Data:_ `effectStyleId` _Test:_ apply style, detach, values unchanged. _M6·P0·[API]_
-- [ ] **PE-189** Clipped child effects — effects of children inside a clipping frame are clipped by the frame. _Data:_ `clipsContent` _Test:_ child shadow crossing frame edge is cut. _M1·P1·[KNOW]_
+- [ ] **PE-189** Clipped child effects — effects of children inside a clipping frame are clipped by the frame. _Data:_ `clipsContent` _Test:_ child shadow crossing frame edge is cut. _M2·P1·[KNOW]_
 
 ### 6.12 Mixed selections & selection colors
 
@@ -876,7 +876,7 @@ All items: status **Not started**. Format: `ID name — expected Figma behavior.
 - [ ] **PE-215** Ignore overlapping layers — default on (only the node); off includes any layers intersecting the node (above or below). _Data:_ `contentsOnly` _Test:_ rect overlapped by a sibling circle: on → no circle; off → circle included. _M2·P1·[API]·[SRC:https://forum.figma.com/t/ignore-overlapping-layers-export-option-is-not-respected-in-slice-export/63390]_
 - [ ] **PE-216** Include bounding box — exports use full node dimensions regardless of cropping/empty space (text not cropped). _Data:_ `useAbsoluteBounds` (mapping V-37) _Test:_ text with large line height: on → full box; off → tight bounds. _M2·P1·[API]_
 - [ ] **PE-217** Export bounds — default bounds include visible strokes and effects; clipped frames use the frame rect plus the frame's own effects. _Data:_ render bounds _Test:_ fixtures in V-37. _M2·P0·[KNOW]·[SRC:https://forum.figma.com/archive-21/figma-exports-framed-icon-with-incorrect-sizes-30924]_
-- [ ] **PE-218** SVG outline text — default on (text as paths); off emits `<text>` elements. _Data:_ `svgOutlineText` _Test:_ export text both ways; inspect SVG. _M2·P1·[API]_
+- [ ] **PE-218** SVG outline text — default on (text as paths); off emits `<text>` elements. _Data:_ `svgOutlineText` _Test:_ export text both ways; inspect SVG. _M3·P1·[API]_
 - [ ] **PE-219** SVG id attribute — off by default; on adds layer names as `id`; masks/gradients always have ids. _Data:_ `svgIdAttribute` _Test:_ inspect SVG ids. _M2·P1·[API]_
 - [ ] **PE-220** SVG simplify stroke — default on: inside/outside strokes approximated as plain strokes; off: masking technique. _Data:_ `svgSimplifyStroke` _Test:_ Inside 10 px stroke rect both ways; visual equality. _M2·P1·[API]·[DOC:360049283914 excerpt]_
 - [ ] **PE-221** SVG unsupported features — angular/diamond gradients, noise/texture/glass, background and progressive blur export as Figma does (raster fallback or approximation). _Data:_ SVG writer _Test:_ V-39. _M2·P1·[SRC:https://webdesign.tutsplus.com/using-figma-for-svg-design--CRS-200909c/what-exports-well-to-svg]_
@@ -892,7 +892,7 @@ All items: status **Not started**. Format: `ID name — expected Figma behavior.
 - [ ] **PE-231** Export settings travel with nodes — copy/paste, duplicate and undo preserve export settings. _Data:_ `exportSettings` _Test:_ duplicate a layer with 2 settings → duplicate has both. _M2·P0·[API]·[KNOW]_
 - [ ] **PE-232** Export settings on instances — instances inherit export settings from the main component and may override them, as in Figma. _Data:_ `exportSettings` _Test:_ V-43. _M5·P1·[KNOW]_
 - [ ] **PE-233** Scale limits — custom scale range and maximum output size match Figma (REST render API: 0.01–4). _Data:_ `constraint.value` _Test:_ type 0.001x, 10x, 20000w (V-37). _M2·P1·[API]_
-- [ ] **PE-234** Text export bounds — text layers export uncropped when absolute bounds is enabled. _Data:_ `useAbsoluteBounds` _Test:_ text with descenders/large line height. _M2·P2·[API]_
+- [ ] **PE-234** Text export bounds — text layers export uncropped when absolute bounds is enabled. _Data:_ `useAbsoluteBounds` _Test:_ text with descenders/large line height. _M3·P2·[API]_
 - [ ] **PE-235** No editor overlays — exports never contain selection outlines, guides, layout grids or handles. _Data:_ export pipeline _Test:_ export frame with visible layout grid → grid absent. _M2·P0·[KNOW]_
 - [ ] **PE-236** Animation export (out of scope here) — MP4/GIF/WebM for animated top-level frames are tracked in M7/M8. _Data:_ `ExportSettingsMP4/GIF/WEBM` _Test:_ n/a. _M7·P2·[API]_
 
@@ -908,7 +908,7 @@ All items: status **Not started**. Format: `ID name — expected Figma behavior.
 
 ### 6.16 Undo, components, layout & variables integration
 
-- [ ] **PE-244** Undo granularity — one undo entry per committed paint/stroke/effect/export change as listed in §3.12; no entries for UI-only changes. _Data:_ history _Test:_ scripted sequence of 12 edits → exactly 12 undo steps (V-42). _M0·P0·[KNOW]_
+- [ ] **PE-244** Undo granularity — one undo entry per committed paint/stroke/effect/export change as listed in §3.12; no entries for UI-only changes. _Data:_ history _Test:_ scripted sequence of 12 edits → exactly 12 undo steps (V-42). _M2·P0·[KNOW]_
 - [ ] **PE-245** Undo with picker open — undo/redo while the picker is open updates the picker to the restored value and keeps its target. _Data:_ UI target _Test:_ change color, Cmd+Z with picker open (V-42). _M2·P1·[KNOW]_
 - [ ] **PE-246** Instance overrides — fills, strokes, stroke settings, effects, opacity and blend mode can be overridden on instances. _Data:_ instance overrides _Test:_ override fill on instance; edit main fill → instance keeps override (V-43). _M5·P0·[KNOW]_
 - [ ] **PE-247** Reset overrides — resetting restores main-component paint/effect values. _Data:_ overrides _Test:_ reset → instance equals main. _M5·P0·[KNOW]_
