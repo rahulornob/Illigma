@@ -6,10 +6,10 @@
 >
 > **Evidence legend** (every behavioral claim is tagged):
 > - **[API]** — Figma Plugin API typings v1.141.0 (`plugin-api.d.ts`) or REST API types v0.44.0 (`api_types.ts`), read in this session. Line references in §9.
-> - **[DOC:&lt;id&gt;]** — an official Figma Help Center article. **"excerpt"** means only a search-engine excerpt/summary of the article was seen in this session; the article body was **not** read (help.figma.com is not reachable from this environment).
+> - **[DOC:`<id>`]** — an official Figma Help Center article. **"excerpt"** means only a search-engine excerpt/summary of the article was seen in this session; the article body was **not** read (help.figma.com is not reachable from this environment).
 > - **[OBS]** — the read-only live-Figma UI inspection of **2026-09-27** (Chrome/macOS, Figma Design, UI3), recorded in the old `observations/2026-09-27-live-figma.md`; the same session's "Observed" line in the old `features/right-inspector.md` is also cited as [OBS]. Nothing in this document was observed live in *this* session.
 > - **[KNOW]** — the author's prior knowledge of Figma, **not verified in this session**. Everything correctness-relevant that rests only on [KNOW] or [SRC] is repeated in §8.
-> - **[SRC:&lt;url&gt;]** — a non-Figma-help web source (Figma blog, Figma community forum, third-party cheat sheet). Seen as search excerpts unless stated. The Raycast shortcut dataset was downloaded and parsed in full; it contains demonstrable errors and is used only as a cross-check.
+> - **[SRC:`<url>`]** — a non-Figma-help web source (Figma blog, Figma community forum, third-party cheat sheet). Seen as search excerpts unless stated. The Raycast shortcut dataset was downloaded and parsed in full; it contains demonstrable errors and is used only as a cross-check.
 > - **[DECISION]** — an Illigma product decision for a local-first app where Figma's behavior depends on cloud/multiplayer infrastructure. A [DECISION] is never a parity claim.
 >
 > **Research limits in this session.** The shared web-search budget for the run was exhausted part-way through research; several planned confirmations (UI3 inspector section order per selection type, pages-panel context menu, assets-panel UI3 behavior, layer search) could not be searched and are therefore [KNOW] and listed in §8.
@@ -89,7 +89,7 @@ This area mostly consumes data owned by other areas. The table distinguishes **d
 | `PageNode.type` | `'PAGE'` (REST: `'CANVAS'`) | — | | [API] |
 | `PageNode.name` | string | `"Page 1"` … [KNOW] | Renaming an **empty** page to a divider name makes it a divider. | [API] |
 | `PageNode.isPageDivider` | readonly boolean | false | True only if the page is empty **and** its name consists entirely of `*`, en dashes `–`, em dashes `—`, or spaces. `createPageDivider()` default name is `"---"`. | [API] |
-| `PageNode.backgrounds` | `Paint[]` (single SOLID only) | light grey [KNOW: #F5F5F5 in light theme; verify] | Canvas background; edited in Page section of inspector. REST: `backgroundColor: RGBA`. | [API] [OBS: page properties visible with no selection] |
+| `PageNode.backgrounds` | `Paint[]` (single SOLID only) | light grey [KNOW: #F5F5F5 in light theme; verify §8 V-20] | Canvas background; edited in Page section of inspector. REST: `backgroundColor: RGBA`. | [API] [OBS: page properties visible with no selection] |
 | `PageNode.prototypeBackgrounds` | `Paint[]` (single SOLID) | — | Prototype tab, no selection (PR area). | [API] |
 | `PageNode.flowStartingPoints` | `{nodeId, name}[]` sorted | [] | Shown in Prototype tab with no selection; first = default. | [API] |
 | `PageNode.guides` | `{axis:'X'\|'Y', offset:number}[]` | [] | Ruler guides (CV area); hidden with rulers toggle? see §8. | [API] |
@@ -116,7 +116,7 @@ This area mostly consumes data owned by other areas. The table distinguishes **d
 
 | State | Scope | Default | Evidence |
 | --- | --- | --- | --- |
-| Current page | per file per user | Last page viewed on reopen [KNOW] | [KNOW] |
+| Current page | per file per user | Last page viewed on reopen [KNOW] | [KNOW] (§8 P-07) |
 | Viewport (`center`, `zoom`) per page | per page | Zoom-to-fit on first open [KNOW] | `viewport.center`, `viewport.zoom` (1.0 = 100 %), `bounds` readonly [API]; persistence [KNOW] |
 | Selection per page | per page | [] | [API] (`page.selection` preserved on page switch) |
 | Panel widths, Pages/Layers split position, Pages section collapsed | per user (global) [KNOW] | — | [DOC:360039831974 excerpt] (left sidebar resizable) |
@@ -340,7 +340,7 @@ valid(target, dragged):
 - **Shortcuts**: Lock/unlock selection **⇧⌘L / Ctrl+Shift+L** [DOC:360041596573 excerpt]; Show/hide selection **⇧⌘H / Ctrl+Shift+H** [DOC:360041112614 excerpt]; works on multi-selection [SRC:forum staff, excerpt].
 - **Multi-selection toggle rule** [KNOW, verify §8 V-16]: if *any* selected node is unlocked (resp. visible), the shortcut locks (hides) all; otherwise unlocks (shows) all.
 - **Drag across toggles**: press on a row's lock (or eye) control and drag vertically across other rows; every row the pointer passes receives the **same target state** that the first row received (not individually toggled) [DOC:360041596573 excerpt: "Click on the lock and drag across the layers you want to update"; same-target-state semantics KNOW]. A 2026 forum report ("no longer can hold click to show and hide layers", "toggle layer visibility bug") indicates regressions — parity target is the documented behavior (§8 V-16).
-- **Effective state** [API]: locked if self or any ancestor locked; visible only if self and all ancestors visible. Unlocking a child of a locked parent does not make it interactive on canvas while the parent stays locked [API semantics; DOC excerpt via forum: "not possible to unlock child layers without unlocking the parent" (effective state)].
+- **Effective state** [API]: locked if self or any ancestor locked; visible only if self and all ancestors visible. Unlocking a child of a locked parent does not make it interactive on canvas while the parent stays locked [API effective-state semantics; an unattributed search excerpt also states it is "not possible to unlock child layers without unlocking the parent"].
 - **Canvas consequences**: locked nodes cannot be clicked, marquee-selected or dragged on canvas; hidden nodes are not hit-tested on canvas; both remain selectable in the layers panel and editable in the inspector — "you can still change a hidden layer's position or adjust its properties" [DOC:360041112614 excerpt]. Whether a panel-selected locked node can be **nudged with arrow keys or resized via canvas handles** is unverified (§8 V-16).
 - **Inspector**: UI3 Appearance section contains a visibility (eye) toggle that hides/shows the whole selection [SRC:forum staff workaround; KNOW].
 - **Unlock all**: action "Unlock all objects" (Actions menu / context menu on canvas) unlocks every locked node on the current page [SRC:forum 2021, excerpt]. There is **no** documented "Show all hidden layers" command [SRC:forum 2023 accepted answer].
@@ -681,7 +681,7 @@ Rules [KNOW unless noted; verify T-01..T-04]:
 | Prototype tab | ⌥9 | Alt+9 | S-R | UX |
 | Dev Mode / Inspect | ⌥0 / ⇧D | Alt+0 / Shift+D | S-R, K | out of scope |
 | Rulers | ⇧R | Shift+R | S-R, S-C | UX/CV |
-| Pixel grid | ⚠ ⌘' (D table) vs ⇧' (D inline text) | ⚠ Ctrl+' | D:360041065034 (conflicting), S-R says Ctrl+` | UX |
+| Pixel grid | ⚠ ⌘' (D table) vs ⇧' (D inline text) | ⚠ Ctrl+' | D:360041065034 (conflicting), S-R says Ctrl+backtick | UX |
 | Snap to pixel grid | ⇧⌘' | Ctrl+Shift+' | D:360041065034 | UX/CV |
 | Layout guides (grids) | ⌃G | Ctrl+Shift+4 | S-R, S-C | FR |
 | Outlines | ⌘Y (⚠ ⇧⌘O mentioned in D:360041112614 tip) | ⚠ Ctrl+Shift+3 (R) | S-R | UX |
@@ -817,7 +817,7 @@ Format: `- [ ] **UX-NNN** Name — expected Figma behavior. _Data:_ … _Test:_ 
 - [ ] **UX-010** Locked-row rendering — rows of `locked=true` nodes show a persistent lock indicator; descendants show an inherited (subdued) lock state. _Data:_ `locked` (effective = self ∨ ancestor) _Test:_ lock a frame; child rows show inherited lock; child `locked` stays false. _M1·P0·[API][KNOW]_
 - [ ] **UX-011** Mask rows — the mask layer shows a mask icon and the siblings it masks (rows above it within the same parent) are identifiable as masked. _Data:_ `isMask`, `maskType` _Test:_ Use as mask on bottom rect of a group with 2 shapes above; panel shows mask icon; both shapes indicated as masked; reorder a shape below the mask → no longer masked. _M2·P1·[API]_
 - [ ] **UX-012** Fixed-children section headers — frames with `numberOfFixedChildren > 0` show two header rows separating fixed (top) and scrolling children; frames with 0 show none. _Data:_ `numberOfFixedChildren` _Test:_ set one child "Fixed" in Prototype tab; headers appear; unset → headers disappear. _M7·P1·[API]_
-- [ ] **UX-013** Row hover highlights canvas — hovering a row draws the node's hover outline on canvas (also for nodes inside collapsed/clipped parents); no outline for hidden nodes? (verify). _Data:_ `transient hover` _Test:_ hover each row of fixture; canvas shows outline matching node bounds. _M1·P0·[DOC:360040449873 excerpt]_
+- [ ] **UX-013** Row hover highlights canvas — hovering a row draws the node's hover outline on canvas (also for nodes inside collapsed/clipped parents); no outline for hidden nodes? (verify). _Data:_ `transient hover` _Test:_ hover each row of fixture; canvas shows outline matching node bounds; hidden/clipped cases per V-06. _M1·P0·[DOC:360040449873 excerpt]_
 - [ ] **UX-014** Instance sublayers read-only structure — rows inside an instance (outside slots) cannot be reordered, reparented, deleted or receive drops; they can be selected, renamed (override) and hidden (override). _Data:_ `InstanceNode`, `SlotNode` _Test:_ try dragging an instance child to new index → rejected; hide it → override recorded. _M5·P0·[API][KNOW]_
 - [ ] **UX-015** Large-tree performance — panel virtualizes rows; expanding a frame with 10 000 descendants and scrolling stays ≥ 55 fps; selecting a node at depth 50 reveals it in < 100 ms. _Data:_ `—` _Test:_ synthetic 10k-node page benchmark. _M8·P1·[DECISION]_
 - [ ] **UX-016** Section/component-set child listing — component set rows list variants as children; section rows list contained nodes. _Data:_ `ComponentSetNode.children`, `SectionNode.children` _Test:_ combine 3 components as variants → set row with 3 variant rows. _M5·P1·[API]_
@@ -945,7 +945,7 @@ Format: `- [ ] **UX-NNN** Name — expected Figma behavior. _Data:_ … _Test:_ 
 - [ ] **UX-114** Selection header actions — header shows type label and contextual actions (create component, mask, boolean ▾, etc.) as in Figma UI3. _Data:_ `—` _Test:_ compare header for shape, 2 shapes, instance, image (I-01). _M1·P1·[KNOW]_
 - [ ] **UX-115** List-section controls — each list section supports + add, − remove, per-item visibility, drag reorder and style/variable picker; empty sections show title and + only. _Data:_ `fills/strokes/effects/layoutGrids/exportSettings` _Test:_ add 3 fills, reorder, hide one. _M1·P0·[KNOW]_
 - [ ] **UX-116** Prototype tab structure — no selection: flow starting points + prototype settings; frame: interactions, scroll behavior, overlay settings. _Data:_ `flowStartingPoints`, `prototypeBackgrounds`, `reactions` _Test:_ compare (I-03). _M7·P0·[API][KNOW]_
-- [ ] **UX-117** Inspector panel width — right panel width is user-resizable within limits and persists as UI preference; canvas viewport bounds adjust without moving artwork. _Data:_ `UI pref, viewport.bounds` _Test:_ drag edge; artwork screen position unchanged relative to canvas center? (verify). _M1·P2·[KNOW]_
+- [ ] **UX-117** Inspector panel width — right panel width is user-resizable within limits and persists as UI preference; canvas viewport bounds adjust without moving artwork. _Data:_ `UI pref, viewport.bounds` _Test:_ drag edge; artwork screen position behaves as Figma (I-17). _M1·P2·[KNOW]_
 
 ### 6.10 Inspector fields and mixed values
 
@@ -1087,3 +1087,188 @@ Format: `- [ ] **UX-NNN** Name — expected Figma behavior. _Data:_ … _Test:_ 
 - [ ] **UX-214** No placeholder cloud/AI/plugin entries — no disabled placeholders for AI, plugins, widgets, Dev Mode, Share. _Data:_ `—` _Test:_ menu/toolbar audit. _M1·P1·[DECISION]_
 
 ---
+## 7. Cross-area dependencies
+
+| Area (doc) | What this area needs from it | What it needs from this area |
+| --- | --- | --- |
+| **CV** 01 canvas/selection/transforms | Selection model & normalization, Tab/Enter navigation, deep select, marquee rules for locked/hidden nodes, nudge/arrow semantics, copy/paste variants, arrange & align semantics, rulers/guides math, zoom/pan commands, snapping math, context-menu contents | Layers-panel selection gestures (§3.2), reveal-on-select (§3.3), shortcut bindings & dispatch (§3.9, §5), preferences for nudge/snapping (§3.18), undo grouping rules (§3.13) |
+| **FR** 02 frames/groups/sections/constraints | Container types & nesting rules (sections inside frames?), group bounds, constraints UI in Position section, layout guides data & toggle semantics, frame presets in selection header | Drop rules in layers panel (§3.5), type icons, inspector order for frame/group/section (§4.2) |
+| **AL** 03 auto layout | Flow/wrap/grid enums for row icons; reflow when reparenting by layers-panel drop; Layout section controls | Drop into auto layout at index (UX-051), AL child Position disabling (UX-102) |
+| **VC** 04 shapes/vectors/booleans/masks | Mask semantics, boolean ops, vector edit contextual toolbar, shape-builder tool | Mask row indicators (UX-011), toolbar flyouts (§4.5), shortcuts (§5.6) |
+| **PE** 05 paint/effects/color/export | Fill/Stroke/Effects/Export section contents, selection colors, mixed paints, copy-as-PNG/SVG, color profile | Section order (§4.2), mixed list behavior (UX-119), toast for copy/export |
+| **TX** 06 text | Typography section, text edit mode keys, auto-rename of text layers, find & replace styling preservation, missing-font handling | Rename rules for text (`autoRename`, UX-007/043), find & replace UI (§3.11) |
+| **CP** 07 components | Instance header/properties, overrides on rename/hide of instance sublayers, slots drop rules, swap by Alt-drop, page duplicate → instances | Assets panel (§3.8), instance row read-only rules (UX-014/049), inspector order for component family (UX-108..110) |
+| **DS** 08 variables/styles/libraries | Local styles list in no-selection inspector, variables entry, library manager & local library files, file notifications for library updates | Assets panel library sections (UX-094), notification area (UX-191) |
+| **PR** 09 prototyping | Prototype tab contents, flow starting points, fixed/scrolling children, presentation shortcut | Prototype tab structure (UX-116), fixed-children headers (UX-012/055), page duplicate remaps connections (UX-077) |
+| **IO** 11 file format | Storage of `expanded`, view state, version snapshots, comments, autosave journal & crash recovery, file rename on disk, external-change detection | Requirements of §3.14–§3.15, UX-159..173 |
+| **Design system (Framer look)** | Icons for every layer type & flow, row/section/toast visuals, focus rings | Functional distinctions each icon/state must communicate (§3.1, UX-004..006) |
+| **Architecture** | Command registry shared by menus, actions menu, shortcuts and native menubar; undo transaction API; per-page view state store; virtualized tree component | Command list (§4.6, §5), undo rules (§3.13), performance target (UX-015) |
+
+---
+
+## 8. Needs live Figma verification
+
+Each experiment: **Setup → Action → Record**. Run on Figma Design (UI3) in the desktop app on **macOS and Windows**, current version; record app version, platform, keyboard layout, screenshots/video, and the resulting plugin-API values where possible (a scratch plugin printing `expanded`, `selection`, `name`, `children` order is acceptable). Rows marked *(K/S)* rest only on [KNOW]/[SRC].
+
+### 8.1 Layers panel (V-)
+- **V-02** *(K)* Setup: page with rows A, frame B (expanded, children b1,b2), C. Action: click A, Shift-click C; then click b2, Shift-click A. Record: resulting `selection` and row highlight; whether parents swallow in-range children.
+- **V-03** *(K)* Setup: as V-02. Action: click A, Cmd-click C, Shift-click B. Record: anchor used for the range; result of Cmd-clicking a descendant of a selected node (replace vs ignore).
+- **V-04** *(S)* Setup: 3 selected expanded frames. Action: Cmd/Ctrl-click one chevron; Alt-click one chevron. Record: which frames collapse; recursion depth.
+- **V-05** *(K)* Setup: text layer with 300 characters. Record: auto name length/truncation stored in `name`.
+- **V-06** *(K)* Setup: long layer list scrolled. Action: hover a canvas object whose row is off-screen; hover the row of a hidden layer and of a layer inside a collapsed/clipped parent. Record: row tint? scroll? canvas outline for hidden/clipped nodes?
+- **V-07** *(API model, K labels)* Setup: frame with 1 fixed child. Record: header labels and order in layers panel.
+- **V-08** *(K)* Setup: collapse/expand rows; also a section. Action: Cmd+Z; save & reopen; plugin reads `expanded`. Record: undo effect, persistence, section state.
+- **V-09** *(K)* Action: Cmd+G, Cmd+Alt+G, Create component, Shift+A on selections. Record: default `expanded` of the new container.
+- **V-10** *(K)* Action: rename to empty string, to spaces, to 1 000 chars. Record: stored name.
+- **V-11** *(S)* Setup: expanded nested tree with collapsed sibling. Action: rename with Tab repeatedly, Shift+Tab. Record: visited rows order, whether collapsed children are skipped, behavior at last row, canvas selection.
+- **V-12** *(S/K)* Setup: 5 rects named "a".."e" selected in non-panel order. Action: batch rename using each insert button, Match with plain text and regex (`(\w+)`→`x-$1`), start number 0 and 5. Record: token strings inserted by buttons, numbering order, first vs all occurrences, regex group syntax.
+- **V-13** *(K)* Setup: nested group 3 levels deep. Action: drag a row to below the last child at each indentation x; drop on top/middle/bottom thirds of container and leaf rows. Record: resulting parent/index; indicator geometry.
+- **V-14** *(K)* Action: drag rect into component set, instance, slot, section inside frame, frame into section, section into frame. Record: accepted/rejected.
+- **V-15** *(K)* Action: Alt-drag a row; drag rows in a collapsed parent hover 0.3/0.6/1.0 s. Record: duplicate? auto-expand delay; auto-scroll speed.
+- **V-16** *(K/S)* Setup: 2 selected layers, one locked/hidden. Action: ⇧⌘L, ⇧⌘H; drag across eye icons starting on visible and on hidden rows; select a locked node via panel and press arrows, drag its canvas handles. Record: target states; whether locked nodes move/resize.
+- **V-17** *(K)* Toggle rulers, pixel grid, layout guides, outlines, pixel preview, comments in file A; open file B; restart app. Record: which toggles are global vs per file.
+- **V-18** *(S conflict)* Record the actual shortcuts and behaviors for Outlines (⌘Y vs ⇧⌘O), "show hidden layers in outline", Pixel preview, Pixel grid (⌘' vs ⇧').
+- **V-19** *(K)* Desktop app: View/Main menu interface-scale commands and shortcuts; min/max scale.
+- **V-20** *(K)* New file in light and dark theme: default page background color of the first page and of a newly added page.
+
+### 8.2 Pages (P-)
+- **P-01** *(K)* Files with 1, 3 pages and 1 divider. Action: "+". Record: new name, insertion position, auto-rename, current page.
+- **P-02** *(API/K)* Action: rename empty page to `---` (hyphens), `———`, `***`, `   `; rename non-empty page likewise; check page context menu for a divider command. Record: `isPageDivider`, UI.
+- **P-03** *(K)* Duplicate page containing main components, instances, prototype flows, comments. Record: name of copy, position, component → instance conversion in UI (vs API `clone()` remark), flows remapped.
+- **P-04** *(K)* Try deleting last page, current page, page via keyboard. Record: blocked? confirmation? next current page.
+- **P-05** *(S conflict)* Press PgUp/PgDn, Home/End, N/Shift+N with dividers present. Record: page vs frame navigation, wrapping.
+- **P-06** *(K)* Move to page with selection inside a frame. Record: destination parent, coordinates, current page after move, undo behavior.
+- **P-07** *(K)* Set page 2 current with a zoomed viewport and a selection; close and reopen the file (and open it on a second machine/account). Record: which page, viewport and selection are restored, and whether that state travels with the file.
+
+### 8.3 Assets (A-)
+- **A-01** *(DOC conflict)* Windows: Alt+1/Alt+2 vs Ctrl+1/Ctrl+2. Record which works.
+- **A-02** *(K)* Components named with `/`, inside frames and sections across pages. Record grouping hierarchy.
+- **A-03** *(K)* Click (not drag) a component and a component set. Record: detail view contents, insert placement.
+- **A-04** *(K)* Alt/Option-drop asset onto instance. Record swap and override preservation.
+- **A-05** *(DOC title)* Components `_Base`, `.Base`. Record presence in local Assets.
+- **A-06** *(K)* Right-click asset. Record context menu items.
+
+### 8.4 Inspector (I-)
+- **I-01** *(K)* For each selection type in §4.2, screenshot the selection header row and its action buttons.
+- **I-02** *(OBS partial)* No selection: exact section titles and order (Page, Variables, Styles, Export; "Show in exports").
+- **I-03** *(K)* Prototype tab with no selection / top-level frame / nested layer: section list.
+- **I-04** *(K)* Frame nested in frame vs top-level: where Constraints appear.
+- **I-05** *(K)* Section selected: sections list.
+- **I-06** *(K)* Rectangle, ellipse, polygon, star, vector, boolean group: section lists.
+- **I-07** *(K)* Image-filled rectangle: header Crop control, fill row.
+- **I-08** *(K)* Line and arrow: dimension fields, Fill presence.
+- **I-09..I-11** *(K)* Component, component set, variant, instance: header contents, properties placement, ⋯ menu items.
+- **I-12** *(K)* Text + rectangle selected: is Typography shown? Frame + group: Fill shown?
+- **I-13** *(K)* Selection colors: trigger condition, position, behavior with styles/variables.
+- **I-14** *(K)* Mixed fills: exact affordance text and + behavior.
+- **I-15** *(K)* Scrub with Shift/Alt; scrub on Mixed X values 0 and 100.
+- **I-16** *(K)* Enter vs Tab focus behavior in fields; ↑/↓ step with custom nudge values; math `+10` on Mixed.
+- **I-17** *(K)* Resize the right sidebar and toggle Minimize UI: record whether artwork stays fixed on screen or the viewport re-centers; min/max sidebar widths.
+
+### 8.5 Toolbar (T-)
+- **T-01** *(DOC excerpt/K)* Screenshot toolbar; list flyout contents in order with shortcuts.
+- **T-02** *(K)* Flyout memory across restart; shortcut updates group icon.
+- **T-03** *(K)* Toolbar in vector edit, text edit, image crop, prototype tab.
+- **T-04** *(K)* "Keep tool selected after use" interplay with double-clicking a tool (if any).
+
+### 8.6 Shortcuts (S-)
+- **S-01** *(K/S conflict)* Shortcut to open the keyboard-shortcuts panel on mac (⌃⇧? vs ⌘⇧?); categories; search; "used" marking.
+- **S-02** *(K)* Windows redo: Ctrl+Y support.
+- **S-03** *(K)* Opacity two-digit timing window (e.g. 300 ms? 500 ms?), "00", behavior with text editing.
+- **S-04** *(K)* Actions menu with inapplicable commands (hidden vs disabled).
+- **S-05** *(S)* Current text-link shortcut in text edit mode.
+- **S-06** *(K/S)* Export the full in-app shortcut panel on macOS and Windows and diff it against §5; resolve every ⚠ row (zoom 100 %, distribute, tidy up, text align, pixel grid, outlines, pixel preview, flatten ⌥⇧F, select parent, insert component ⇧I, copy link ⌘L, present).
+- **S-07** *(K)* Actions menu Assets tab: insert location.
+- **S-08** *(DOC)* Non-US layouts (AZERTY, QWERTZ, Dvorak): behavior of letter and punctuation shortcuts; Keyboard layout preference options.
+
+### 8.7 Menus, find, history, comments, undo, notifications, preferences
+- **M-01** *(K)* Capture the full Main menu tree (all submenus, order, shortcuts) on mac and Windows.
+- **M-02** *(K)* Right-click a row vs the same node on canvas: compare menus.
+- **F-01** *(K)* Find: scope options (page/all pages), what is matched (names, text, component names, properties?).
+- **F-02** *(K)* Find: available type filters.
+- **F-03** *(K)* Replace inside a mixed-style range; replace in instance; missing font.
+- **H-01** *(S)* "Save to version history" shortcut and dialog fields.
+- **H-02** *(K)* What Cmd/Ctrl+S does in Figma (desktop and browser).
+- **C-01** *(K)* Comments show/hide shortcut and pin anchoring on frame move/delete.
+- **U-01** *(K)* Undo of a plugin-free multi-step command (batch rename, replace all, duplicate page): one step?
+- **U-02** *(K)* Select A, move A; select B (no change); ⌘Z. Record selection after undo; ⇧⌘Z selection.
+- **U-03** *(K)* Edit page 1; switch to page 2; ⌘Z. Record page switch.
+- **U-04** *(K)* Edit off-screen object, pan away, ⌘Z. Record whether the viewport moves.
+- **U-05** *(K)* Expand/collapse, tab switching, panel resize, view toggles, preferences, then ⌘Z: record what reverts.
+- **U-06** *(K)* Restore a version, then ⌘Z.
+- **U-07** *(K)* Coalescing: rapid arrow nudges, held arrow key, scrub, color picker drag, typing in a text layer.
+- **U-08** *(K)* Undo depth: perform 2 000 edits; count undoable steps; reload and check stack.
+- **N-01** *(K)* Trigger copy link, copy as PNG/SVG, export, detach, missing fonts; record toast text, duration, buttons.
+- **P-PR-01** *(DOC excerpt)* Nudge dialog validation (0, negative, decimals, > 1000) and effect on field arrow steps and font-size Shift step.
+- **P-PR-02** *(K)* "Rename duplicated layers" on/off with ⌘D and Alt-drag.
+- **P-PR-03** *(K)* Capture the complete Preferences submenu.
+
+---
+
+## 9. Sources
+
+### 9.1 Official Figma Help Center articles (IDs from the 2026-09-27 catalog; bodies **not** read in this session)
+
+| ID | Title | How used |
+| --- | --- | --- |
+| 360039831974 | Explore the navigation bar and left sidebar | search excerpt: File/Assets tabs, ⌥1/⌥2, Main vs File menu, sidebar resize, Minimize UI ⇧\\, Hide UI ⌘\\, viewer access |
+| 23954856027159 | Navigating UI3 (not in catalog) | search excerpt: navigation bar; assets & find moving there; file notifications at bottom |
+| 23570416033943 | Use the actions menu in Figma Design | search excerpt: ⌘K/Ctrl+K, toolbar icon, filtering, can-edit access |
+| 9141292269847 | Find and replace in Figma | search excerpt: ⌘F, live results, view vs edit, text-only replace |
+| 360041596573 | Lock and unlock layers | search excerpt: ⇧⌘L, drag across lock icons, edit access |
+| 360041112614 | Toggle visibility to hide layers | search excerpt: ⇧⌘H, eye icon, hidden layers editable, outline tip |
+| 360040449873 | Select layers and objects | search excerpt: row selection, Shift range, Cmd toggle, hover highlight, "Collapse all layers" section |
+| 360038006754 | View a file's version history (not in catalog) | search excerpt: restore non-destructive, duplicate, 30-day limit, viewers |
+| 4404575206295 | Set small and big nudge values | search excerpt: defaults 1/10, points, Preferences ▸ Nudge amount |
+| 360041065034 | Adjust your zoom and view options | search excerpt: Zoom/view menu, ⇧+/⇧-, ⇧1, ⇧2, pixel grid ≥ 400 %, pixel-grid & snap shortcuts, US-QWERTY note, shortcuts panel location |
+| 360049549913 | Adjust the scale of the Figma UI (not in catalog) | search excerpt: reset ⌥⇧⌘0 |
+| 21523793229463 | Identify matching objects | search excerpt: ⌥⌘A / Ctrl+Alt+A |
+| 360039957534 | Boolean operations | search excerpt: ⌥⇧U/S/I |
+| 360041064174 | Access design tools from the toolbar | search excerpt: Move/Hand/Scale flyout; Frame/Section/Slice flyout; Shape tool |
+| 360039956914 | Adjust alignment, rotation, position, and dimensions | search excerpt: Option + A/D/W/S/V/H alignment |
+| 360039958934 | Rename Layers | title only (catalog) |
+| 360039238193 | Hide styles, components, and variables when publishing | title only |
+| 5724448965527 | View layer outlines in Figma Design | title only |
+| 360042553434 | View and adjust colors in a mixed selection | title only |
+| 31616004109847 | Create custom shapes with the shape builder tool | title only |
+| 360039832014 | Design, prototype, and explore layer properties in the right sidebar | title only (old Illigma note claims it was read in full on 2026-09-27; not re-read) |
+| 360040328653 | Use Figma products with a keyboard | title only |
+| 41414918021271 | Hide or minimize the UI | title only |
+| 26584819173271 / 26620239826199 / 26610806345623 | Layers 101 (get started / layer types / combine) | titles only |
+| 360039825314, 360041068574, 360041547593, 360041547853 | Comments guides | titles only |
+| 360040322673, 4403130802199, 29638316371479 | Spotlight, cursor chat, viewer history | titles only (out-of-scope note) |
+
+URL pattern: `https://help.figma.com/hc/en-us/articles/<ID>`.
+
+### 9.2 Typings (read in this session)
+
+`plugin-api.d.ts` v1.141.0: ArgFreeEventType L4–13; `editorType` L29; `notify`/NotificationOptions L223–271; `commitUndo` L294; `triggerUndo` L298; `saveVersionHistoryAsync` L299–338; `root` L460; `currentPage` L466; `setCurrentPageAsync` L470; selectionchange/currentpagechange/documentchange semantics L540–600; `createPage` (Starter 3-page limit) L1121–1135; `createPageDivider` L1137–1147; `getSelectionColors` L1549; ViewportAPI (`center`, `zoom`, `scrollAndZoomIntoView`, `bounds`) L3306–3331; NodeChangeProperty incl. `autoRename` L3776, `expanded` L3828, `flowStartingPoints` L3860; `Guide` L4993; BaseNodeMixin L6306, `name`/divider-name rule L6328–6336; `isAsset` L6448; SceneNodeMixin `visible` L6595, `locked` L6606; ChildrenMixin back-to-front L6972–6974; `insertChild` L7003–7022; BlendMixin / `isMask` L7539–7576; ContainerMixin `expanded` L7603–7607 (used at L9377, L10774, L10798, L11290); `layoutMode` L7686; `layoutWrap` L7821; `numberOfFixedChildren` L9088–9098; DocumentNode L10404; PageNode L10563 (`clone` L10572, `selection` L10614, `selectedTextRange` L10626, `flowStartingPoints` L10638, `backgrounds` L10645, `isPageDivider` L10657); GroupNode L10768; TransformGroupNode L10792; TextNode `autoRename` L11001; ComponentSetNode L11117; SlotNode L11259; BooleanOperationNode L11284; SectionNode L12256 (`sectionContentsHidden` L12273); SceneNode union L12426.
+
+`api_types.ts` v0.44.0: IsLayerTrait L1; CanvasNode (`backgroundColor`, `flowStartingPoints`, `prototypeDevice`, `measurements`) L875–909; FrameOffset L3064; Region L3079; FrameOffsetRegion L3109; Comment L3139; Reaction L3197; Version L3492.
+
+### 9.3 Prior Illigma material (context only)
+- `old/docs/figma/observations/2026-09-27-live-figma.md` — [OBS].
+- `old/docs/figma/features/right-inspector.md` — "Observed" line cited as [OBS]; its implementation notes are **not** Figma evidence.
+- `old/docs/figma/feature-guide.md`, `old/docs/figma/source-catalog.md`, `sources.json` — terminology and article inventory.
+
+### 9.4 Other web sources (search excerpts unless noted)
+- Figma blog, "#FigmaTip Roundup: Spring cleaning edition" — batch rename options: https://www.figma.com/blog/figmatip-roundup-spring-cleaning/
+- Figma blog, "Now you can name and annotate your Figma version history" — 30-min checkpoints, collapsing, ⌥⌘S: https://www.figma.com/blog/now-you-can-name-and-annotate-your-figma-version-history/
+- Raycast "figma-shortcuts" dataset (**downloaded and parsed in full**, 142 bindings; contains errors, e.g. Lock and text-align-left both ⇧⌘L): https://raw.githubusercontent.com/raycast/extensions/main/extensions/figma-shortcuts/src/data/shortcuts.ts
+- Figma forum: Tab to next layer while renaming (2022): https://forum.figma.com/archive-21/renaming-layers-one-by-one-change-layer-selection-on-canvas-as-tab-to-next-17592
+- Figma forum: Tab while renaming inconsistent (2025): https://forum.figma.com/report-a-problem-6/hitting-tab-while-renaming-is-inconsistent-45036
+- Figma forum: Cmd+R caret bug (2024): https://forum.figma.com/ask-the-community-7/renaming-layer-cmd-r-text-selection-bug-31753 ; automatic number order: https://forum.figma.com/t/rename-layers-feature-cmd-r-automatic-number-bug/52691.rss
+- Figma forum: collapse all layers / ⌥L / Alt-click: https://forum.figma.com/report-a-problem-6/collapse-all-layers-39855 ; multi-frame collapse regression (2026-09-24): https://forum.figma.com/share-your-feedback-26/multi-frame-collapse-behavior-no-longer-working-58343 ; https://forum.figma.com/report-a-problem-6/can-t-no-longer-collapse-expand-multiple-layers-simultaneously-56267 ; https://forum.figma.com/suggest-a-feature-11/collapse-layers-no-longer-focuses-on-selected-layers-55694
+- Figma forum: visibility drag/hold regressions (2026): https://forum.figma.com/share-your-feedback-26/no-longer-can-hold-click-to-show-and-hide-layers-55886 ; https://forum.figma.com/ask-the-community-7/toggle-layer-visibility-bug-56529
+- Figma forum: unlock multiple / "Unlock all objects": https://forum.figma.com/archive-21/unlocking-multiple-objects-at-once-24886
+- Figma forum: nudge points 2× bug (2026): https://forum.figma.com/report-a-problem-6/problem-in-nudge-jumping-2px-instead-of-1px-50606 ; big nudge & font size: https://forum.figma.com/t/typography-scaling-with-shift-key/87738
+- Figma forum: find & replace renames layer bug: https://forum.figma.com/ask-the-community-7/find-and-replace-text-not-working-12909
+- Figma forum: copy & paste from version history: https://forum.figma.com/share-your-feedback-26/tip-copy-and-paste-from-version-history-38485
+- Figma forum: UI3 toolbar not dockable: https://forum.figma.com/suggest-a-feature-11/allow-us-to-dock-move-the-new-ui3-toolbar-7861
+- Figma forum: Feb 2025 release notes (boolean shortcuts): https://forum.figma.com/product-updates-3/icymi-all-the-recent-updates-announced-from-today-s-feb-25-release-notes-livestream-37935
+- Figma forum: Cmd+K vs insert link: https://forum.figma.com/suggest-a-feature-11/insert-link-keyboard-shortcut-9852
+- UX Planet, find & replace options: https://uxplanet.org/figma-find-and-replace-5a9d6ada02b3 ; batch rename guide: https://uxplanet.org/figma-rename-layers-4ade4a79da7e
+- Design+Code, version history: https://designcode.io/figma-handbook-version-history
+- Uxcel, toolbar shape tools: https://uxcel.com/lessons/figma-toolbar-419
+- Cheat sheets (text align ⌥⌘L/T/R/J, zoom ⇧0, N/⇧N, PgUp/PgDn): https://linuru.com/figma/ ; https://video.pie-menu.com/figma-cheat-sheet.pdf ; https://nobledesktop.com/shortcuts/figma/mac ; https://www.devlinpeck.com/downloads/figma-keyboard-shortcuts.pdf ; https://verpex.com/blog/essential-figma-shortcuts-you-need-to-know
+- Keyboard-layout preference mirror: https://figma-signup.helpjuice.com/change-your-preferences/select-keyboard-layout

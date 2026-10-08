@@ -398,7 +398,7 @@ heal(v): require deg(v) == 2 with segments A = (a→v), B = (v→b)
 ### 3.12 Boolean groups
 
 - Select at least two supported layers and pick an operation from the *Boolean operations* menu [DOC:360039957534 excerpt] (in UI3 the menu is less prominent than in UI2 [SRC:forum.figma.com/…/where-in-ui3-are-the-boolean-operations…-29050]). Supported operands: shapes, vectors, text (and nested booleans); not frames or sections [DOC:360039957534 excerpt][KNOW for nesting].
-- Result: a `BOOLEAN_OPERATION` node containing the selected layers, named after the operation ("Union", …) [SRC/DOC lesson 31130266267287 excerpt][API].
+- Result: a `BOOLEAN_OPERATION` node containing the selected layers, named after the operation ("Union", …) [DOC:31130266267287 excerpt][API].
 - Styling: Union (and, believed, Intersect and Exclude) take fill, stroke and effects from the **top** layer; Subtract takes them from the **bottom** layer; all editable afterwards on the group [DOC:360039957534 excerpt][KNOW for Intersect/Exclude].
 - Non-destructive: children keep position, size, rotation and corner radius, all editable; their own fill/stroke/effects/opacity have no effect while inside [DOC:360039957534 excerpt][DOC:31130266267287 excerpt].
 - Geometry ([KNOW] for n-ary semantics, verify §8 E-33):
@@ -496,8 +496,8 @@ Evidence per row; anything not [DOC] is listed in §8 E-50.
 
 | Action | macOS | Windows | Evidence |
 | --- | --- | --- | --- |
-| Rectangle | R | R | [SRC:uxcel][KNOW] |
-| Ellipse | O | O | [SRC:uxcel][KNOW] |
+| Rectangle | R | R | [API "similar to using the R shortcut followed by a click"][SRC:uxcel] |
+| Ellipse | O | O | [API "similar to using the O shortcut followed by a click"][SRC:uxcel] |
 | Line | L | L | [SRC:uxcel][KNOW] |
 | Arrow | ⇧L | Shift+L | [DOC:360040450133 excerpt] |
 | Polygon, Star | — (menu) | — (menu) | [SRC:uxcel "no shortcut found"][KNOW] |
@@ -824,3 +824,171 @@ All items: **Not started**. Format: `ID name — expected Figma behavior. Data. 
 - [ ] **VC-235** File-format round trip — every property in §2 (incl. `arcData`, region fills, vertex overrides, `maskType`, `booleanOperation`, slices) survives save → close → open. _Data:_ file format _Test:_ golden-file test of a fixture page. _M0·P0·[API]_
 - [ ] **VC-236** Rendering accuracy — rendered fills/strokes of this area match Figma's PNG exports within 1 px / ΔE < 2 for a fixture set (Illigma acceptance criterion, not a Figma claim). _Data:_ — _Test:_ fixture comparison harness. _M8·P1·[KNOW]_
 - [ ] **VC-237** Interactive performance — editing networks with ≥1 000 vertices and booleans with ≥20 operands stays interactive (Illigma target, not a Figma claim). _Data:_ — _Test:_ benchmark fixture with frame-time budget. _M8·P1·[KNOW]_
+
+---
+
+## 7. Cross-area dependencies
+
+| Depends on / affects | Sibling spec | Why |
+| --- | --- | --- |
+| Document model, ids, undo/redo, transactions | M0 foundation (01 — canvas/selection/transforms spec, if present) and `11-file-format-interop.md` | Lossless storage of `vectorNetwork`, `arcData`, region fills, vertex overrides, `isMask`/`maskType`, booleans, slices; one-step undo for every command (VC-094, VC-226, VC-235). |
+| Geometry kernel (shared) | — (Illigma infrastructure, M0) | Bézier evaluation/splitting, planar arrangement & face finding (Paint bucket, Shape builder, regions), robust polygon booleans on curves (boolean groups, Shape builder, flatten), stroke outlining with caps/joins/dashes (outline stroke, Vector masks, render), offsetting & simplification. One kernel must serve rendering, hit-testing and export. |
+| Canvas, selection, transforms, snapping | 01 (canvas/selection) and `02-frames-groups-sections-constraints.md` | Click/drag thresholds, smart guides, pixel-grid snapping, Scale tool, flips, target-parent rules for new shapes, deep selection into booleans/mask groups, group bounds. |
+| Containers & clipping | `02-frames-groups-sections-constraints.md` | Mask groups are groups; frame "Clip content" stops masks; flattening frames/sections; constraints on vectors (VC-234). |
+| Auto layout | `03-auto-layout.md` | Drawing into auto-layout frames, LINE height 0 in flow, masks in flow (VC-015/233, VC-217). |
+| Paints, strokes, effects, blend, export | `05-paint-effects-color-export.md` | Fills/strokes UI, stroke caps/joins/dashes panel, image paints (placement, crop), pattern/video paints, effects on masks (feathering), blend modes and flatten, PNG/SVG/PDF export, slices' export settings. Figma Draw brushes and variable-width strokes constrain vectors (variable width impossible on branching networks [API]). |
+| Text | `06-text-typography.md` | Text as boolean operand, flatten/outline of text, text as mask, text on a path (`TEXT_PATH` built from a vector network [API]). |
+| Components & instances | `07-components-variants.md` | Override rules for shape sublayers (no vector edit in instances), flatten breaking swap links, booleans/masks inside components (VC-193, VC-232). |
+| Variables & styles | `08-variables-styles-design-systems.md` | Bindable radius/stroke/size fields; region `fillStyleId`; arc/count not bindable (VC-031, VC-047, VC-231). |
+| Prototyping | `09-prototyping.md` | Smart Animate between shapes/vectors with matching names (interpolating radius, arc, vertex positions) — owned there. |
+| Panels, shortcuts, menus | `10-panels-shortcuts-workflow.md` | Toolbar groups (Shape tools, Creation tools, Region tools), edit-mode secondary toolbar, context menu entries, shortcut table consistency (§5). |
+| Interop | `11-file-format-interop.md` | SVG import/export, clipboard to/from other tools, REST `fillGeometry`/`fillOverrideTable` mapping, `.fig` import of vector networks. |
+| Figma Draw (out of scope here) | — | Transform groups/repeat, brushes, variable width, texture effects; Offset/Simplify/Split vector are Draw-era but specified here as P2. |
+
+---
+
+## 8. Needs live Figma verification
+
+Each experiment: **setup → action → record**. Run in current Figma Design (UI3) on macOS and Windows where shortcuts differ; record the Figma version/date, zoom, and export the result (PNG 1×/2× + SVG + plugin-console dump of the node JSON) so tests can be generated. Until run, the dependent items stay unaccepted.
+
+| # | Covers | Setup → action → record |
+| --- | --- | --- |
+| E-01 | VC-008, VC-009 | Empty page, 100 % zoom → R, single click at a known canvas point (read from rulers) → record x/y/w/h (top-left vs centre at click); repeat at 25 % and 400 % with 1, 2, 3, 5 screen-px jitter → record the click/drag threshold. Repeat for O, L, ⇧L, Polygon, Star, Slice. |
+| E-02 | VC-003 | Rectangle tool, ⇧-drag a 100×40 and a 40×100 delta → record which axis wins (max, min, or dominant direction). Same for ellipse/polygon/star. |
+| E-03 | §3.1, VC-002, VC-050 | Polygon and Star: drag down-right vs up-left vs up-right → record whether the triangle/star is flipped (negative scale in transform) or always apex-up. Line: drag right-to-left → record `rotation` and which end is the start (affects arrowheads). |
+| E-04 | VC-011 | Create Rectangle ×3, delete #2, create again; repeat on a second page → record name numbering (per page, per file, gap reuse). Record names created by Arrow, Pen, Pencil, Place image, booleans, mask groups, slices, flatten. |
+| E-05 | VC-015, VC-233 | Horizontal auto-layout frame with 3 children → draw a rectangle inside between child 1 and 2 → record flow insertion index vs absolute positioning. Add a line, a boolean group and a mask group as children → record sizing options shown and how a LINE's height behaves. |
+| E-06 | VC-016 | R: drag exactly horizontally 100 px (0 px vertical) → record resulting height (0.01? 1? default?). Same with ellipse. |
+| E-07 | VC-024 | 100×40 rectangle, radius 999 → record displayed field value, exported SVG radius, and plugin `cornerRadius`. |
+| E-08 | VC-025 | 100×100 rectangles with radii (TL,TR,BR,BL) = (80,40,0,0), (100,100,0,0), (90,20,90,20) → export SVG paths and record effective corner extents; compare with the candidate proportional algorithm in §3.2. Repeat with smoothing 60 %. |
+| E-09 | VC-026 | Rectangle selected at various zooms → record the on-screen size below which radius handles disappear; drag a handle with and without ⌥/⇧ → record which corners change and tooltip content. |
+| E-10 | VC-028 | 200×200 r=40 with ξ ∈ {0, 0.3, 0.6, 1}; and 100×50 r=25 with ξ=0.6 (pill) → export SVG, compare to the `figma-squircle` formula (within 0.1 px); record whether smoothing is reduced when budget is exceeded. |
+| E-11 | VC-037, VC-038 | Circle: drag the sweep handle up to 12 o'clock and down to 6 o'clock → record tooltip % and plugin `arcData`. Then drag the Start handle 90° → record whether `endingAngle` moves with it. Record Shift-snapping increments on all three handles. |
+| E-12 | VC-043 | 200×100 ellipse with arcData {0, π/4, 0} → export SVG; determine whether the end point lies at parametric angle π/4 (x=100+100·cos45°, y=50+50·sin45°) or at the geometric 45° ray. |
+| E-13 | VC-049…VC-057 | Create polygon and star by click; record default `innerRadius`; type counts 2, 5.6, 60, 61, 100; drag each on-canvas handle; export 100×100 triangle, pentagon and 5-point star as SVG → record vertex coordinates (box-fitting rule, first-vertex orientation); radius 8 on a star → record which vertices round. |
+| E-14 | VC-045 | Select an ellipse in UI3 → record whether the properties panel offers numeric Start/Sweep/Ratio fields (and their units/ranges). |
+| E-15 | VC-063, VC-065, §3.5 | ⇧L arrow → record node type (LINE/VECTOR), name, which end has the head, default head type, and the Stroke panel controls offered for start/end. Set each endpoint option → record plugin `strokeCap` (node and per-vertex) to confirm the UI→enum mapping, incl. whether "Circle arrow" exists. |
+| E-16 | VC-059, VC-060, VC-062 | Draw lines in 8 directions with/without ⇧ and ⌥ → record `rotation` sign convention, 45° snapping, and whether ⌥ draws from centre. |
+| E-17 | VC-071…VC-077 | ⌘⇧K with 3 images (640×480, 6000×3000, animated GIF): click to place, drag to place, click on an existing rectangle and on a frame, look for "place all" → record node types, sizes (incl. >4096 downscaling), names, fill scale mode, and whether drag is aspect-locked. Drag-and-drop and paste the same files → record placement point. |
+| E-18 | VC-085 | Pen: 3 clicks → Esc → record mode; Esc again → record; Enter variants. Record whether ⌘/Ctrl or Space have special meaning during pen drawing. |
+| E-19 | VC-089 | Pen-draw an open path and a closed path on light canvas and inside a dark frame → record default stroke colour/weight/cap/join, fills, and whether closing adds a fill. |
+| E-20 | VC-090, VC-093 | Pen: 4 clicks then ⌘Z ×2 → record vertex count and whether pen continues; press-drag on the first vertex to close → record the closing vertex tangents. |
+| E-21 | VC-081…VC-083 | Pen press-drag: record initial mirroring value of the new vertex; hold ⌥ mid-drag; hold ⇧ mid-drag → record resulting tangents and `handleMirroring`. |
+| E-22 | VC-086…VC-088, VC-092 | Select an existing open vector (not in edit mode), press P, click its endpoint → record whether it continues that path; click a mid-segment → record split behaviour; click an existing vertex → record branch creation. |
+| E-23 | VC-102 | Vector at x=100,y=100; in edit mode drag the left-most vertex 20 px left → record node x/width and the vertex coordinates via plugin. |
+| E-24 | VC-099, VC-146, VC-147 | Square-in-square vector; bucket-remove inner fill → dump `vectorNetwork.regions` (fills present? per-region?); then change node fill colour → record whether the remaining region recolours. Draw two crossing segments without a shared vertex → record whether bucket regions split at the crossing. |
+| E-25 | VC-103, VC-104, VC-143 | "Y"/"+" shaped networks with weight 20, Miter/Round joins → export PNG/SVG, record the join shapes at degree-3/4 vertices. Open path with Inside/Outside alignment → record rendering and whether the UI allows it. Record whether a per-vertex join control exists. |
+| E-26 | VC-124, VC-125 | Vertex with handles of length 20/40 at non-opposite angles → switch mirroring to Angle, then Angle & length → record immediate changes. ⌥-drag one handle of a mirrored vertex → record the resulting `handleMirroring`. |
+| E-27 | VC-109, VC-118 | In edit mode with vertex selected / none selected: press Esc, Enter, click Done, click empty canvas, click another layer → record the resulting mode and selection. |
+| E-28 | VC-112, VC-115, VC-116, VC-133 | Click a segment → record selection display and inspector; drag it (Move sub-tool) → translate or bend? Delete it → record surviving vertices. Select 2 vertices → record X/Y/W/H fields shown. |
+| E-29 | VC-135, VC-136, VC-138 | ⇧Delete on an endpoint and on a degree-3 vertex → record. ⌥-click a vertex with/without bucket fills → record. Two open paths in one vector: select the two facing endpoints → right-click/⌘J "Join selection" → record whether a segment is added or points merge, and behaviour when points coincide. |
+| E-30 | VC-157, VC-159 | Pencil: draw 3 strokes in a row on light canvas and on a dark frame → record layer count, tool persistence, stroke colour/weight/caps, number of points created for a 300 px stroke. |
+| E-31 | VC-032, VC-160…VC-163 | For rect (r=16), ellipse, 25 % arc, ring, polygon, star: Enter edit mode → Esc without changes → record type; then nudge one vertex → record type, vertex/segment counts, per-vertex corner radius, name. |
+| E-32 | VC-128, VC-129 | Bend a straight 100 px segment by dragging its midpoint 30 px → record resulting tangents (does the curve pass through the pointer?). |
+| E-33 | VC-168, VC-171, VC-172 | Three overlapping circles in Venn layout coloured red (bottom), green, blue (top) → apply each operation → record result geometry (SVG) and which child's styling the group receives. |
+| E-34 | VC-177, VC-186 | Try booleans with: frame+rect, group+rect, instance+rect, text+rect, section+rect, layers in different parents → record availability, resulting parent and positions. |
+| E-35 | VC-180, VC-181, VC-184, VC-185 | Boolean with an open stroked path operand and a stroke-only closed shape → record contribution. Non-overlapping Intersect → record bounds/selection. Subtract result smaller than operands → record boolean x/y/w/h. Set cornerRadius 10 on a Union of two rects → record effect. |
+| E-36 | VC-189 | Flatten red rect (Multiply) under blue ellipse (Normal) with drop shadow → record result name, z-index, fills, blend mode, effects, and whether strokes stay strokes. Flatten a rotated rectangle → record rotation baked or kept. |
+| E-37 | VC-196 | Rectangle with fill + 8 px inside stroke → Outline stroke → record resulting layer structure (one vector? group?) and paints. Repeat with centre/outside alignment and with a dashed open path with arrowheads. |
+| E-38 | VC-201 | Select circle + image (no common group) → ⌃⌘M → record group name and structure. Then inside an existing group select a single layer → ⌃⌘M → record whether a new group is created. |
+| E-39 | VC-208 | Select a mask layer → record where Alpha/Vector/Luminance is chosen in UI3 and the default shown. |
+| E-40 | VC-215 | Use as mask with a group, a frame (with clip on/off), an instance, a text layer and a boolean as the mask → record allowed/denied and rendering. |
+| E-41 | VC-213, VC-216 | Hide the mask layer → record masked content visibility. Click on a masked-out area of an image → record whether it gets selected. |
+| E-42 | VC-217 | Auto-layout frame containing mask + 2 children → record spacing, whether the mask occupies flow space, and absolute-position options. |
+| E-43 | VC-220, VC-224 | S then click; S then drag over a frame and over empty canvas → record default size, parent, default export settings, layers-panel icon. |
+| E-44 | VC-149…VC-152 | Shape builder with two vectors vs one vector with self-overlap; drag across 3 regions; ⌥-click; record resulting layer names, paints and z-order. |
+| E-45 | VC-144, VC-145 | Paint bucket on a figure-8 (self-intersecting single loop) and on nested squares → record region detection and the +/− cursor states. Record whether the shortcut is ⇧B or B. |
+| E-46 | VC-232 | Instance of a component containing rect, star, vector, boolean and mask group → try: change radius, change star count, enter vector edit, change boolean op, toggle mask, flatten → record which are allowed as overrides. |
+| E-47 | VC-226, VC-227 | Scripted sequence (draw, scrub radius, pen 5 points, bend, heal, union, flatten) → count undo steps to return to empty. |
+| E-48 | VC-230 | Export rect (r=0 and r>0), ellipse, arc, ring, polygon, star, branching vector with region fills, boolean, mask group as SVG with default settings → record element types used (`rect`/`ellipse`/`path`/`mask`/`clipPath`). |
+| E-49 | VC-010 | Create each shape type → record exact default fill hex/opacity and stroke defaults (light and dark canvas). |
+| E-50 | §5 | Open Figma's keyboard-shortcut panel on macOS and Windows → confirm every row of §5 marked [KNOW]/[SRC] (place image, slice, booleans, ⌘J, ⌘A in edit mode, bend modifier, flatten alternative ⌥⇧F reported in a forum post). |
+
+---
+
+## 9. Sources
+
+### 9.1 Typings read in this session [API]
+
+Figma Plugin API typings **v1.141.0** — `refs/_figma_plugin-typings/package/plugin-api.d.ts`:
+
+| Lines | Content |
+| --- | --- |
+| 910–931 | `createRectangle()` — 100×100, default fill, "similar to using the R shortcut followed by a click" |
+| 932–955 | `createLine()` — width 100, black stroke weight 1; `strokeCap = 'ARROW_LINES'` example |
+| 956–980 | `createEllipse()` — "similar to using the `O` shortcut followed by a click"; `arcData` example (0 → π, innerRadius 0.5) |
+| 981–1005 | `createPolygon()` — triangle default |
+| 1006–1033 | `createStar()` — 5 points default |
+| 1034–1041 | `createVector()` — empty network |
+| 1180 | `createSlice()` |
+| 1333–1355 | `createTextPath()` (out of scope) |
+| 1442–1453 | `createBooleanOperation()` deprecated in favour of `union/subtract/intersect/exclude` |
+| 1734 | `createNodeFromSvg()` — "equivalent of the SVG import feature" |
+| 1742–1778 | `createImage()` / `createImageAsync()` — PNG/JPEG/GIF, max 4096 px |
+| 1870–1959 | `group`, `transformGroup`, `flatten` (≈ ⌘E), `union`, `subtract`, `intersect`, `exclude`, `ungroup` (≈ ⌘⇧G) |
+| 4285–4289 | `ArcData` |
+| 4749–4782 | `ImagePaint` (`scaleMode`, `imageTransform`, `scalingFactor`, `rotation`, `filters`) |
+| 5072–5095, 5120–5160 | export settings (`contentsOnly`, `useAbsoluteBounds`, `svgSimplifyStroke` default true at 5139) |
+| 5325–5450 | `WindingRule`, `VectorVertex`, `VectorSegment`, `VectorRegion`, `VectorNetwork`, `VectorPath`, `VectorPaths` |
+| 5498 | `MaskType` |
+| 6641 | `boundVariables` note on corner-radius binding |
+| 6910–6935 | `VariableBindableNodeField` |
+| 7337–7348 | `LayoutMixin` (`constrainProportions` deprecated) |
+| 7440–7482 | `resize` (≥ 0.01; LINE height exactly 0), `rescale` (Scale tool) |
+| 7539–7584 | `BlendMixin.isMask`, `maskType` (subsequent-sibling semantics, default ALPHA) |
+| 7622–7632 | `StrokeCap`, `StrokeJoin`, `HandleMirroring` |
+| 8648–8708 | `MinimalStrokesMixin` (`strokeJoin`, `strokeAlign` doubling/masking note, `dashPattern`, `strokeGeometry`) |
+| 8717–8727 | `IndividualStrokesMixin` |
+| 8886–8908 | `GeometryMixin` (`strokeCap` degree-1 rule, `strokeMiterLimit`, `outlineStroke()`, `fillGeometry`) |
+| 8913–8936 | `ComplexStrokesMixin` (variable width not on branching networks) |
+| 8938–8977 | `CornerMixin` (clamp rule, smoothing 0–1, 0.6 = iOS), `RectangleCornerMixin` |
+| 9112–9131 | `VectorLikeMixin` |
+| 9360–9370 | `DefaultShapeMixin` |
+| 10792–10816 | `TransformGroupNode` (out of scope) |
+| 10817–10825 | `SliceNode` |
+| 10827–10943 | `RectangleNode`, `LineNode`, `EllipseNode`, `PolygonNode`, `StarNode` (`innerRadius` doc), `VectorNode` |
+| 11016–11070 | `TextPathNode` (out of scope) |
+| 11284–11303 | `BooleanOperationNode` |
+| 12822–12855 | `TransformModifier` (out of scope) |
+
+Figma REST API types **v0.44.0** — `refs/_figma_rest-api-spec/package/dist/api_types.ts`: 140–153 (`rectangleCornerRadii` variable aliases), 504–548 (`HasGeometryTrait`: `fillOverrideTable`, `fillGeometry`, `strokeGeometry`, REST `strokeCap` enum incl. `LINE_ARROW`/`TRIANGLE_ARROW`/`WASHI_TAPE_*`, `strokeMiterAngle` default 28.96°), 551–600 (strokes traits), 612–631 (`CornerTrait`, `rectangleCornerRadii` order TL,TR,BR,BL), 641–667 (`HasMaskTrait`: ALPHA/VECTOR/LUMINANCE definitions, deprecated `isMaskOutline`), 806–836 (shape trait composition), 940–955 (`BooleanOperationNode`), 1006–1109 (Vector/Star/Line/Ellipse/RegularPolygon/Rectangle/TextPath/TransformGroup/Slice nodes), 2153–2190 (`Path` with `overrideID`; `ArcData`: "0° is the x axis and increasing angles rotate clockwise").
+
+### 9.2 Official Figma articles (catalog IDs, retrieved 2026-09-27; only search excerpts seen) [DOC]
+
+| ID | Title | Used for |
+| --- | --- | --- |
+| 360040450133 | Shape tools | tools menu, Shift/Alt modifiers, Arrow ⇧L, star Count 3–60 / Ratio / three handles, 5-point default |
+| 360040450173 | Arc tool: create arcs, semi-circles, and rings | Sweep/Start/Ratio handles, % tooltip and sign, ring recipe |
+| 360040450213 | Vector networks | branching, Paint bucket stripes and +/− cursor, regions, multi-layer Shift-click |
+| 360039957634 | Edit vector layers | entering edit mode, secondary toolbar, Bend, mirroring modes, Paint ⇧B, Lasso Q |
+| 360039957534 | Boolean operations | four ops, styling source, non-destructive children, supported types, Ungroup |
+| 31130266267287 | FD4B Combine shapes using boolean operations (lesson) | "Union" group naming, child edits have no effect |
+| 360040450253 | Masks | Alpha/Vector/Luminance, Use as mask, ⌃⌘M / Ctrl+Alt+M, mask group, scope, feathering |
+| 31616004109847 | Create custom shapes with the shape builder tool | merge/extract/⌥-remove, destructive |
+| 30101373312279 | Flatten layers | ⌘E, containers, text, destructive |
+| 33052305733015 | Convert strokes to vector paths | ⌥⌘O, legacy shortcut preference, dashes, style colour |
+| 33792861450263 | Offset a vector path | Amount, Join |
+| 33792593975575 | Simplify a vector path | slider, manual Lasso + ⇧Delete heal |
+| 4402723791511 | Sketch on the canvas with the pencil tool | ⇧P, 3 px round black default, Shift straight |
+| 31440438150935 | Draw with illustration tools | Draw-mode Pencil, automatic point placement |
+| 31440394517143 | Explore Figma Draw | scope boundary (not searched individually) |
+| 31440427042839 | Create patterns with transforms | scope boundary (transform groups) |
+| 360041064174 | Access design tools from the toolbar | Pen/vector networks, pencil smoothing |
+| 360050986854 | Adjust corner radius and smoothing | Independent corners, smoothing slider, iOS 60 %, whole-shape only |
+| 360049283914 | Apply and adjust stroke properties | endpoint types, line-arrow sizing, one-ended arrows via edit mode |
+| 360040028114 | Export static designs from Figma | Slice tool in Region tools, slice export semantics |
+| 30965205437975 | What's new from Config 2025 | shape builder, lasso, multi-edit under enhanced vector editing |
+| developers.figma.com/docs/plugins/api/VectorNetwork | Plugin docs (official) | regions defaults and loop validity |
+| 360040028034 | Add images and videos to designs | **not searched** (budget exhausted) — image placement rules are [KNOW] |
+
+### 9.3 Other web sources [SRC] (search excerpts unless noted)
+
+- Figma community forum: `where-in-ui3-are-the-boolean-operations-i-e-union-subtract-intersect-exclude-29050`; `please-fix-flatten-command-35696`; `t/how-to-flatten-a-logo-with-blend-modes/4832`; `add-some-variables-for-the-arc-tool-please-35882`; `unable-to-delete-and-heal-option-click-if-you-have-b-filled-a-vector-23209`; `is-there-any-way-to-revert-the-outline-stroke-shortcut-to-how-it-used-to-be-31463`; `simplify-vector-and-offset-vector-incorrectly-placed-at-end-of-figma-menu-51615` (March 2026); `icymi-check-out-all-of-the-recent-updates-from-the-july-25-release-notes-livestream-43455`; `corner-smoothing-on-pills-13144`; `how-can-i-disable-pen-pressure-in-pencil-tool-45313`; `stroke-cap-big-circle-24751`; `i-can-t-use-vector-join-selection-with-my-vector-paths-38970` and a March 2025 reply citing Join Selection ⌘J; a July 2025 thread on Bend-tool default mirroring.
+- Figma blog titles only (bodies not read): "Delete and Heal for Vector Networks" (figma.com/blog/delete-and-heal-for-vector-networks), "Desperately seeking squircles" (linked from the typings).
+- `figma-squircle@1.1.0` from registry.npmjs.org — **source read** (`src/draw.ts`, `src/distribute.ts`); an unofficial reimplementation, explicitly "does not guarantee to produce the same results as you would get in Figma".
+- squircle.js.org/blog/figma-corner-smoothing-on-the-web (smoothing range, no effect without radius).
+- uxcel.com lessons (shape shortcuts, Pencil location ⇧P), designcode.io/figma-handbook-apple-watch-ring (arc recipes), codefinity/layerpath pen-tool tutorials (Shift 45°, Alt break handles, close on first point, Esc), madebyevan.com/figma/introducing-vector-networks (title only).
+
+### 9.4 Prior Illigma context (not copied)
+
+`scratchpad/old/docs/figma/source-catalog.md` (article IDs), `feature-guide.md` §9–§10 (scope reminders), `observations/2026-09-27-live-figma.md` [OBS] (inspector sections only; explicitly did not establish vector/mask behavior).

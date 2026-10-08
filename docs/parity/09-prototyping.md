@@ -848,3 +848,205 @@ Format: `- [ ] **PR-NNN** Name — expected Figma behavior. _Data:_ … _Test:_ 
 - [ ] **PR-###** Large & scrolling overlays — Overlays larger than the viewport are clipped/positioned per Figma; overlays with overflow scroll internally (V-11). _Data:_ `overflowDirection`. _Test:_ V-11. _M7·P1·[KNOW]_
 - [ ] **PR-###** Overlay background blur — A background-blur effect on the overlay frame blurs the screen beneath in the player. _Data:_ overlay `effects`. _Test:_ overlay with background blur 20. _M7·P2·[SRC:forum.figma.com/suggest-a-feature-11/add-background-blur-when-opening-overlay-21951]_
 - [ ] **PR-###** No actions on implicit close — Close-on-click-outside cannot run extra actions. _Data:_ n/a. _Test:_ confirm no UI to attach actions. _M7·P2·[SRC:forum.figma.com/t/action-when-closing-overlay-when-clicking-outside/85912]_
+
+### 6.8 Multiple actions & conditionals
+
+- [ ] **PR-###** Multiple actions per trigger — One trigger can hold an unlimited number of actions, executed top to bottom. _Data:_ `Reaction.actions[]`. _Test:_ 12 Set variable actions incrementing a counter in order; text shows each step's expected final value. _M7·P0·[DOC:15253220891799 excerpt]_
+- [ ] **PR-###** Reorder actions — Actions reorder by dragging their handle; any action can be dragged into/out of a Conditional block. _Data:_ order of `actions`, `conditionalBlocks[].actions`. _Test:_ drag; read order. _M7·P1·[DOC:15253220891799 excerpt]_
+- [ ] **PR-###** Sequential animations — When several actions animate, each runs after the previous animation finishes. _Data:_ runtime. _Test:_ Navigate (Dissolve 1000 ms) then Scroll to (animate 1000 ms); record timeline: ~2000 ms total. _M7·P0·[DOC:15253220891799 excerpt]_
+- [ ] **PR-###** Order changes outcome — Set variable then Conditional differs from Conditional then Set variable, exactly as in Figma's example. _Data:_ order. _Test:_ reproduce both orders; record resulting screen. _M7·P0·[DOC:15253220891799 excerpt]_
+- [ ] **PR-###** Action context after navigation — Behavior of actions placed after a navigation in the same list (which screen Change to/Scroll to resolve against) matches Figma. _Data:_ runtime. _Test:_ V-20. _M7·P1·[KNOW]_
+- [ ] **PR-###** Input during running actions — Triggers arriving while an action list is mid-animation are queued/ignored exactly as Figma (V-21). _Data:_ runtime. _Test:_ V-21. _M7·P1·[KNOW]_
+- [ ] **PR-###** Conditional if/else — If field takes a boolean expression; true runs the if-actions, false runs the else-actions. _Data:_ `CONDITIONAL`, `conditionalBlocks`. _Test:_ toggle a boolean; click; record branch. _M7·P0·[DOC:15253220891799 excerpt] [API]_
+- [ ] **PR-###** Else block encoding — The else block is a `ConditionalBlock` without `condition`; it may be absent. _Data:_ `condition?`. _Test:_ create if-only and if/else in Figma; read via plugin; Illigma encodes identically. _M7·P0·[API]_
+- [ ] **PR-###** First matching block — With N blocks, only the first block whose condition is true (or the else block) executes. _Data:_ `conditionalBlocks[]`. _Test:_ V-22 (plugin-authored 3-block chain). _M7·P0·[API] [KNOW]_
+- [ ] **PR-###** Runtime supports full data model — Nested Conditionals and else-if chains from imported data execute correctly even if the authoring UI cannot create them. _Data:_ nested `CONDITIONAL`. _Test:_ plugin-authored nested conditional in Figma; same branch results in Illigma. _M8·P1·[API] [SRC:forum.figma.com/t/validating-two-variables-nested-conditionals/47658/2]_
+- [ ] **PR-###** Conditional authoring limits — Illigma's UI allows exactly what Figma's UI allows for nesting and else-if (V-22). _Data:_ UI. _Test:_ V-22. _M7·P1·[SRC:forum.figma.com/t/we-could-use-if-else-if-else-statements/54298]_
+- [ ] **PR-###** Invalid condition — Unsupported operations/format are outlined red in the editor; runtime outcome per V-22. _Data:_ `condition`. _Test:_ type `a ==` and `a & b`; record UI + runtime. _M7·P1·[DOC:15253220891799 excerpt]_
+- [ ] **PR-###** Stacked conditionals — Separate Conditional actions in one list each evaluate in order and see changes made by earlier actions. _Data:_ order. _Test:_ two conditionals where the first's action makes the second true; both branches run. _M7·P1·[SRC:forum.figma.com/t/we-could-use-if-else-if-else-statements/54298]_
+- [ ] **PR-###** No reactive evaluation — Conditions evaluate only when their trigger fires; variable changes alone never fire actions. _Data:_ runtime. _Test:_ change a variable elsewhere; conditional on another layer does not run. _M7·P1·[SRC: forum report via search excerpt]_
+
+### 6.9 Variables & expressions in prototypes
+
+- [ ] **PR-###** Set variable target — Picker lists local variables of all four types (boolean, number, string, color). _Data:_ `SET_VARIABLE.variableId`. _Test:_ record picker list with local + library variables present. _M7·P0·[DOC:14506587589399 excerpt] [SRC:forum.figma.com/ask-the-community-7/can-t-access-published-variables-for-prototyping-33816]_
+- [ ] **PR-###** Library variables read-only — Remote/library variables cannot be Set variable targets but can be read in expressions. _Data:_ `Variable.remote`. _Test:_ V-25. _M7·P1·[SRC:forum…33816]_
+- [ ] **PR-###** Literal values — Value editor per type: toggle for boolean, number field, text field, color picker for color. _Data:_ `variableValue {type, resolvedType, value}`. _Test:_ set each; read `VariableData`. _M7·P0·[API] [KNOW]_
+- [ ] **PR-###** Expressions allowed by type — Expressions accepted for number, string and boolean targets; not for color. _Data:_ `variableValue.type:'EXPRESSION'`. _Test:_ attempt expression on color target; refused. _M7·P0·[DOC:15253194385943 excerpt]_
+- [ ] **PR-###** Bound properties update — After Set variable, every bound property on the visible screen and overlays updates immediately: text content, visibility, width/height, radii, paddings/gaps, opacity, paints; auto layout re-flows. _Data:_ `boundVariables`, `VariableBindableNodeField`. _Test:_ counter bound to text and to a frame width inside hug auto layout; click; record new layout. _M7·P0·[DOC:14506587589399 excerpt] [API]_
+- [ ] **PR-###** Variable change animation — Whether property changes caused by Set variable animate (expected: instant) matches Figma. _Data:_ runtime. _Test:_ V-25. _M7·P2·[KNOW]_
+- [ ] **PR-###** Runtime-only values — Variable values changed in the player never modify the document; closing the player or Restart restores authored values. _Data:_ `PlayerSession.variableValues`. _Test:_ increment counter; Restart → initial value; editor shows unchanged variable. _M7·P0·[SRC:forum.figma.com/ask-the-community-7/re-start-prototype-without-re-setting-variables-29061] [KNOW]_
+- [ ] **PR-###** Mode independence — A runtime value set by Set variable applies regardless of which mode a layer resolves (no per-mode setting). _Data:_ runtime override. _Test:_ V-25. _M7·P1·[SRC:forum.figma.com/suggest-a-feature-11/set-variable-value-for-specific-mode-36362]_
+- [ ] **PR-###** Set variable mode — Switches the current page's mode for the chosen collection; layers whose mode is Auto re-resolve immediately. _Data:_ `SET_VARIABLE_MODE {variableCollectionId, variableModeId}`. _Test:_ Light/Dark collection; button sets Dark; Auto layers switch. _M7·P0·[DOC:14506587589399 excerpt]_
+- [ ] **PR-###** Explicit modes vs Set variable mode — Layers with an explicit mode for that collection keep it (V-25). _Data:_ `explicitVariableModes`. _Test:_ V-25. _M7·P1·[KNOW]_
+- [ ] **PR-###** Number operators — `+ - * /` on numbers. _Data:_ ADDITION, SUBTRACTION, MULTIPLICATION, DIVISION. _Test:_ `count * 2 - 1` with count=3 → 5. _M7·P0·[DOC:15253194385943 excerpt] [API]_
+- [ ] **PR-###** String concatenation — `+` appends strings. _Data:_ ADDITION. _Test:_ `first + " " + last`. _M7·P0·[DOC:15253194385943 excerpt]_
+- [ ] **PR-###** Comparisons — `== != > < >= <=` produce booleans. _Data:_ EQUALS … LESS_THAN_OR_EQUAL. _Test:_ truth table for numbers and strings (`"a" == "a"`). _M7·P0·[DOC:15253194385943 excerpt] [API]_
+- [ ] **PR-###** Logical operators — `and`, `or` combine booleans. _Data:_ AND, OR. _Test:_ `a == 1 and b == 1` (forum example). _M7·P0·[DOC:15253194385943 excerpt] [SRC:forum.figma.com/t/validating-two-variables-nested-conditionals/47658/2]_
+- [ ] **PR-###** NOT / NEGATE / VAR_MODE_LOOKUP — Evaluated per their names when present in data; UI exposure per V-23. _Data:_ ExpressionFunction. _Test:_ V-23 with plugin-authored expressions. _M7·P1·[API]_
+- [ ] **PR-###** Precedence and grouping — Operator precedence and any parentheses support match Figma (V-23). _Data:_ expression tree shape. _Test:_ V-23 (`1 + 2 * 3`). _M7·P1·[KNOW]_
+- [ ] **PR-###** Type coercion — number+string, boolean in arithmetic, comparisons across types behave as Figma (V-23). _Data:_ runtime. _Test:_ V-23. _M7·P1·[KNOW]_
+- [ ] **PR-###** Division by zero — Result and display match Figma (V-23). _Data:_ runtime. _Test:_ V-23. _M7·P2·[KNOW]_
+- [ ] **PR-###** Number display in bound text — Float formatting (decimals, trailing zeros, large numbers) when a number variable feeds a text layer matches Figma (V-23). _Data:_ runtime. _Test:_ V-23 (0.1+0.2, 1/3, 1e7). _M7·P1·[KNOW]_
+- [ ] **PR-###** Expression editor — Typed text with variable tokens (autocomplete by name), literals and operators; invalid input outlined red. _Data:_ `Expression` tree. _Test:_ build `count + 1`; read stored tree: `{ADDITION, [VARIABLE_ALIAS count, FLOAT 1]}`. _M7·P1·[DOC:15253194385943 excerpt] [API]_
+- [ ] **PR-###** Alias resolution — Variable aliases (variable → variable) resolve at evaluation time using runtime overrides and current modes. _Data:_ `VARIABLE_ALIAS`. _Test:_ alias B→A; set A; expression reads B. _M7·P1·[API] [KNOW]_
+- [ ] **PR-###** Missing variable — Actions/expressions referencing a deleted variable show a missing state in the editor and are no-ops at runtime (V-25). _Data:_ dangling `variableId`. _Test:_ V-25. _M7·P1·[KNOW]_
+- [ ] **PR-###** Visibility toggles hotspots — Hiding a layer via a boolean variable removes it from hit testing; showing it restores it. _Data:_ `visible` binding. _Test:_ toggle; click previously-covered hotspot. _M7·P1·[KNOW]_
+
+### 6.10 Transitions
+
+- [ ] **PR-###** Instant — `transition:null`; destination appears immediately. _Data:_ `transition:null`. _Test:_ frame-capture shows no intermediate frame. _M7·P0·[API] [DOC:360040522373 excerpt]_
+- [ ] **PR-###** Dissolve — Destination fades in on top of the current screen over `duration` with `easing`. _Data:_ `DISSOLVE`. _Test:_ 1000 ms linear; capture at 50 %: destination opacity ≈ 0.5 over unchanged source. _M7·P0·[DOC:360040522373 excerpt]_
+- [ ] **PR-###** Move in — Destination moves in from the edge opposite the direction while the current screen stays stationary. _Data:_ `MOVE_IN`, `direction`. _Test:_ V-15. _M7·P0·[DOC:360040522373 excerpt]_
+- [ ] **PR-###** Move out — Current screen moves out in `direction`, revealing the stationary destination. _Data:_ `MOVE_OUT`. _Test:_ V-15. _M7·P0·[DOC:360040522373 excerpt]_
+- [ ] **PR-###** Push — Destination pushes the current screen out; both move together. _Data:_ `PUSH`. _Test:_ V-15. _M7·P0·[DOC:360040522373 excerpt]_
+- [ ] **PR-###** Slide in — Destination slides in over the current screen while the current screen is slightly offset and dims/dissolves (factor V-15). _Data:_ `SLIDE_IN`. _Test:_ V-15. _M7·P1·[DOC:360040522373 excerpt]_
+- [ ] **PR-###** Slide out — Current screen slides out over the destination, which is slightly offset (factor V-15). _Data:_ `SLIDE_OUT`. _Test:_ V-15. _M7·P1·[DOC:360040522373 excerpt]_
+- [ ] **PR-###** Direction convention — LEFT/RIGHT/TOP/BOTTOM mean the direction of motion as in Figma (V-15). _Data:_ `direction`. _Test:_ V-15. _M7·P0·[API] [KNOW]_
+- [ ] **PR-###** Match layers — Directional transitions with "Smart animate matching layers" smart-animate matched layers while the rest performs the directional motion. _Data:_ `matchLayers:true`. _Test:_ V-15 (shared header). _M7·P1·[API]_
+- [ ] **PR-###** Duration — Integer-ms field, default 300 ms, valid range per V-14; stored per §2.11. _Data:_ `duration`. _Test:_ V-14 (enter 0, 1, 99999, 12.6). _M7·P0·[API] [KNOW]_
+- [ ] **PR-###** Spring duration — With spring easings the effective (and displayed) duration is derived from the spring parameters (V-14). _Data:_ `duration`, `easingFunctionSpring`. _Test:_ V-14. _M7·P1·[SRC:forum.figma.com/report-a-problem-6/unable-to-set-correct-spring-animation-duration-through-api-33811]_
+- [ ] **PR-###** Viewport clipping — All transitions render clipped to the device viewport (or screen bounds with no device). _Data:_ runtime. _Test:_ Push with device iPhone; nothing draws over bezel. _M7·P1·[KNOW]_
+- [ ] **PR-###** Fixed layers during transitions — Fixed and sticky layers move with their screen during directional transitions (V-15). _Data:_ runtime. _Test:_ V-15. _M7·P2·[KNOW]_
+- [ ] **PR-###** Time-based animation — Animation progress derives from elapsed time, so dropped frames never lengthen a transition; target display refresh rate. _Data:_ runtime. _Test:_ throttle CPU; 300 ms transition still ends at 300±20 ms. _M7·P0·Illigma quality rule_
+
+### 6.11 Easing
+
+- [ ] **PR-###** Curve menu — Lists Ease in, Ease out, Ease in and out, Linear, Ease in back, Ease out back, Ease in and out back, Custom bezier, Gentle, Quick, Bouncy, Slow, Custom spring, in Figma's order (V-14). _Data:_ `Easing.type`. _Test:_ V-14 record order. _M7·P0·[API] [DOC:360051748654 excerpt]_
+- [ ] **PR-###** Bezier preset values — Each bezier preset evaluates exactly with the parameters in §2.8 (once V-14 confirms). _Data:_ `easingFunctionCubicBezier`. _Test:_ V-14 (select preset → switch to Custom bezier → read seeded numbers). _M7·P0·[KNOW]_
+- [ ] **PR-###** Back easings overshoot — Ease in/out back curves overshoot (values outside 0–1) without clamping, for position, size and opacity (opacity clamped at render only). _Data:_ `EASE_*_BACK`. _Test:_ Smart animate x 0→100 with Ease out back; capture max x > 100. _M7·P0·[API] [DOC:360051748654 excerpt]_
+- [ ] **PR-###** Custom bezier editor — Selecting Custom bezier shows a graph editor seeded with the previously selected curve's values; handles draggable; four numeric fields. _Data:_ `CUSTOM_CUBIC_BEZIER`. _Test:_ choose Ease in → Custom; fields = Ease in values. _M7·P1·[DOC:360051748654 excerpt]_
+- [ ] **PR-###** Custom bezier constraints — x1, x2 limited to [0,1]; y1, y2 unbounded (V-14). _Data:_ `x1,y1,x2,y2`. _Test:_ V-14 (enter x1=1.5, y1=−2). _M7·P1·[KNOW]_
+- [ ] **PR-###** Copy bezier values — Numeric values can be copied/pasted between interactions; custom curves cannot be saved as named presets. _Data:_ none. _Test:_ copy field text to another interaction. _M7·P2·[DOC:360051748654 excerpt]_
+- [ ] **PR-###** Spring presets — Gentle, Quick, Bouncy, Slow use the parameters in §2.8 (once V-14 confirms). _Data:_ `GENTLE|QUICK|BOUNCY|SLOW`. _Test:_ V-14 (preset → Custom spring → read seeded values). _M7·P0·[API] [KNOW]_
+- [ ] **PR-###** Custom spring — Editable stiffness, damping, mass (ranges V-14); `initialVelocity` preserved (default 0; REST import has none). _Data:_ `easingFunctionSpring`. _Test:_ V-14. _M7·P1·[API]_
+- [ ] **PR-###** Spring solver — Spring progress follows the damped-oscillator solution in §3.14 within 0.5 % of a reference implementation at 1 ms steps. _Data:_ runtime. _Test:_ golden curves for each preset compared to frame captures from Figma (V-14). _M7·P0·[KNOW]_
+- [ ] **PR-###** Easing scope — Easing applies to every non-instant transition including Scroll to animation and Change to. _Data:_ `transition.easing`. _Test:_ Scroll to with Linear vs Ease in: different capture curves. _M7·P1·[API]_
+
+### 6.12 Smart animate
+
+- [ ] **PR-###** Layer matching — Layers match when their name path below the screen is equal (screen names ignored), considering hierarchy and order. _Data:_ `name`, tree. _Test:_ V-26 cases "same name different parent", "renamed screen". _M7·P0·[DOC:360039818874 excerpt] [SRC:forum.figma.com/t/what-are-the-layer-matching-rules-of-smart-animate/5935]_
+- [ ] **PR-###** Duplicate names — Sibling layers with identical names pair up in layer order (V-26). _Data:_ order. _Test:_ V-26. _M7·P1·[SRC:figma.com/blog/announcing-smart-animate-and-advanced-transitions/]_
+- [ ] **PR-###** Type compatibility — Matching across different layer types follows Figma (V-26). _Data:_ `type`. _Test:_ V-26 (rect→ellipse, frame→group, text→text). _M7·P1·[KNOW]_
+- [ ] **PR-###** Unmatched layers — Layers only in the destination dissolve in; layers only in the source dissolve out. _Data:_ runtime. _Test:_ add a badge in destination; capture fade. _M7·P0·[DOC:360040522373 excerpt]_
+- [ ] **PR-###** Unchanged layers — Matched layers with identical properties are not animated. _Data:_ runtime. _Test:_ capture shows no change. _M7·P1·[DOC:360040522373 excerpt]_
+- [ ] **PR-###** Animatable properties — Exactly Figma's set (expected: x, y, width, height, rotation, opacity, solid fill/stroke color, corner radius, blur …; V-26) interpolate. _Data:_ node properties. _Test:_ V-26 property matrix. _M7·P0·[SRC:figanimations.com/blogs/the-complete-guide-to-smart-animate-in-figma] [KNOW]_
+- [ ] **PR-###** Unsupported changes — Shape morphs (different geometry) and other unsupported properties (shadows per article, V-26) jump or crossfade exactly as Figma. _Data:_ runtime. _Test:_ V-26. _M7·P1·[DOC:360040522373 excerpt]_
+- [ ] **PR-###** Rotation path — Rotation interpolates along Figma's path (shortest vs numeric, e.g. 10°→350°) (V-26). _Data:_ `rotation`. _Test:_ V-26. _M7·P2·[KNOW]_
+- [ ] **PR-###** Text layers — Content, font size and color changes in matched text layers animate/crossfade as Figma (V-26). _Data:_ `characters`, text style. _Test:_ V-26. _M7·P1·[KNOW]_
+- [ ] **PR-###** Instances & variants — Children of matched instances (also across variant changes via Change to) are matched by path and animated. _Data:_ instance subtree. _Test:_ toggle switch component (knob moves) with Smart animate 300 ms. _M7·P0·[DOC:360061175334 excerpt] [KNOW]_
+- [ ] **PR-###** Auto layout — Smart animate interpolates between the resolved (laid-out) positions/sizes of auto-layout children. _Data:_ resolved layout. _Test:_ list item expands in destination; siblings slide. _M7·P0·[KNOW]_
+- [ ] **PR-###** Overlay fallback — Smart animate is not applied to Open overlay (overlays are new frames). _Data:_ runtime. _Test:_ V-26 (force via plugin: record what Figma does). _M7·P1·[DOC:360040522373 excerpt]_
+- [ ] **PR-###** No matches — Smart animate with no matching layers behaves like Dissolve. _Data:_ runtime. _Test:_ two unrelated screens. _M7·P1·[DOC:360040522373 excerpt]_
+- [ ] **PR-###** Scroll offset continuity — Matched scroll containers animate between their scroll offsets per Figma (V-26). _Data:_ runtime. _Test:_ V-26. _M7·P2·[KNOW]_
+
+### 6.13 Scrolling, fixed & sticky
+
+- [ ] **PR-###** Overflow options — No scrolling, Horizontal, Vertical, Both. _Data:_ `overflowDirection` NONE/HORIZONTAL/VERTICAL/BOTH. _Test:_ set each; read via plugin. _M7·P0·[API] [DOC:360039818734 excerpt]_
+- [ ] **PR-###** Scroll range — A frame scrolls only along enabled axes and only by the amount its content (children bounds) exceeds the frame. _Data:_ children bounds. _Test:_ V-27 (content 200 px taller → max scroll 200). _M7·P0·[DOC:360039818734 excerpt] [KNOW]_
+- [ ] **PR-###** Top-level auto-scroll — Screens larger than the device viewport scroll (vertically/horizontally) without `overflowDirection`. _Data:_ screen size vs viewport. _Test:_ 390×2000 screen on iPhone device scrolls. _M7·P0·[API]_
+- [ ] **PR-###** Nested scroll clipping — Scrollable nested frames clip their content in the player (V-27, incl. when clip content is off). _Data:_ `clipsContent`. _Test:_ V-27. _M7·P0·[KNOW]_
+- [ ] **PR-###** Scroll input — Wheel/trackpad scroll (Shift+wheel horizontal), click-drag scroll and scrollbar visibility match Figma's desktop player (V-27). _Data:_ runtime. _Test:_ V-27. _M7·P1·[KNOW]_
+- [ ] **PR-###** Nested scroll chaining — When an inner scroller reaches its limit, further scrolling passes (or not) to the outer scroller as in Figma (V-27). _Data:_ runtime. _Test:_ V-27. _M7·P1·[KNOW]_
+- [ ] **PR-###** Fixed position — A Fixed child stays stationary while its scroll container scrolls. _Data:_ `scrollBehavior:'FIXED'`. _Test:_ fixed header in scrolling screen. _M7·P0·[DOC:360039818734 excerpt]_
+- [ ] **PR-###** Fixed z-order invariant — Setting Fixed moves the layer into the parent's fixed segment above all scrolling children; layers panel shows "Fixed"/"Scrolls" headers when ≥1 fixed child. _Data:_ `numberOfFixedChildren`. _Test:_ set Fixed on the bottom-most child; read children order + `numberOfFixedChildren`. _M7·P0·[API]_
+- [ ] **PR-###** Fixed in auto layout — Fixed is available only for absolutely-positioned children of auto-layout frames. _Data:_ `layoutPositioning:'ABSOLUTE'`. _Test:_ Position dropdown disabled/enabled. _M7·P0·[DOC:360039818734 excerpt]_
+- [ ] **PR-###** Sticky — Sticky layers scroll normally until reaching the top edge of their vertical scroll container, then stick; only offered for vertically scrolling containers. _Data:_ `scrollBehavior:'STICKY_SCROLLS'`. _Test:_ section headers in a list. _M7·P1·[DOC:360039818734 excerpt]_
+- [ ] **PR-###** Sticky edge cases — Release when the parent scrolls away, multiple sticky siblings, stacking order interplay (V-27). _Data:_ runtime. _Test:_ V-27. _M7·P2·[SRC:forum.figma.com/ask-the-community-7/navigation-bar-s-scroll-position-stick-and-first-on-top-not-working-41540]_
+- [ ] **PR-###** Fixed in screens — Fixed children of a top-level screen stay fixed relative to the device viewport while the screen scrolls (bottom-anchored bars per V-27). _Data:_ `FIXED`. _Test:_ V-27 (tab bar at bottom of tall screen). _M7·P0·[KNOW] [SRC:forum report via search excerpt]_
+- [ ] **PR-###** Scroll behavior import — REST `scrollBehavior` and deprecated `isFixed` import to Illigma's canonical model with the z-order invariant. _Data:_ `scrollBehavior`, `isFixed`. _Test:_ REST fixture with a FIXED child below scrolling children → reordered/flagged per V-27. _M8·P1·[API]_
+- [ ] **PR-###** Scroll memorization — Scroll positions of screens and scrollable layers are remembered by default when navigating away and back. _Data:_ runtime `scrollMemory`. _Test:_ scroll A 500 px → B → Back: A at 500. _M7·P0·[DOC:360051747774 excerpt]_
+- [ ] **PR-###** Scroll sharing by name — Screens with identical names or a shared name prefix share scroll state (V-27 for exact prefix rule). _Data:_ screen `name`. _Test:_ "Checkout / Empty" → "Checkout / Complete" keeps scroll; "Cart" → "Checkout" does not. _M7·P1·[DOC:360051747774 excerpt] [SRC:forum.figma.com/t/solved-preserve-scroll-position-not-working-please-roll-back-the-feature/44115]_
+- [ ] **PR-###** Reset scroll position — The interaction's "Reset scroll position" checkbox resets scroll for that navigation, overriding memorization/sharing. _Data:_ `resetScrollPosition`. _Test:_ same as sharing test with box checked → top. _M7·P0·[DOC:360051747774 excerpt] [API]_
+- [ ] **PR-###** Legacy preserve flag — Pre-2023 `preserveScrollPosition` maps to `resetScrollPosition = !preserveScrollPosition` on import. _Data:_ `preserveScrollPosition`. _Test:_ fixture. _M8·P1·[API] [DOC:360051747774 excerpt]_
+- [ ] **PR-###** Reset component state — "Reset component state" resets interactive-component variants in the destination; otherwise states are memorized like scroll (V-27). _Data:_ `resetInteractiveComponents`. _Test:_ V-27. _M7·P1·[API]_
+- [ ] **PR-###** Scroll physics — Momentum/overscroll behavior equals Figma desktop player (V-27). _Data:_ runtime. _Test:_ V-27. _M7·P2·[KNOW]_
+
+### 6.14 Interactive components
+
+- [ ] **PR-###** Variant interactions inherited — Every instance of a component set carries the interactions authored between its variants. _Data:_ variant `reactions`. _Test:_ 3 instances; each toggles independently. _M7·P0·[DOC:360061175334 excerpt]_
+- [ ] **PR-###** Per-instance runtime state — Each instance holds its own current variant during the session; the document is unchanged. _Data:_ `instanceVariant`. _Test:_ toggle one of 3 instances; others unchanged; editor unchanged. _M7·P0·[KNOW]_
+- [ ] **PR-###** Hover variant revert — While hovering → Change to Hover reverts to the previous variant on leave. _Data:_ `ON_HOVER` + `CHANGE_TO`. _Test:_ button Default/Hover. _M7·P0·[SRC:smashingmagazine.com] [API]_
+- [ ] **PR-###** Overrides across Change to — Instance overrides (text, fills, nested swaps) carry across runtime variant changes as in Figma (V-17). _Data:_ instance overrides. _Test:_ V-17. _M7·P1·[KNOW]_
+- [ ] **PR-###** Nested interactive instances — An interactive instance inside another interactive component keeps its own interactions; the deepest handler wins per trigger. _Data:_ nested reactions. _Test:_ checkbox inside list-item component, both with On click. _M7·P1·[SRC:forum.figma.com/archive-21/prototyping-limits-nested-interactive-component-interactions-12308] [KNOW]_
+- [ ] **PR-###** Instance-level interactions — Regular interactions can be added on an instance in a screen in addition to its variant interactions; precedence for the same trigger per V-30. _Data:_ instance `reactions`. _Test:_ V-30. _M7·P1·[SRC:smashingmagazine.com]_
+- [ ] **PR-###** After delay on variants — After delay on a variant runs when an instance shows that variant, enabling loops (spinner A→B→A). _Data:_ `AFTER_TIMEOUT` on variant. _Test:_ V-12 (2-variant loop at 500 ms). _M7·P1·[KNOW]_
+- [ ] **PR-###** Boolean consolidation drops connections — Converting variants into a boolean property removes prototype connections that pointed between them. _Data:_ reactions. _Test:_ reproduce in Figma; record warning. _M5·P2·[SRC: search excerpt of DOC:5579474826519]_
+- [ ] **PR-###** Missing variant target — If the Change to destination variant is deleted, the action becomes inert (V-33). _Data:_ dangling `destinationId`. _Test:_ V-33. _M7·P1·[KNOW]_
+
+### 6.15 Reactions on components & instances
+
+- [ ] **PR-###** Main component reactions propagate — Interactions on a main component (or its children) appear on all instances and work in the player. _Data:_ component `reactions`. _Test:_ V-30. _M7·P0·[DOC:4404380377367 title] [KNOW]_
+- [ ] **PR-###** Instance reaction overrides — Editing an instance's interactions creates an override; "Reset all changes" restores inherited ones. _Data:_ instance override of `reactions`. _Test:_ V-30. _M7·P1·[KNOW]_
+- [ ] **PR-###** Detach keeps reactions — Detaching an instance keeps its effective interactions on the resulting frame. _Data:_ `reactions`. _Test:_ V-30. _M7·P1·[KNOW]_
+- [ ] **PR-###** Swap instance — After swapping an instance, its interactions follow Figma's override rules (V-30). _Data:_ `reactions`. _Test:_ V-30. _M7·P2·[KNOW]_
+- [ ] **PR-###** Cross-page main components — Connections defined on a main component living on another page resolve per Figma (V-30). _Data:_ `destinationId`. _Test:_ V-30. _M7·P2·[SRC:forum.figma.com/ask-the-community-7/nested-component-navigation-interaction-not-working-in-screens-on-another-page-19105]_
+
+### 6.16 Video & GIF
+
+- [ ] **PR-###** Video playback defaults — Video fills play in the player with Figma's default autoplay/loop/mute behavior and settings location (V-24). _Data:_ `VideoPaint` (+ provisional `playback`). _Test:_ V-24. _M7·P1·[KNOW]_
+- [ ] **PR-###** Play / pause / toggle — Media actions PLAY, PAUSE, TOGGLE_PLAY_PAUSE control the target video. _Data:_ `UPDATE_MEDIA_RUNTIME.mediaAction`. _Test:_ three buttons; record state. _M7·P1·[API]_
+- [ ] **PR-###** Mute / unmute / toggle — MUTE, UNMUTE, TOGGLE_MUTE_UNMUTE. _Data:_ `mediaAction`. _Test:_ audio meter. _M7·P1·[API]_
+- [ ] **PR-###** Skip forward/backward — Moves playback by `amountToSkip` seconds, clamped to [0, duration] (V-24). _Data:_ `amountToSkip`. _Test:_ V-24 (skip −10 at 3 s). _M7·P1·[API]_
+- [ ] **PR-###** Jump to time — SKIP_TO sets playback to `newTimestamp` seconds (clamped, V-24). _Data:_ `newTimestamp`. _Test:_ V-24. _M7·P1·[API]_
+- [ ] **PR-###** Implicit media target — `destinationId:null` targets the video layer that contains the action. _Data:_ `destinationId`. _Test:_ action on the video itself. _M7·P1·[API]_
+- [ ] **PR-###** Video position memory — Video playback position is memorized per screen; `resetVideoPosition` restarts destination videos at 00:00. _Data:_ `resetVideoPosition`. _Test:_ play to 5 s → navigate → back: resumes at ~5 s; with reset: 0 s. _M7·P1·[API]_
+- [ ] **PR-###** Supported video formats — Player plays MP4, MOV and WebM sources accepted by import (≤100 MB). _Data:_ video asset. _Test:_ one file of each format plays. _M7·P2·[API]_
+- [ ] **PR-###** Animated GIFs — Animated GIF image fills animate in the player (loop/restart per V-24). _Data:_ image asset. _Test:_ V-24. _M7·P1·[DOC:360041486873 title] [KNOW]_
+
+### 6.17 Device & background
+
+- [ ] **PR-###** Device types — Device can be None, a preset, Custom size or Presentation. _Data:_ `prototypeDevice.type`. _Test:_ set each in Figma; read REST `prototypeDevice`; Illigma stores same. _M7·P0·[API] [DOC:21158597546391 excerpt]_
+- [ ] **PR-###** Preset catalog — Device presets (categories, models, sizes, colors) and their `presetIdentifier` strings match Figma's current list (V-28). _Data:_ `presetIdentifier`, `size`. _Test:_ V-28. _M7·P1·[API]_
+- [ ] **PR-###** Device suggestion — Using a frame preset makes the device dropdown select the matching device (V-28). _Data:_ UI. _Test:_ V-28. _M7·P2·[DOC:21158597546391 excerpt]_
+- [ ] **PR-###** Rotation — Rotate toggles portrait/landscape (`CCW_90`), swapping viewport width/height. _Data:_ `rotation`. _Test:_ rotate; player viewport swaps. _M7·P1·[API]_
+- [ ] **PR-###** Custom size — Custom size stores width/height; in the player it fits the design to the window. _Data:_ `size`. _Test:_ 1440×900 custom in a 1280×720 window. _M7·P1·[API] [DOC:21158597546391 excerpt]_
+- [ ] **PR-###** Device frame rendering — With a preset, the player draws a device frame (Illigma's own artwork) around a clipped viewport; "Show device frame" toggles it. _Data:_ player option. _Test:_ toggle option; viewport size unchanged. _M7·P1·[DOC:21158597546391 excerpt]_
+- [ ] **PR-###** Prototype background — Background fills the player area outside the viewport/device; single solid color; default per V-29. _Data:_ `prototypeBackgrounds`. _Test:_ set #FF0000; player background red; read default on a new file. _M7·P0·[API]_
+- [ ] **PR-###** One device per page — Device and background are per page; different pages can differ. _Data:_ page-level. _Test:_ two pages, two devices. _M7·P1·[API] [SRC:forum.figma.com/t/assign-a-prototype-device-to-specific-frames-screens/20228]_
+- [ ] **PR-###** Device edits are document edits — Changing device/background is saved and undoable. _Data:_ page fields. _Test:_ change; undo; save/reopen. _M7·P0·[KNOW]_
+
+### 6.18 In-app player (presentation view)
+
+- [ ] **PR-###** Open player — Present opens Illigma's player window (desktop) / full-window player (browser build) without network access. _Data:_ runtime. _Test:_ offline machine; Present works. _M7·P0·Illigma local-first rule_
+- [ ] **PR-###** Start resolution — Selected screen (or the screen containing the selection) → that screen; else the first flow; else the first screen per V-29. _Data:_ `flowStartingPoints`. _Test:_ V-29. _M7·P0·[API] [KNOW]_
+- [ ] **PR-###** Present a specific flow — From the flows list or canvas badge, the player opens at that flow's start. _Data:_ flow. _Test:_ second flow badge → player at flow 2. _M7·P1·[DOC:360039823894 excerpt] [KNOW]_
+- [ ] **PR-###** Flows sidebar — Lists all flows of the page with names/descriptions; selecting one restarts at its starting screen. _Data:_ `flowStartingPoints`. _Test:_ switch flows; state reset. _M7·P1·[DOC:360040318013 excerpt] [KNOW]_
+- [ ] **PR-###** Restart — R or the restart button returns to the current flow's starting screen and clears history, overlays, variables, modes, component states, scroll/video memory. _Data:_ `PlayerSession`. _Test:_ mutate everything; R; all initial. _M7·P0·[SRC:inthepocket.design/course/figma-for-everyone/prototyping] [KNOW]_
+- [ ] **PR-###** Arrow-key stepping — ←/→ move to previous/next screen in Figma's order (page order vs flow order, V-31). _Data:_ runtime. _Test:_ V-31. _M7·P1·[SRC: search excerpt of DOC:360040318013]_
+- [ ] **PR-###** Esc — Esc exits (fullscreen / player) as Figma (V-31). _Data:_ runtime. _Test:_ V-31. _M7·P1·[SRC: search excerpt]_
+- [ ] **PR-###** Scaling modes — Actual size, scale down to fit, fill (up or down), fit width; availability rules: fit width only with No device/Presentation, respect aspect ratio only with No device, show device frame only with a device. _Data:_ player options. _Test:_ V-31. _M7·P1·[DOC:21158597546391 excerpt] [SRC:inthepocket.design]_
+- [ ] **PR-###** Hotspot hints on click — When on (default V-31), a click on a non-hotspot area briefly highlights all hotspots on screen. _Data:_ player option. _Test:_ V-31. _M7·P1·[SRC:help.userbrain.com/help/testing-your-figma-prototype-with-userbrain]_
+- [ ] **PR-###** Hide UI — Option to hide all player chrome. _Data:_ player option. _Test:_ toggle; only prototype visible. _M7·P2·[SRC:help.userbrain.com]_
+- [ ] **PR-###** Disable default keyboard navigation — When on, R and arrow keys go to Key/Gamepad triggers instead of player navigation (R exception V-13). _Data:_ player option. _Test:_ V-13. _M7·P1·[SRC:forum.figma.com/ask-the-community-7/prototype-view-settings-when-linking-out-from-case-study-26397]_
+- [ ] **PR-###** Live updates — Edits made in the editor while the player is open appear in the player; deleting the current screen restarts (V-32). _Data:_ document subscription. _Test:_ V-32. _M7·P1·[KNOW]_
+- [ ] **PR-###** Options are user preferences — Player options persist per user across sessions and are never written into the document. _Data:_ app prefs. _Test:_ change scaling; reopen file on another account profile → defaults. _M7·P1·Illigma rule_
+- [ ] **PR-###** Player never mutates the document — Using the player creates no undo entries and does not mark the file dirty. _Data:_ none. _Test:_ play 2 min; undo stack and dirty flag unchanged. _M7·P0·[KNOW]_
+- [ ] **PR-###** Offline external links — External URLs open only on explicit activation, via the OS browser; nothing else touches the network. _Data:_ runtime. _Test:_ network monitor during a session. _M7·P0·Illigma local-first rule_
+- [ ] **PR-###** Player performance — Input-to-feedback ≤ 1 frame for hover/press; transitions hold refresh rate on a 50-screen prototype. _Data:_ runtime. _Test:_ perf harness. _M8·P1·Illigma quality rule_
+
+### 6.19 Inline preview
+
+- [ ] **PR-###** Open inline preview — Shift+Space opens a docked player showing the selected screen. _Data:_ runtime. _Test:_ V-35. _M7·P1·[SRC:medium.com/@indigo_29303] [DOC:360040318013 excerpt]_
+- [ ] **PR-###** Preview follows selection — Selecting another screen updates the preview; restart starts from the last selected screen. _Data:_ runtime. _Test:_ select B; preview shows B. _M7·P1·[DOC:360040318013 excerpt]_
+- [ ] **PR-###** Preview device subset — Inline preview shows only phone, watch and tablet device frames; other devices preview without frame. _Data:_ `prototypeDevice`. _Test:_ desktop device → no frame in preview. _M7·P2·[DOC:21158597546391 excerpt]_
+- [ ] **PR-###** Expand preview — The preview can be resized and promoted to the full player with the same state (V-31). _Data:_ runtime. _Test:_ V-31. _M7·P2·[KNOW]_
+
+### 6.20 Document integrity, persistence & interop
+
+- [ ] **PR-###** Undo granularity — Each prototype edit (interaction field, connection drag, flow add/rename/remove, overflow/position, overlay setting, device, background) is exactly one undo step; redo re-applies it. _Data:_ all §2 fields. _Test:_ 10-step script; undo ×10 restores initial JSON. _M7·P0·[KNOW]_
+- [ ] **PR-###** Copy/paste on the same page — Pasted layers keep `reactions`; destinations stay pointed at the original screens. _Data:_ `reactions`. _Test:_ V-33. _M7·P0·[KNOW]_
+- [ ] **PR-###** Paste to another page or file — Destinations not present in the target page/file are handled as Figma (dropped vs dangling, V-33). _Data:_ `destinationId`. _Test:_ V-33. _M7·P1·[KNOW]_
+- [ ] **PR-###** Duplicate screen — The copy keeps outgoing connections; connections that pointed to the original screen from inside it are handled as Figma (V-33). _Data:_ `reactions`. _Test:_ V-33. _M7·P1·[KNOW]_
+- [ ] **PR-###** Duplicate page — Connections in a duplicated page point to their equivalents in the copy. _Data:_ `reactions`. _Test:_ duplicate page; connections stay inside new page. _M7·P1·[API]_
+- [ ] **PR-###** Delete destination — Deleting a destination leaves interactions without destination (inert, flagged in UI) per V-33; undo restores the link. _Data:_ `destinationId`. _Test:_ V-33. _M7·P0·[KNOW]_
+- [ ] **PR-###** Lossless save/open — Every field of §2 round-trips byte-for-byte equivalent (incl. float durations, legacy flags). _Data:_ file format. _Test:_ golden file with every enum value; save/open/compare. _M7·P0·[API]_
+- [ ] **PR-###** Unknown values preserved — Unknown trigger/action/transition/easing types from newer files are preserved opaquely and shown as unsupported, never dropped. _Data:_ file format. _Test:_ fixture with `type:'FUTURE_X'`. _M8·P1·Illigma rule_
+- [ ] **PR-###** REST/.fig import mapping — Durations/delays ms→s, `overflowDirection` names, `scrollBehavior`, `prototypeDevice`, legacy `action`/`preserveScrollPosition`/`prototypeStartNodeID` map per §2. _Data:_ importer. _Test:_ REST JSON fixture vs Figma player behavior. _M8·P1·[API]_
+- [ ] **PR-###** Exports exclude prototype UI — PNG/JPG/SVG/PDF exports never contain noodles, flow badges, overlay icons or device frames. _Data:_ export. _Test:_ export a screen with connections in Prototype tab. _M7·P1·[KNOW]_
+- [ ] **PR-###** Renames affect matching live — Renaming a layer immediately changes smart-animate matching and state sharing on next playback. _Data:_ `name`. _Test:_ rename "Card" in destination; Smart animate becomes dissolve for it. _M7·P1·[DOC:360039818874 excerpt]_
+
+### 6.21 Accessibility of prototypes
+
+- [ ] **PR-###** Keyboard access to hotspots — Hotspots are reachable/activatable from the keyboard in the player as Figma's accessible prototypes allow (V-34). _Data:_ runtime. _Test:_ V-34. _M8·P2·[DOC:7810391964695 title] [KNOW]_
+- [ ] **PR-###** Screen reader exposure — Text and hotspots are exposed to screen readers as Figma does (V-34). _Data:_ runtime. _Test:_ V-34 with VoiceOver/NVDA. _M8·P2·[DOC:7810391964695 title] [KNOW]_
+- [ ] **PR-###** Accessible player chrome — Restart, flows sidebar, options and close are keyboard operable with visible focus. _Data:_ UI. _Test:_ keyboard-only walkthrough. _M8·P1·Illigma rule_
