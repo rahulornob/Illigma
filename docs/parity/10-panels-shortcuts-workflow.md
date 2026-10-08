@@ -102,7 +102,7 @@ This area mostly consumes data owned by other areas. The table distinguishes **d
 | `TextNode.autoRename` | boolean | true | While true, name follows `characters`; manual rename sets it false. Renaming via style name also sets false. | [API] |
 | `SceneNode.visible` | boolean | true | Node is effectively visible only if it and **all** ancestors are visible. | [API] |
 | `SceneNode.locked` | boolean | false | Node is effectively locked if it **or any** ancestor is locked; prevents canvas selection & dragging; does not prevent programmatic writes. | [API] |
-| `ContainerMixin.expanded` | boolean | false [KNOW: new containers start collapsed; verify] | "Whether this container is shown as expanded in the layers panel." Present on frames (BaseFrameMixin), groups, boolean ops, transform groups. **It is a document property** and appears in the `NodeChangeProperty` list, i.e. it is saved with the file and emits change events. Whether it is undoable: see §3.13 and §8. | [API] |
+| `ContainerMixin.expanded` | boolean | false [KNOW: new containers start collapsed; verify] | "Whether this container is shown as expanded in the layers panel." Present on frames and everything built on `BaseFrameMixin`/`DefaultFrameMixin` (frames, components, component sets, instances, slots), groups, boolean ops and transform groups. **`SectionNode` does not include `ContainerMixin`** in the typings, so a section's expanded state is not exposed via the API (whether it is saved is unverified, §8 V-08). **It is a document property** and appears in the `NodeChangeProperty` list, i.e. it is saved with the file and emits change events. Whether it is undoable: see §3.13 and §8. | [API] |
 | `FrameNode.numberOfFixedChildren` | int ≥ 0 | 0 | When > 0 the layers panel shows two section headers inside the frame (fixed vs scrolling children); fixed children are always on top. | [API] |
 | `isMask` / `maskType` | boolean / enum | false | Mask masks *subsequent siblings*, i.e. rows shown **above** it in the layers panel. | [API] |
 | `layoutMode` | `'NONE' \| 'HORIZONTAL' \| 'VERTICAL' \| 'GRID'` | NONE | Drives the auto layout row icon. `layoutWrap: 'NO_WRAP' \| 'WRAP'`. | [API] |
@@ -797,5 +797,293 @@ Rules [KNOW unless noted; verify T-01..T-04]:
 ### 5.9 Modifier gestures (semantics owned by CV)
 
 Alt/Option (hold): measure distances; Alt-drag: duplicate; Alt-resize: from center; Shift-resize: proportional; Shift-drag: constrain axis/15° rotation; Cmd/Ctrl-resize: ignore constraints / crop image; Space during draw/drag: move the shape being drawn; Cmd/Ctrl while dragging: disable snapping [S-R; K]. Alt/Option+click chevron (layers): recursive expand/collapse [S-F].
+
+---
+## 6. Parity checklist
+
+Format: `- [ ] **UX-NNN** Name — expected Figma behavior. _Data:_ … _Test:_ … _M#·P#·evidence_`. All items are **Not started**.
+
+### 6.1 Layers panel — tree and rows
+
+- [ ] **UX-001** Top-most-first ordering — rows list each parent's children in reverse array order (last child = top row); inserting a node without index puts it at the top of its parent's list. _Data:_ `children` (back-to-front), `insertChild(index)` _Test:_ create rect A then rect B on a page; rows read B, A; `children` = [A, B]; Bring to front A → rows A, B. _M1·P0·[API]_
+- [ ] **UX-002** Indentation by depth — each nesting level indents one step; page children have depth 0. _Data:_ `parent` _Test:_ frame > group > rect shows three indentation levels; reparenting updates indentation immediately. _M1·P0·[KNOW]_
+- [ ] **UX-003** Container chevrons — only nodes with children (frame, group, section, component, component set, instance, boolean, slot, transform group) show a chevron; empty containers show none. _Data:_ `ContainerMixin`, `children.length` _Test:_ empty frame has no chevron; add child → chevron appears collapsed/expanded per UX-020 rules. _M1·P0·[API][KNOW]_
+- [ ] **UX-004** Type icons distinguish node types — distinct icon per type: frame, group, section, component, component set, instance, slot, rectangle, ellipse, polygon, star, line, arrow, vector, text, image-filled shape, video, boolean (per op), slice, mask. _Data:_ `type`, `isMask`, `booleanOperation`, fills[i].type _Test:_ fixture with one of each; each row icon category matches a Figma screenshot of the same fixture. _M1·P0·[KNOW]_
+- [ ] **UX-005** Auto layout flow icons — frames with auto layout show a flow-specific icon: horizontal, vertical, wrap, grid; icon updates immediately when flow changes and reverts to frame icon when auto layout is removed. _Data:_ `layoutMode`, `layoutWrap` _Test:_ toggle Shift+A, switch flows, toggle wrap, Alt+Shift+A; compare row icons with Figma per state. _M4·P1·[KNOW]_
+- [ ] **UX-006** Component-family marking — component, component set, instance and slot rows are visually marked as a family distinct from ordinary layers (Figma: purple). _Data:_ `type` _Test:_ rows of COMPONENT/INSTANCE are distinguishable without reading names. _M5·P1·[KNOW]_
+- [ ] **UX-007** Text auto-naming — a text layer's row name follows its characters while `autoRename` is true; after a manual rename it no longer changes when text is edited. _Data:_ `TextNode.autoRename`, `name`, `characters` _Test:_ type "Hello" → row "Hello"; edit to "Hi" → "Hi"; rename to "Title"; edit text → row stays "Title". _M3·P0·[API]_
+- [ ] **UX-008** Long-name display — names longer than the row are visually truncated with ellipsis; stored name unchanged; full name visible in rename editor. _Data:_ `name` _Test:_ 200-char name; row truncated, Cmd+R shows full text. _M1·P1·[KNOW]_
+- [ ] **UX-009** Hidden-row rendering — rows of nodes with `visible=false` show a persistent hidden indicator and de-emphasized name; descendants of a hidden node are de-emphasized but show no own toggle state change. _Data:_ `visible` (effective = self ∧ ancestors) _Test:_ hide a frame; child rows dimmed; child `visible` still true. _M1·P0·[API][KNOW]_
+- [ ] **UX-010** Locked-row rendering — rows of `locked=true` nodes show a persistent lock indicator; descendants show an inherited (subdued) lock state. _Data:_ `locked` (effective = self ∨ ancestor) _Test:_ lock a frame; child rows show inherited lock; child `locked` stays false. _M1·P0·[API][KNOW]_
+- [ ] **UX-011** Mask rows — the mask layer shows a mask icon and the siblings it masks (rows above it within the same parent) are identifiable as masked. _Data:_ `isMask`, `maskType` _Test:_ Use as mask on bottom rect of a group with 2 shapes above; panel shows mask icon; both shapes indicated as masked; reorder a shape below the mask → no longer masked. _M2·P1·[API]_
+- [ ] **UX-012** Fixed-children section headers — frames with `numberOfFixedChildren > 0` show two header rows separating fixed (top) and scrolling children; frames with 0 show none. _Data:_ `numberOfFixedChildren` _Test:_ set one child "Fixed" in Prototype tab; headers appear; unset → headers disappear. _M7·P1·[API]_
+- [ ] **UX-013** Row hover highlights canvas — hovering a row draws the node's hover outline on canvas (also for nodes inside collapsed/clipped parents); no outline for hidden nodes? (verify). _Data:_ `transient hover` _Test:_ hover each row of fixture; canvas shows outline matching node bounds. _M1·P0·[DOC:360040449873 excerpt]_
+- [ ] **UX-014** Instance sublayers read-only structure — rows inside an instance (outside slots) cannot be reordered, reparented, deleted or receive drops; they can be selected, renamed (override) and hidden (override). _Data:_ `InstanceNode`, `SlotNode` _Test:_ try dragging an instance child to new index → rejected; hide it → override recorded. _M5·P0·[API][KNOW]_
+- [ ] **UX-015** Large-tree performance — panel virtualizes rows; expanding a frame with 10 000 descendants and scrolling stays ≥ 55 fps; selecting a node at depth 50 reveals it in < 100 ms. _Data:_ `—` _Test:_ synthetic 10k-node page benchmark. _M8·P1·[DECISION]_
+- [ ] **UX-016** Section/component-set child listing — component set rows list variants as children; section rows list contained nodes. _Data:_ `ComponentSetNode.children`, `SectionNode.children` _Test:_ combine 3 components as variants → set row with 3 variant rows. _M5·P1·[API]_
+
+### 6.2 Layers panel — selection
+
+- [ ] **UX-017** Click row selects — clicking a row replaces the selection with that node at any depth, including locked and hidden nodes; inspector updates. _Data:_ `page.selection` _Test:_ click a locked nested rect's row → selected; inspector shows rect. _M1·P0·[DOC:360040449873 excerpt][KNOW]_
+- [ ] **UX-018** Shift-click range — selects every row between anchor and clicked row in visible order; parents in range swallow their in-range descendants (normalization). _Data:_ `selection` _Test:_ rows A,B(expanded frame: b1,b2),C; click A, Shift-click C → selection {A,B,C} (b1,b2 implied). Compare with Figma. _M1·P0·[DOC:360040449873 excerpt][KNOW]_
+- [ ] **UX-019** Cmd/Ctrl-click toggles — adds/removes the clicked row's node; adding a descendant of a selected node replaces the ancestor? or is ignored? (verify) ; adding an ancestor removes its selected descendants. _Data:_ `selection` normalization _Test:_ select child c, Cmd-click parent P → selection {P}. _M1·P0·[DOC:360040449873 excerpt][API]_
+- [ ] **UX-020** Selection normalization — selection never contains both a node and its descendant, never contains duplicates, only contains nodes of the current page. _Data:_ `PageNode.selection` _Test:_ programmatically set [P, child] → stored [P]. _M1·P0·[API]_
+- [ ] **UX-021** Range anchor — anchor is the last row clicked without Shift; with canvas-originated selection the anchor is the top-most selected row. _Data:_ `transient` _Test:_ select on canvas, Shift-click row; compare range to Figma. _M1·P1·[KNOW]_
+- [ ] **UX-022** Chevron and toggles do not select — clicking a chevron, lock or eye never changes selection. _Data:_ `—` _Test:_ with X selected click eye of Y → selection still X, Y hidden. _M1·P0·[KNOW]_
+- [ ] **UX-023** Empty-area click clears — clicking blank panel space below the last row clears the selection. _Data:_ `selection` _Test:_ click below rows → selection []. _M1·P2·[KNOW]_
+- [ ] **UX-024** Arrow keys never move row focus — with the layers panel focused, arrow keys nudge the selected layers (small/big nudge) instead of moving row highlight. _Data:_ `nudge prefs` _Test:_ click row, press ↓ → node y +1, selection unchanged. _M1·P0·[KNOW]_
+- [ ] **UX-025** Hidden-node selection affordance — selecting a hidden node from the panel shows its bounds on canvas without rendering it. _Data:_ `visible` _Test:_ select hidden rect via row; selection box visible; pixels unchanged. _M1·P1·[KNOW]_
+
+### 6.3 Expand / collapse and reveal
+
+- [ ] **UX-026** Chevron toggles one container — click toggles `expanded` of that container only; children's own expanded states are preserved when re-expanded. _Data:_ `expanded` _Test:_ expand frame & its child group; collapse frame; expand frame → group still expanded. _M1·P0·[API][KNOW]_
+- [ ] **UX-027** Alt/Option-click recursive — Alt-click on a chevron sets that container and all descendant containers to the new state. _Data:_ `expanded` _Test:_ 4-level nested frames collapsed; Alt-click top → all 4 expanded; Alt-click again → all collapsed. _M1·P1·[SRC:forum]_
+- [ ] **UX-028** Collapse layers (⌥L / Alt+L and header control) — collapses every container on the page except ancestors of selected nodes; with empty selection collapses all. _Data:_ `expanded` _Test:_ expand all; select deep node; ⌥L → only its ancestor path expanded. _M1·P1·[SRC:forum][DOC:360040449873 excerpt]_
+- [ ] **UX-029** Multi-select chevron toggle — Cmd/Ctrl-click on a chevron of one of several selected containers toggles all selected containers (reported, regressed 2026-09). _Data:_ `expanded` _Test:_ select 3 frames; Cmd-click one chevron; record Figma result first (V-04). _M1·P2·[SRC:forum]_
+- [ ] **UX-030** Reveal selection — selection made outside the panel expands all ancestors and scrolls the first selected row into view; panel-originated selection never scrolls. _Data:_ `expanded`, panel scroll _Test:_ collapse all; Cmd-click deep node on canvas → path expanded, row visible. _M1·P0·[KNOW]_
+- [ ] **UX-031** Expanded state persists in file — `expanded` saves and reloads with the document. _Data:_ `ContainerMixin.expanded` _Test:_ expand 2 frames, save, reopen → same rows expanded. _M1·P1·[API]_
+- [ ] **UX-032** Expand/collapse not undoable — toggling expansion creates no undo step; undo after a toggle reverts the previous document edit. _Data:_ `—` _Test:_ rename X; collapse Y; Cmd+Z → X name reverted, Y still collapsed. _M1·P1·[KNOW]_
+- [ ] **UX-033** Default expansion of new containers — new frame/group/component from selection gets Figma's default expanded state. _Data:_ `expanded` _Test:_ Cmd+G two rects; record expanded state vs Figma (V-09). _M1·P2·[KNOW]_
+
+### 6.4 Rename
+
+- [ ] **UX-034** Double-click name to rename — opens inline editor with entire name selected. _Data:_ `name` _Test:_ double-click row; type "X" replaces whole name. _M1·P0·[KNOW]_
+- [ ] **UX-035** Cmd/Ctrl+R with one layer — opens inline rename for the selected row (revealing it first). _Data:_ `name` _Test:_ select on canvas, ⌘R → editor on revealed row, whole name selected. _M1·P0·[SRC:figma blog][SRC:raycast]_
+- [ ] **UX-036** Commit/cancel keys — Enter or blur commits; Esc cancels with no change and no undo step. _Data:_ `name` _Test:_ type, Esc → original name; undo stack unchanged. _M1·P0·[KNOW]_
+- [ ] **UX-037** Tab / Shift+Tab chaining — Tab commits and starts renaming the next row below; Shift+Tab the row above; canvas selection does not follow; at list end Tab commits and exits. _Data:_ `name` _Test:_ rename 3 consecutive rows with Tab; selection remains the first row (as Figma 2022 behavior). _M1·P1·[SRC:forum 17592]_
+- [ ] **UX-038** Empty/whitespace name — committing an empty name keeps the previous name. _Data:_ `name` _Test:_ clear field, Enter → name unchanged (verify V-10). _M1·P1·[KNOW]_
+- [ ] **UX-039** Rename is one undo step — each committed rename is a single undoable step; undo restores old name and `autoRename`. _Data:_ `name`, `autoRename` _Test:_ rename text layer; ⌘Z → previous auto name and autoRename=true. _M1·P0·[API][KNOW]_
+- [ ] **UX-040** Batch rename dialog — Cmd/Ctrl+R (or "Rename…") with ≥2 layers opens a dialog with Match (optional, text/regex), Rename to (template), insert buttons (current name, ascending number, descending number), start number, live preview and Rename button. _Data:_ `name` _Test:_ select 5 rects, Rename to "Card $n" → "Card 1…5" in Figma's order. _M1·P1·[SRC:figma blog][SRC:uxplanet excerpt]_
+- [ ] **UX-041** Batch rename tokens & order — token spellings, numbering order (panel order vs selection order) and Match replacement (first vs all occurrences, regex groups) match Figma exactly. _Data:_ `name` _Test:_ V-12 fixture; compare 10 cases. _M1·P1·[KNOW]_
+- [ ] **UX-042** Batch rename is one undo step — all renames revert with one ⌘Z. _Data:_ `name` _Test:_ batch rename 20 layers, ⌘Z once → all original. _M1·P1·[KNOW]_
+- [ ] **UX-043** Rename sets `autoRename=false` for text — manual (single or batch) rename of a text layer stops auto-naming. _Data:_ `autoRename` _Test:_ batch rename text layers; edit text → names unchanged. _M3·P0·[API]_
+
+### 6.5 Drag to reorder / reparent
+
+- [ ] **UX-044** Reorder within parent — dragging a row between two siblings moves it to that z-index; insertion line indicates target and depth. _Data:_ `children` order _Test:_ rows A,B,C; drag C between A and B → children order matches Figma. _M1·P0·[KNOW]_
+- [ ] **UX-045** Drop into container — dropping on the middle zone of a container row reparents into it as top-most child. _Data:_ `parent`, index _Test:_ drag rect onto frame row → rect is frame's last child (top row). _M1·P0·[KNOW]_
+- [ ] **UX-046** Depth by horizontal position — at the bottom of a container's last child, pointer x chooses whether the drop lands inside the container or after an ancestor. _Data:_ `parent` _Test:_ drag to below last child of nested group with x at each indent level; record parent per x (V-13). _M1·P1·[KNOW]_
+- [ ] **UX-047** Cycle prevention — a node cannot be dropped into itself or any descendant; feedback shows no-drop and nothing changes. _Data:_ `parent` _Test:_ drag frame onto its own child row → rejected. _M1·P0·[KNOW]_
+- [ ] **UX-048** Non-container targets — dropping "into" a rectangle/text/vector is impossible; middle zone behaves as before/after. _Data:_ `—` _Test:_ drag onto rect row middle → becomes sibling. _M1·P0·[KNOW]_
+- [ ] **UX-049** Instance/slot drop rules — drops into instances are rejected except into SLOT nodes (subject to slot limits); a main component cannot be dropped into its own instance. _Data:_ `SlotNode.limitViolations` _Test:_ drag rect into instance child → rejected; into slot → accepted. _M5·P0·[API][KNOW]_
+- [ ] **UX-050** Component set drop rule — only components (variants) may be dropped into a component set. _Data:_ `ComponentSetNode` _Test:_ drag rect into set → rejected (verify V-14). _M5·P1·[KNOW]_
+- [ ] **UX-051** Position preserved on reparent — reparenting into a non-auto-layout parent keeps each node's absolute page position; into auto layout it joins the flow at the drop index and the parent re-lays out. _Data:_ `absoluteTransform`, `layoutMode` _Test:_ drag rect at (100,100) into frame at (50,50) → rect x=50,y=50 relative; into AL frame → placed at index. _M1·P0·[API][KNOW]_
+- [ ] **UX-052** Multi-row drag — dragging any selected row moves the whole (normalized) selection, preserving relative order. _Data:_ `children` _Test:_ select A and C, drag into frame → both inside, order kept. _M1·P0·[KNOW]_
+- [ ] **UX-053** Auto-scroll and hover-expand — dragging near panel edges scrolls; hovering a collapsed container expands it after a delay. _Data:_ `transient` _Test:_ long list; drag to bottom edge scrolls; hover collapsed frame 1 s → expands. _M1·P1·[KNOW]_
+- [ ] **UX-054** Esc cancels drag; completed drag is one undo step — undo restores parent, index and transforms of all moved nodes. _Data:_ `—` _Test:_ drag 3 rows into frame, ⌘Z → original parents/indices/positions. _M1·P0·[KNOW]_
+- [ ] **UX-055** Drop into fixed section — dropping a child into the fixed-children section makes it fixed (changes `numberOfFixedChildren`). _Data:_ `numberOfFixedChildren` _Test:_ drag row above "scrolls" header → count +1. _M7·P2·[API][KNOW]_
+- [ ] **UX-056** Sections as targets — dropping into a section row reparents into the section following FR nesting rules (e.g. sections inside frames rejected if Figma rejects). _Data:_ `SectionNode` _Test:_ drag section into frame row; compare with Figma. _M1·P1·[KNOW]_
+
+### 6.6 Lock and visibility
+
+- [ ] **UX-057** Row lock toggle — clicking the lock control toggles `locked` of that node only. _Data:_ `locked` _Test:_ lock rect via row; canvas click passes through to object beneath. _M1·P0·[DOC:360041596573 excerpt]_
+- [ ] **UX-058** Row visibility toggle — clicking the eye control toggles `visible`. _Data:_ `visible` _Test:_ hide rect via row; canvas no longer renders it. _M1·P0·[DOC:360041112614 excerpt]_
+- [ ] **UX-059** Lock shortcut — ⇧⌘L / Ctrl+Shift+L toggles lock of the selection (multi: mixed → lock all? verify). _Data:_ `locked` _Test:_ select 2 (1 locked) → ⇧⌘L → record result (V-16). _M1·P0·[DOC:360041596573 excerpt]_
+- [ ] **UX-060** Hide shortcut — ⇧⌘H / Ctrl+Shift+H toggles visibility of the selection, also for hidden nodes selected via panel. _Data:_ `visible` _Test:_ select hidden layer via row, ⇧⌘H → visible. _M1·P0·[DOC:360041112614 excerpt]_
+- [ ] **UX-061** Drag-across toggling — pressing on a lock/eye control and dragging across rows applies the first row's new state to every row passed. _Data:_ `locked`/`visible` _Test:_ rows with mixed visibility; press eye of row 1 (visible→hidden) and drag over 4 rows → all 5 hidden. _M1·P1·[DOC:360041596573 excerpt][KNOW]_
+- [ ] **UX-062** Effective lock semantics — a node is locked on canvas if it or any ancestor is locked; child unlock does not override a locked parent. _Data:_ `locked` _Test:_ lock frame; unlock child → child still not canvas-selectable. _M1·P0·[API]_
+- [ ] **UX-063** Effective visibility semantics — a node renders only if it and all ancestors are visible. _Data:_ `visible` _Test:_ hide group; child visible=true but not rendered/exported. _M1·P0·[API]_
+- [ ] **UX-064** Locked/hidden canvas hit-testing — locked nodes ignore canvas click, marquee and drag; hidden nodes are not hit-tested; both selectable from the panel. _Data:_ `locked`, `visible` _Test:_ marquee over locked rect → not selected. _M1·P0·[API][KNOW]_
+- [ ] **UX-065** Editing hidden/locked via inspector — hidden (and panel-selected locked) nodes can be edited in the inspector. _Data:_ `—` _Test:_ select hidden rect via row; set X=40 → applied. _M1·P1·[DOC:360041112614 excerpt]_
+- [ ] **UX-066** Locked node keyboard/handle edits — behavior of arrow nudges and canvas resize handles on a panel-selected locked node matches Figma. _Data:_ `locked` _Test:_ select locked rect via row, press → ; record (V-16). _M1·P1·[KNOW]_
+- [ ] **UX-067** Appearance-section eye — the inspector Appearance section offers a visibility toggle for the whole selection. _Data:_ `visible` _Test:_ select 3 layers; click eye in Appearance → all hidden. _M1·P1·[SRC:forum][KNOW]_
+- [ ] **UX-068** Unlock all objects — action unlocks every locked node on the current page as one undo step. _Data:_ `locked` _Test:_ lock 5 nodes at various depths; run action → all `locked=false`. _M1·P2·[SRC:forum]_
+- [ ] **UX-069** Lock/hide undo — every toggle (row, shortcut, drag-across gesture) is one undo step. _Data:_ `—` _Test:_ drag-across hide 4 rows; ⌘Z once → all visible. _M1·P0·[KNOW]_
+- [ ] **UX-070** Hidden layers excluded from export — hidden nodes do not appear in PNG/SVG/PDF export of a parent; locked nodes do. _Data:_ `visible`, `exportSettings` _Test:_ export frame with hidden child → child absent. _M2·P0·[KNOW]_
+
+### 6.7 Pages panel
+
+- [ ] **UX-071** Page list order = document order — pages appear in `DocumentNode.children` order; reordering in the panel changes that order. _Data:_ `DocumentNode.children` _Test:_ drag page 3 to top → `children[0]` is page 3. _M1·P0·[API]_
+- [ ] **UX-072** Add page — "+" creates a page named per Figma's numbering, appends it, makes it current and opens rename. _Data:_ `createPage`, `name` _Test:_ file with 2 pages; click + → "Page 3" current & in rename (verify name rule P-01). _M1·P0·[API][KNOW]_
+- [ ] **UX-073** Rename page — double-click to rename; Enter/blur commit; Esc cancels; empty name reverts; duplicate names allowed. _Data:_ `PageNode.name` _Test:_ rename two pages to "A" → both "A". _M1·P0·[KNOW]_
+- [ ] **UX-074** Reorder pages by drag — insertion line; one undo step. _Data:_ `insertChild` on document _Test:_ drag; ⌘Z → original order. _M1·P1·[API][KNOW]_
+- [ ] **UX-075** Page divider creation — renaming an empty page to a name of only `*`, en dashes, em dashes or spaces makes it a divider; non-empty pages never become dividers. _Data:_ `isPageDivider`, `createPageDivider` _Test:_ empty page renamed "———" → divider; page with a rect renamed "———" → normal page. Also test "---" hyphens (P-02). _M1·P1·[API]_
+- [ ] **UX-076** Divider behavior — dividers render as separators, cannot become current, cannot receive layers, can be reordered/renamed/deleted. _Data:_ `isPageDivider` _Test:_ click divider → current page unchanged; Move to page submenu excludes it. _M1·P1·[API][KNOW]_
+- [ ] **UX-077** Duplicate page — deep copy inserted after source; prototype connections remapped to copies; main components become instances of the originals; name per Figma rule. _Data:_ `PageNode.clone()`, `reactions`, `mainComponent` _Test:_ page with component C and a flow; duplicate → copy has instance of C, flow targets copied frames. _M1·P0·[API][KNOW]_
+- [ ] **UX-078** Delete page — removes page and contents; switches to adjacent page if current; last remaining non-divider page cannot be deleted; one undo step restores page and ids. _Data:_ `remove()` _Test:_ delete current page → neighbor current; ⌘Z → page back with same node ids. _M1·P0·[KNOW]_
+- [ ] **UX-079** Switch page restores selection — each page keeps its own selection; switching back restores it; switching emits page-change then selection-change. _Data:_ `PageNode.selection`, `currentpagechange` _Test:_ select X on page 1, switch to 2, back → X selected. _M1·P0·[API]_
+- [ ] **UX-080** Switch page restores viewport — each page remembers its last center/zoom within the session and across reopen. _Data:_ `view state` _Test:_ zoom page 1 to 300 %, page 2 to 50 %; switch back and forth; reopen file. _M1·P1·[KNOW]_
+- [ ] **UX-081** Previous/next page keys — PgUp/PgDn go to previous/next page, skipping dividers, wrapping? (verify). _Data:_ `current page` _Test:_ 3 pages + divider; press PgDn repeatedly; record Figma (P-05). _M1·P2·[SRC:cheat sheets]_
+- [ ] **UX-082** Move to page — context menu "Move to page ▸" moves selected layers to the target page preserving coordinates, as top-most children, staying on the current page; one undo step. _Data:_ `parent` across pages _Test:_ move rect (10,10) to page 2 → rect on page 2 at (10,10). _M1·P1·[KNOW]_
+- [ ] **UX-083** Page background — with nothing selected the inspector's Page section edits the page background (single solid color); applies to canvas immediately; undoable. _Data:_ `PageNode.backgrounds` _Test:_ set #222222 → canvas color; ⌘Z → previous. _M1·P0·[API][OBS]_
+- [ ] **UX-084** Unlimited pages — Illigma imposes no page limit (Figma Starter: 3). _Data:_ `—` _Test:_ create 200 pages; all usable. _M1·P1·[API][DECISION]_
+- [ ] **UX-085** Pages section collapse & split — Pages section can collapse to a header showing the current page name, and the Pages/Layers split is draggable; both are UI state. _Data:_ `UI prefs` _Test:_ collapse; header shows current page; reload → preserved. _M1·P2·[OBS][KNOW]_
+- [ ] **UX-086** Copy link to page — context menu copies a deep link that reopens the file on that page. _Data:_ `page id` _Test:_ copy link, open → page current. _M8·P2·[KNOW][DECISION]_
+
+### 6.8 Assets panel
+
+- [ ] **UX-087** Assets tab switch — ⌥2/Alt+2 shows Assets; ⌥1/Alt+1 shows File (layers/pages). _Data:_ `UI state` _Test:_ press each shortcut; correct tab shown; shortcuts ignored while typing in a field. _M5·P1·[DOC:360039831974 excerpt]_
+- [ ] **UX-088** Local components listing — lists every component and component set in the file, grouped by page and container/name folders per Figma. _Data:_ `ComponentNode`, `ComponentSetNode`, `name` _Test:_ fixture with components on 2 pages, names "Button/Primary"; compare grouping to Figma (A-02). _M5·P0·[DOC:360039831974 excerpt][KNOW]_
+- [ ] **UX-089** Asset search — typing filters components by name (incl. folder path) case-insensitively, live; clearing restores. _Data:_ `name`, `description` _Test:_ search "prim" → "Button/Primary". _M5·P1·[KNOW]_
+- [ ] **UX-090** Drag asset to insert — dropping creates an instance at the pointer, parented to the frame/section under the pointer (auto layout → flow index), selected, one undo step. _Data:_ `createInstance`, `parent` _Test:_ drop into AL frame between children → instance at that index. _M5·P0·[KNOW]_
+- [ ] **UX-091** Click asset — clicking an asset behaves as in Figma UI3 (detail view with variant/property pickers and insert action, or immediate insert — verify A-03). _Data:_ `—` _Test:_ compare click result. _M5·P1·[KNOW]_
+- [ ] **UX-092** Swap by Alt-drop — dropping an asset onto an existing instance with Alt/Option swaps that instance's main component, preserving overrides per CP rules. _Data:_ `swapComponent` _Test:_ Alt-drop Button/B onto instance of Button/A → swapped (A-04). _M5·P1·[KNOW]_
+- [ ] **UX-093** Hidden components in local list — components prefixed `.`/`_` appear or not in local Assets exactly as in Figma. _Data:_ `name` _Test:_ create "_Base" → record visibility (A-05). _M5·P2·[DOC:360039238193 title][KNOW]_
+- [ ] **UX-094** Library sections — assets from enabled local library files appear in their own sections after local components; a Libraries control opens the library manager (DS). _Data:_ `library refs` _Test:_ enable library file → its components listed and insertable. _M6·P1·[DOC:360039831974 excerpt][DECISION]_
+- [ ] **UX-095** Assets panel excludes styles/variables — styles and variables never appear in the Assets tab. _Data:_ `—` _Test:_ file with styles only → Assets shows empty-state. _M5·P2·[KNOW]_
+- [ ] **UX-096** Asset context menu — right-click asset offers Go to main component (navigates page, selects component) and other Figma items (A-06). _Data:_ `—` _Test:_ Go to main → component selected & zoomed. _M5·P2·[KNOW]_
+
+### 6.9 Inspector structure
+
+- [ ] **UX-097** Design/Prototype tabs — two tabs; ⌥8/⌥9 (Alt+8/9) switch; tab choice persists across selection and page changes. _Data:_ `UI state` _Test:_ select Prototype, change selection → still Prototype. _M1·P0·[OBS][SRC:raycast]_
+- [ ] **UX-098** No-selection inspector — shows Page (background), Variables, Styles (local style lists), Export, in Figma's order. _Data:_ `backgrounds`, local styles, `exportSettings` _Test:_ deselect all; compare section list to Figma (I-02). _M1·P0·[OBS][KNOW]_
+- [ ] **UX-099** Frame inspector order — Position → Layout → Appearance → Fill → Stroke → Effects → Layout guide → Export; Layout shows Freeform + Clip content. _Data:_ `FrameNode props` _Test:_ select top-level frame; section titles in that order. _M1·P0·[OBS]_
+- [ ] **UX-100** Nested frame constraints — a frame/shape inside a freeform frame shows Constraints within Position. _Data:_ `constraints` _Test:_ select child of frame → constraints visible; select top-level → absent. _M4·P0·[KNOW]_
+- [ ] **UX-101** Auto layout frame Layout section — flow, wrap, W/H sizing, 9-position alignment, gap, padding, clip content, settings popover (strokes in layout, canvas stacking, layout version, baseline, auto spacing). _Data:_ `AutoLayoutMixin` _Test:_ select AL frame; controls present as observed. _M4·P0·[OBS]_
+- [ ] **UX-102** Auto layout child Position — X/Y and alignment disabled while in flow; Ignore auto layout control shown; enabling it re-enables X/Y. _Data:_ `layoutPositioning` _Test:_ select AL child; X disabled; toggle absolute → enabled. _M4·P0·[OBS][KNOW]_
+- [ ] **UX-103** Group inspector — no Fill/Stroke sections; Appearance without corner radius; Selection colors when applicable; Effects; Export. _Data:_ `GroupNode mixins` _Test:_ select group; no Fill section. _M1·P0·[API][KNOW]_
+- [ ] **UX-104** Section inspector — sections expose W/H, fill, stroke, corner radius and export as in Figma. _Data:_ `SectionNode` _Test:_ compare section list (I-05). _M1·P1·[API][KNOW]_
+- [ ] **UX-105** Shape inspector — Position → Layout → Appearance → Fill → Stroke → Effects → Export for rectangle/ellipse/polygon/star/vector/boolean. _Data:_ `—` _Test:_ compare each type (I-06). _M1·P0·[KNOW]_
+- [ ] **UX-106** Line/arrow inspector — length-only dimension and stroke endpoints; Fill presence matches Figma. _Data:_ `LineNode` _Test:_ compare (I-08). _M2·P1·[KNOW]_
+- [ ] **UX-107** Text inspector — Typography section between Appearance and Fill; text resizing modes reachable. _Data:_ `TextNode` _Test:_ select text; order Position, Layout, Appearance, Typography, Fill, Stroke, Effects, Export. _M3·P0·[OBS][KNOW]_
+- [ ] **UX-108** Main component inspector — component header and Properties section above Position. _Data:_ `componentPropertyDefinitions` _Test:_ select component; Properties first (I-09). _M5·P0·[KNOW]_
+- [ ] **UX-109** Component set & variant inspectors — set shows variant properties; a variant shows its property values at top. _Data:_ `variantProperties` _Test:_ compare (I-10). _M5·P0·[KNOW]_
+- [ ] **UX-110** Instance inspector — instance header (swap, ⋯ menu: go to main, push changes, reset all, detach) and instance properties above Position. _Data:_ `InstanceNode`, `componentProperties` _Test:_ select instance; compare (I-11). _M5·P0·[KNOW]_
+- [ ] **UX-111** Multi-select same type — same sections as single; disagreeing values show Mixed. _Data:_ `—` _Test:_ 2 rects with W 10/20 → W "Mixed". _M1·P0·[KNOW]_
+- [ ] **UX-112** Multi-select mixed types — only sections valid for every selected node shown (+ Selection colors); Typography rule matches Figma. _Data:_ `—` _Test:_ select text + rect; compare (I-12). _M1·P0·[KNOW]_
+- [ ] **UX-113** Selection colors — lists unique colors (raw, style, variable) used by the selection and descendants; editing one recolors all usages; one undo step. _Data:_ `fills`, `strokes`, `getSelectionColors` _Test:_ frame with 3 children sharing red; change red → all updated; ⌘Z once. _M2·P1·[API][KNOW]_
+- [ ] **UX-114** Selection header actions — header shows type label and contextual actions (create component, mask, boolean ▾, etc.) as in Figma UI3. _Data:_ `—` _Test:_ compare header for shape, 2 shapes, instance, image (I-01). _M1·P1·[KNOW]_
+- [ ] **UX-115** List-section controls — each list section supports + add, − remove, per-item visibility, drag reorder and style/variable picker; empty sections show title and + only. _Data:_ `fills/strokes/effects/layoutGrids/exportSettings` _Test:_ add 3 fills, reorder, hide one. _M1·P0·[KNOW]_
+- [ ] **UX-116** Prototype tab structure — no selection: flow starting points + prototype settings; frame: interactions, scroll behavior, overlay settings. _Data:_ `flowStartingPoints`, `prototypeBackgrounds`, `reactions` _Test:_ compare (I-03). _M7·P0·[API][KNOW]_
+- [ ] **UX-117** Inspector panel width — right panel width is user-resizable within limits and persists as UI preference; canvas viewport bounds adjust without moving artwork. _Data:_ `UI pref, viewport.bounds` _Test:_ drag edge; artwork screen position unchanged relative to canvas center? (verify). _M1·P2·[KNOW]_
+
+### 6.10 Inspector fields and mixed values
+
+- [ ] **UX-118** Mixed placeholder — disagreeing numeric/text/enum values display "Mixed"; typing a value applies to all; Esc leaves all. _Data:_ `—` _Test:_ 3 rects different opacity; type 50 → all 50 %. _M1·P0·[KNOW]_
+- [ ] **UX-119** Mixed list content — differing fill/stroke/effect lists show a replace-mixed affordance; + replaces every node's list with one default item. _Data:_ `fills` _Test:_ rect red + rect blue+green; click + → both one default fill (I-14). _M2·P1·[KNOW]_
+- [ ] **UX-120** Label scrubbing — dragging a field label changes value continuously, Shift ×10, (Alt ×0.1 verify), one undo step per drag; on Mixed applies delta per node. _Data:_ `—` _Test:_ scrub X of 2 rects at 0 and 100 by +10 → 10 and 110 (I-15). _M1·P1·[KNOW]_
+- [ ] **UX-121** Field arrow keys — ↑/↓ change by small nudge (or 1), Shift+↑/↓ by big nudge; each press commits per Figma's grouping. _Data:_ `nudge prefs` _Test:_ set big nudge 8; Shift+↑ in W adds 8. _M1·P1·[SRC:forum][KNOW]_
+- [ ] **UX-122** Math expressions — fields evaluate `+ − * /` and parentheses; relative entries apply per node for Mixed. _Data:_ `—` _Test:_ W "100/3" → 33.33 (precision per CV); Mixed W "+10" per node (verify). _M1·P1·[KNOW]_
+- [ ] **UX-123** Field commit keys — Enter commits (focus behavior per Figma), Tab/Shift+Tab move between fields committing, Esc reverts and blurs. _Data:_ `—` _Test:_ type X then Tab → committed and focus in Y (I-16). _M1·P0·[KNOW]_
+
+### 6.11 Toolbar
+
+- [ ] **UX-124** Toolbar groups — bottom toolbar contains Move/Hand/Scale, Frame/Section/Slice, shapes (Rectangle, Line, Arrow, Ellipse, Polygon, Star, Image/video), Pen/Pencil, Text, Comment, Actions, in that order. _Data:_ `—` _Test:_ compare to Figma screenshot (T-01). _M1·P0·[DOC:360041064174 excerpt][SRC:uxcel][KNOW]_
+- [ ] **UX-125** Flyout last-used memory — each group button shows and activates its last-used tool; chevron opens list with shortcuts. _Data:_ `UI pref` _Test:_ choose Ellipse from flyout; press V; click group main button → Ellipse. _M1·P1·[KNOW]_
+- [ ] **UX-126** Shortcut updates group icon — pressing O shows Ellipse in the shape group. _Data:_ `—` _Test:_ press O → group icon Ellipse. _M1·P1·[KNOW]_
+- [ ] **UX-127** Tool reverts after use — creation tools revert to Move after one object unless Keep tool selected is on; Esc returns to Move. _Data:_ `pref` _Test:_ draw rect → tool Move; enable pref → stays Rectangle. _M1·P0·[KNOW]_
+- [ ] **UX-128** Temporary tools — holding Space = Hand, release restores previous tool; holding Z = Zoom tool. _Data:_ `—` _Test:_ with Pen active hold Space, drag pans, release → Pen. _M1·P0·[KNOW]_
+- [ ] **UX-129** Contextual vector-edit toolbar — entering vector edit mode replaces toolbar with vector tools and a Done control; Done/Esc exits. _Data:_ `—` _Test:_ Enter on vector → contextual toolbar (T-03). _M2·P1·[KNOW]_
+- [ ] **UX-130** Toolbar fixed — toolbar cannot be moved/docked/customized. _Data:_ `—` _Test:_ n/a (absence). _M1·P2·[SRC:forum]_
+
+### 6.12 Actions menu
+
+- [ ] **UX-131** Open actions — ⌘K/Ctrl+K and the toolbar Actions button open the menu with search focused; ⌘/ / Ctrl+/ also open it. _Data:_ `—` _Test:_ each trigger opens; Esc closes. _M1·P1·[DOC:23570416033943 excerpt][SRC:forum]_
+- [ ] **UX-132** Search & run — typing filters actions (fuzzy, case-insensitive); ↑/↓ highlight; Enter runs; each result shows its shortcut. _Data:_ `—` _Test:_ type "align" → only alignment actions; Enter on "Align left" aligns. _M1·P1·[DOC:23570416033943 excerpt][KNOW]_
+- [ ] **UX-133** Recent actions — empty query lists recently run actions most-recent first. _Data:_ `UI pref` _Test:_ run 3 actions; reopen → listed in reverse order. _M1·P2·[KNOW]_
+- [ ] **UX-134** Coverage — every main-menu command and preference (e.g. "Nudge amount…", "Unlock all objects", view toggles) is reachable. _Data:_ `—` _Test:_ script iterates menu tree; each name found. _M1·P1·[SRC:forum]_
+- [ ] **UX-135** Applicability handling — non-applicable actions are hidden or disabled exactly as Figma. _Data:_ `—` _Test:_ no selection; search "flatten" → record (S-04). _M1·P2·[KNOW]_
+- [ ] **UX-136** Assets in actions menu — the menu can search components and insert the chosen one at viewport center (or Figma's rule). _Data:_ `—` _Test:_ search component, Enter → instance inserted (S-07). _M5·P2·[DOC:23570416033943 excerpt][KNOW]_
+
+### 6.13 Menus
+
+- [ ] **UX-137** Main menu tree — Main menu contains File, Edit, View, Object, Text, Arrange, Vector, Preferences, Help submenus with Figma's items and order (Plugins/Widgets omitted). _Data:_ `—` _Test:_ diff menu tree vs. Figma capture (M-01). _M1·P1·[KNOW]_
+- [ ] **UX-138** Menu items show shortcuts and disable when N/A — each item shows its platform shortcut; inapplicable items disabled. _Data:_ `—` _Test:_ no selection → "Group selection" disabled. _M1·P0·[KNOW]_
+- [ ] **UX-139** File menu — file-name dropdown offers rename file, duplicate, show version history, export, file location ([DECISION]: reveal in Finder/Explorer). _Data:_ `DocumentNode.name` _Test:_ rename file via menu → title updates & file on disk renamed per IO rules. _M1·P1·[DOC:360039831974 excerpt][DECISION]_
+- [ ] **UX-140** Layer-row context menu — right-click on a row selects it (if unselected) and shows the same menu as the canvas context menu for that selection. _Data:_ `—` _Test:_ right-click unselected row → selected; menu identical to canvas (M-02). _M1·P0·[KNOW]_
+- [ ] **UX-141** Page-row context menu — Copy link, Rename, Duplicate, Delete (and divider creation if Figma offers it). _Data:_ `—` _Test:_ compare (P-02). _M1·P1·[KNOW]_
+- [ ] **UX-142** Native menubar (macOS) — system menubar mirrors the Main menu with identical enablement and shortcuts. _Data:_ `—` _Test:_ every menubar item triggers same action as in-app. _M1·P2·[DECISION]_
+
+### 6.14 Shortcuts & dispatch
+
+- [ ] **UX-143** Complete default keymap — every binding in §5 is implemented for macOS and Windows/Linux, with ⚠ rows resolved by live verification. _Data:_ `keymap` _Test:_ automated keymap table test + manual check vs Figma panel (S-06). _M1·P0·[DOC][SRC][KNOW]_
+- [ ] **UX-144** Windows exceptions — bring to front/back use Ctrl+Shift+]/[; mask Ctrl+Alt+M; layout guides Ctrl+Shift+4; others per §5. _Data:_ `keymap` _Test:_ Windows build; each exception fires. _M1·P0·[SRC:raycast][KNOW]_
+- [ ] **UX-145** Text-input suppression — single-key and modifier shortcuts do not fire while typing in rename editor, inspector fields, find box, dialogs or text edit mode (except input-local undo/redo/select-all). _Data:_ `—` _Test:_ type "r" in rename → no rectangle tool. _M1·P0·[KNOW]_
+- [ ] **UX-146** Keyboard-layout awareness — letter shortcuts follow the logical key per the Keyboard layout preference; punctuation shortcuts (', \\, [, ]) map per layout. _Data:_ `pref` _Test:_ AZERTY layout; "A"-key behavior matches Figma on AZERTY (S-08). _M1·P1·[DOC:360041065034 excerpt]_
+- [ ] **UX-147** Opacity number keys — 1–9 → 10–90 %, 0 → 100 %, 00 → 0 %, two quick digits → that percentage; one undo step per value. _Data:_ `opacity` _Test:_ press 4,5 quickly → 45 %; press 4, wait, 5 → 50 % (S-03). _M1·P1·[SRC:raycast][KNOW]_
+- [ ] **UX-148** Shortcuts panel — Ctrl+Shift+? (and Help menu) opens a categorized, searchable shortcuts reference; used shortcuts are marked. _Data:_ `usage stats (UI pref)` _Test:_ open; search "group" finds ⌘G (S-01). _M1·P1·[KNOW][DOC:360041065034 excerpt]_
+- [ ] **UX-149** No-op on inapplicable — shortcuts whose action is not applicable do nothing (no error toast, no undo step). _Data:_ `—` _Test:_ ⇧⌘G with a rect selected → nothing. _M1·P1·[KNOW]_
+- [ ] **UX-150** Undo/redo keys — ⌘Z, ⇧⌘Z (Ctrl+Z, Ctrl+Shift+Z, Ctrl+Y if Figma supports it). _Data:_ `—` _Test:_ S-02. _M0·P0·[SRC:raycast][KNOW]_
+
+### 6.15 Find & replace
+
+- [ ] **UX-151** Open find — ⌘F/Ctrl+F opens Find & replace in the navigation area with focus in the query; results populate as you type. _Data:_ `transient` _Test:_ type "but" → results update per keystroke. _M3·P1·[DOC:9141292269847 excerpt]_
+- [ ] **UX-152** Searchable content — matches layer names and text content; scope current page / all pages per Figma. _Data:_ `name`, `characters` _Test:_ frame named "Button" and text "Button" both found (F-01). _M3·P1·[DOC:9141292269847 excerpt][KNOW]_
+- [ ] **UX-153** Type filters — results filterable by layer type as in Figma. _Data:_ `type` _Test:_ filter Text → only text results (F-02). _M3·P2·[KNOW]_
+- [ ] **UX-154** Match case / whole words — options restrict matching accordingly. _Data:_ `—` _Test:_ "cat" whole words excludes "category"; match case excludes "Cat". _M3·P1·[SRC:uxplanet]_
+- [ ] **UX-155** Result navigation — clicking a result switches page if needed, selects the layer, reveals its row and zooms to it. _Data:_ `selection, viewport` _Test:_ result on page 2 → page 2 current, node selected and visible. _M3·P1·[KNOW]_
+- [ ] **UX-156** Replace text only — replace/replace-all change `characters` of matching text layers only; name matches on non-text layers are not replaced; auto-named text layers' names follow. _Data:_ `characters`, `autoRename` _Test:_ frame "Login" + text "Login"; replace → only text changes. _M3·P1·[DOC:9141292269847 excerpt]_
+- [ ] **UX-157** Replace all is one undo step & style preservation — all replacements revert together; replaced ranges keep character styling per Figma. _Data:_ `styled segments` _Test:_ bold "Login" → replace "Sign in" → bold kept (F-03). _M3·P1·[KNOW]_
+- [ ] **UX-158** Replace inside instances & missing fonts — replacing in an instance creates text overrides; text with missing fonts is skipped and reported. _Data:_ `overrides, fonts` _Test:_ instance text replaced → override; missing-font text skipped with notice. _M5·P2·[KNOW]_
+
+### 6.16 Version history
+
+- [ ] **UX-159** Show version history — File menu command opens the version list in the right sidebar; selecting a version shows it read-only on canvas; closing returns to current. _Data:_ `versions` _Test:_ open, click older version → canvas shows it; edits disabled. _M8·P1·[DOC:360038006754 excerpt]_
+- [ ] **UX-160** Automatic checkpoints — a checkpoint is created every 30 min of editing activity and on close. _Data:_ `Version{created_at,label:null}` _Test:_ fake clock: edit at t0, t0+31 min → 1 checkpoint. _M8·P1·[SRC:figma blog][DECISION]_
+- [ ] **UX-161** Named version — ⌥⌘S/Ctrl+Alt+S (or + in panel) opens dialog with required title and optional description; saves a version containing all edits up to that moment. _Data:_ `label`, `description` _Test:_ edit then ⌥⌘S → version includes edit; empty title rejected. _M8·P1·[SRC:figma blog][API]_
+- [ ] **UX-162** Autosave collapsing — autosaves between named versions are grouped and expandable. _Data:_ `—` _Test:_ 3 checkpoints then named → collapsed group of 3. _M8·P2·[SRC:figma blog]_
+- [ ] **UX-163** Restore version — restoring is non-destructive: current state is preserved as a version and the restored content becomes current. _Data:_ `versions` _Test:_ restore v1; list contains pre-restore state; canvas = v1. _M8·P1·[DOC:360038006754 excerpt]_
+- [ ] **UX-164** Duplicate version — creates a new file from that version without comments/version history. _Data:_ `—` _Test:_ duplicate → new file opens; its history empty. _M8·P2·[DOC:360038006754 excerpt]_
+- [ ] **UX-165** Copy from old version — layers can be selected/copied in version preview and pasted into the current version. _Data:_ `clipboard` _Test:_ copy rect from v1, return to current, paste → rect added. _M8·P2·[SRC:forum 38485]_
+- [ ] **UX-166** Edit version info — named versions' title/description editable; autosave checkpoints can be named. _Data:_ `label`, `description` _Test:_ rename version; persists. _M8·P2·[KNOW]_
+- [ ] **UX-167** Retention — Illigma keeps all versions (no 30-day limit) and offers manual pruning. _Data:_ `—` _Test:_ versions older than 30 days remain. _M8·P2·[DOC:360038006754 excerpt][DECISION]_
+
+### 6.17 Autosave & crash recovery ([DECISION]; Figma analogue: continuous cloud autosave)
+
+- [ ] **UX-168** Continuous autosave — every committed change is durably journaled within 2 s without user action. _Data:_ `journal (IO)` _Test:_ edit, kill process after 3 s, relaunch → edit present. _M0·P0·[DECISION][KNOW]_
+- [ ] **UX-169** Crash recovery prompt — on relaunch after a crash, user can Recover or Discard; recovery restores page, viewport and selection. _Data:_ `view state` _Test:_ simulated crash; recover → same page & selection. _M0·P0·[DECISION]_
+- [ ] **UX-170** Save status indicator — Saved / Saving… / Error visible near the file name; error offers retry. _Data:_ `—` _Test:_ make file read-only mid-session → Error shown, retry after fix → Saved. _M0·P1·[DECISION]_
+- [ ] **UX-171** Cmd/Ctrl+S — forces flush and shows "Saved" toast; untitled → Save as. _Data:_ `—` _Test:_ press ⌘S → toast; untitled → dialog. _M0·P1·[DECISION]_
+- [ ] **UX-172** Safe close — closing waits for flush; failure shows Retry / Save as / Quit anyway. _Data:_ `—` _Test:_ block disk; close → dialog. _M0·P0·[DECISION]_
+- [ ] **UX-173** External modification detection — if the file changes on disk while open, user chooses reload or keep; never silently overwritten. _Data:_ `—` _Test:_ modify file externally → prompt. _M0·P1·[DECISION]_
+
+### 6.18 Comments (local-only, P2)
+
+- [ ] **UX-174** Comment pins — Comment tool (C) places a pin anchored to the top-level frame under it (moves with it) or to canvas coordinates; drag creates a region comment. _Data:_ `client_meta` (`FrameOffset`, `Region`, `FrameOffsetRegion`) _Test:_ pin on frame; move frame → pin follows. _M8·P2·[API][KNOW]_
+- [ ] **UX-175** Threads — reply, edit, delete, resolve/unresolve; numbered threads; local author name from preferences. _Data:_ `parent_id`, `order_id`, `resolved_at`, `message` _Test:_ create thread with reply; resolve → hidden under filter. _M8·P2·[API][DECISION]_
+- [ ] **UX-176** Comments visibility toggle — Shift+C (or View menu) shows/hides pins; comments sidebar lists/filters threads. _Data:_ `UI state` _Test:_ toggle hides pins (C-01). _M8·P2·[KNOW]_
+- [ ] **UX-177** Comments isolation — comments are not undoable, not exported, not copied with layers. _Data:_ `—` _Test:_ add comment, ⌘Z → comment remains; export PNG → no pins. _M8·P2·[KNOW][DECISION]_
+
+### 6.19 View toggles, UI scale, high-DPI
+
+- [ ] **UX-178** Rulers toggle — ⇧R shows/hides rulers; origin relative to selected top-level frame. _Data:_ `view state` _Test:_ toggle; select frame at (100,100) → ruler 0 at frame left edge (CV owns). _M1·P1·[SRC:raycast][KNOW]_
+- [ ] **UX-179** Pixel grid toggle — toggles 1-px grid visible only at zoom ≥ 400 %. _Data:_ `view state` _Test:_ on at 399 % → no grid; 400 % → grid aligned to integer coordinates. _M1·P1·[DOC:360041065034 excerpt]_
+- [ ] **UX-180** Snap to pixel grid toggle — ⇧⌘'/Ctrl+Shift+' toggles; state shared with Preferences. _Data:_ `pref` _Test:_ off → drag yields fractional x; on → integer. _M1·P0·[DOC:360041065034 excerpt]_
+- [ ] **UX-181** Layout guides toggle — ⌃G / Ctrl+Shift+4 and Zoom/view menu toggle visibility of all layout guides without changing data. _Data:_ `layoutGrids` untouched _Test:_ toggle; frames' grids hidden; file unchanged. _M4·P1·[DOC:360041065034 excerpt][SRC:raycast]_
+- [ ] **UX-182** Outline mode — toggles outline rendering of all layers (and hidden-layer outlines option). _Data:_ `view state` _Test:_ ⌘Y → outlines; compare (V-18). _M2·P2·[SRC:raycast][DOC:5724448965527 title]_
+- [ ] **UX-183** Pixel preview — renders the canvas rasterized at the chosen density. _Data:_ `view state` _Test:_ enable 1× at 800 % → visible pixels. _M2·P2·[KNOW]_
+- [ ] **UX-184** Show/Hide UI and Minimize UI — ⌘\\ hides all chrome; ⇧\\ collapses nav bar and both panels to compact controls; neither changes artwork or zoom %. _Data:_ `UI state` _Test:_ toggle; canvas zoom unchanged; artwork pixel position consistent. _M1·P1·[DOC:360039831974 excerpt]_
+- [ ] **UX-185** Zoom/view options menu — right-sidebar header menu shows editable zoom % and view toggles with check states. _Data:_ `viewport.zoom` _Test:_ type 250 → zoom 2.5. _M1·P1·[DOC:360041065034 excerpt]_
+- [ ] **UX-186** View-toggle persistence scope — each toggle persists globally or per file exactly as Figma. _Data:_ `view state` _Test:_ V-17. _M1·P2·[KNOW]_
+- [ ] **UX-187** Interface scale — UI zoom in/out/reset (reset ⌥⇧⌘0) scales chrome only; canvas zoom % unchanged; persisted. _Data:_ `pref` _Test:_ scale 125 %; canvas zoom stays 100 %; reset. _M0·P1·[DOC:360049549913 excerpt][KNOW]_
+- [ ] **UX-188** High-DPI rendering — canvas renders at devicePixelRatio; hairlines remain 1 device-independent px at all zooms; moving window between displays re-renders crisply. _Data:_ `—` _Test:_ DPR 1 vs 2 screenshots; 1px rect edges crisp at 100 %. _M0·P0·[KNOW]_
+
+### 6.20 Notifications / toasts
+
+- [ ] **UX-189** Toast contract — bottom-of-screen toasts; ≤ 100 chars (truncate); default 3 s; persistent option; error style; one optional action button; queued; dequeue reasons timeout/dismiss/action. _Data:_ `NotificationOptions` model _Test:_ enqueue 3 toasts → shown sequentially; 120-char message truncated. _M0·P1·[API]_
+- [ ] **UX-190** Editor toasts — copy link, copy as PNG/SVG/CSS, export complete, missing fonts, and other Figma toasts appear with Figma's wording and timing. _Data:_ `—` _Test:_ trigger each; compare (N-01). _M1·P2·[KNOW]_
+- [ ] **UX-191** File notifications area — missing fonts and library-update notices appear at the bottom of the navigation bar, persisting until resolved. _Data:_ `font/library state` _Test:_ open file with missing font → notice present. _M6·P2·[DOC:23954856027159 excerpt]_
+- [ ] **UX-192** Toasts never take focus — keyboard focus stays on canvas/field when a toast appears. _Data:_ `—` _Test:_ show toast while typing in field → typing continues. _M0·P1·[KNOW]_
+
+### 6.21 Undo / redo
+
+- [ ] **UX-193** Document edits undoable from any panel — node, page, style, variable, component edits made via canvas, layers panel, pages panel, inspector, dialogs or actions menu are undoable in one global stack. _Data:_ `undo stack` _Test:_ rename page, reorder layer, change fill; 3×⌘Z reverts in reverse order. _M0·P0·[KNOW]_
+- [ ] **UX-194** Selection restored with undo — undo/redo restore the selection that existed before/after the step; pure selection changes create no step. _Data:_ `step.selectionBefore/After` _Test:_ select A, move; select B; ⌘Z → A moved back and A selected (U-02). _M0·P0·[KNOW]_
+- [ ] **UX-195** Cross-page undo — undoing a step made on another page switches to that page (U-03). _Data:_ `step.pageId` _Test:_ edit on page 1, switch to page 2, ⌘Z → page 1 current, edit reverted. _M0·P1·[KNOW]_
+- [ ] **UX-196** Viewport and UI state not undoable — pan/zoom, panel tabs, widths, expand/collapse, preferences and view toggles are never undo steps. _Data:_ `—` _Test:_ zoom then ⌘Z → previous document edit reverted, zoom unchanged (U-04). _M0·P0·[KNOW]_
+- [ ] **UX-197** Gesture grouping — drag, scrub, color-picker drag, layers-panel drag, drag-across toggles = one step each; typed field value = one step on commit. _Data:_ `—` _Test:_ scrub W across 50 values → one ⌘Z restores (U-07). _M0·P0·[KNOW]_
+- [ ] **UX-198** Field-local undo — inside a text input ⌘Z undoes the input's text, not the document. _Data:_ `—` _Test:_ type in rename, ⌘Z → field text reverts, doc unchanged. _M0·P1·[KNOW]_
+- [ ] **UX-199** Redo cleared by new edit — any new document mutation clears redo. _Data:_ `—` _Test:_ ⌘Z, edit, ⇧⌘Z → nothing. _M0·P0·[KNOW]_
+- [ ] **UX-200** Undo lifetime — undo history is per session and not restored after reopen; depth ≥ 1 000 steps. _Data:_ `—` _Test:_ 1 200 edits → 1 000 undoable; reopen → stack empty. _M0·P1·[KNOW][DECISION]_
+- [ ] **UX-201** Version restore and undo — restoring a version is undoable within the session (Illigma) ; Figma behavior recorded (U-06). _Data:_ `—` _Test:_ restore, ⌘Z → previous current state. _M8·P2·[DECISION]_
+
+### 6.22 Preferences
+
+- [ ] **UX-202** Nudge amounts — Preferences ▸ Nudge amount… edits small (default 1) and big (default 10) nudge in points; applied on dismiss; used by arrow keys, Shift+arrows and Shift-step in fields/text size. _Data:_ `smallNudge`, `bigNudge` _Test:_ set 2/16; → moves 2; ⇧→ moves 16; Shift+↑ font size +16? (verify with Figma, SRC:forum). _M1·P0·[DOC:4404575206295 excerpt][SRC:forum]_
+- [ ] **UX-203** Nudge validation — non-positive or non-numeric entries rejected/reverted; decimal handling per Figma. _Data:_ `prefs` _Test:_ enter 0, -1, 0.5 (P-PR-01). _M1·P2·[KNOW]_
+- [ ] **UX-204** Snapping toggles — Snap to geometry, Snap to objects, Snap to pixel grid independently toggle the respective snapping (CV). _Data:_ `prefs` _Test:_ disable objects → no edge snapping while geometry snapping persists. _M1·P0·[KNOW][DOC:360041065034 excerpt]_
+- [ ] **UX-205** Keep tool selected after use — see UX-127. _Data:_ `pref` _Test:_ as UX-127. _M1·P1·[KNOW]_
+- [ ] **UX-206** Highlight layers on hover — when off, canvas hover outlines are suppressed (layer-row hover highlight behavior per Figma). _Data:_ `pref` _Test:_ off → hovering canvas shows no outline. _M1·P2·[KNOW]_
+- [ ] **UX-207** Rename duplicated layers — duplicate naming follows the preference exactly as Figma. _Data:_ `pref, name` _Test:_ ⌘D on "Rect 1" with pref on/off (P-PR-02). _M1·P2·[KNOW]_
+- [ ] **UX-208** Show dimensions on objects — toggles the W×H label below selection. _Data:_ `pref` _Test:_ toggle. _M1·P2·[KNOW]_
+- [ ] **UX-209** Hide canvas UI during changes — hides selection chrome while scrubbing/editing values. _Data:_ `pref` _Test:_ scrub X → handles hidden until release. _M1·P2·[KNOW]_
+- [ ] **UX-210** Keyboard zooms into selection — keyboard zoom centers on selection when on. _Data:_ `pref` _Test:_ select off-center rect; press + → rect stays centered. _M1·P2·[KNOW]_
+- [ ] **UX-211** Preferences are global & immediate — apply instantly, persist across files and restarts, never undoable. _Data:_ `prefs` _Test:_ change, restart → retained; ⌘Z doesn't revert. _M1·P1·[KNOW]_
+- [ ] **UX-212** Complete preference list — Illigma exposes every Figma Design editor preference relevant offline (list to be captured live, P-PR-03). _Data:_ `prefs` _Test:_ diff against capture. _M1·P2·[KNOW]_
+
+### 6.23 Out-of-scope guards
+
+- [ ] **UX-213** No multiplayer UI — no avatars, cursors toggle, follow, spotlight, cursor chat in menus, toolbar or actions menu. _Data:_ `—` _Test:_ search actions for "cursor", "spotlight" → none. _M1·P1·[DECISION]_
+- [ ] **UX-214** No placeholder cloud/AI/plugin entries — no disabled placeholders for AI, plugins, widgets, Dev Mode, Share. _Data:_ `—` _Test:_ menu/toolbar audit. _M1·P1·[DECISION]_
 
 ---

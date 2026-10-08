@@ -623,3 +623,62 @@ All parsers (native, SVG, raster, `.fig`, REST JSON, DTCG, clipboard) treat inpu
 - SVG: no external entity resolution (XXE), no DTD fetching, no network fetches, no script execution.
 - Failed imports never corrupt the open document; partial results only when the user accepts an import report listing dropped content.
 - Fuzz-tested parsers (M8).
+
+---
+
+## 4. Inspector & on-canvas controls (functional only)
+
+Visual styling comes from the Framer-derived design system; this lists **which controls exist and what they do**.
+
+### 4.1 Right sidebar → Export section (per selection; UI owned by PE, data owned here)
+Present for frames in UI3 [OBS: Frame inspector shows "Export" section]. Functional elements [DOC:13402894554519 excerpt][API][KNOW]:
+- **+** adds an export setting row (default PNG at 1× [KNOW]; `exportAsync` with no settings = PNG 1× [API]); **−** removes a row.
+- Per row: **size field** (scale or fixed size: `0.5x … 4x`, `512w`, `512h` [KNOW]; standard scales 0.5/0.75/1/1.5/2/3/4 [API]); **format** (PNG, JPG, SVG, PDF) [DOC:13402894554519 excerpt]; **settings (…)**: Suffix; Ignore overlapping layers (`contentsOnly`); Include bounding box (`useAbsoluteBounds`, text layers); SVG: Outline text, Include "id" attribute, Simplify stroke; JPG/PDF: Image quality; JPG/PNG/PDF: Image resampling; Color profile [DOC:13402894554519 excerpt][API].
+- **Export <layer name>** button exports all rows for all selected layers; **Preview** disclosure renders a preview [KNOW].
+- With nothing selected, page-level export settings (REST `CanvasNode` has export settings [API]) — verify UI (§8 V-16).
+
+### 4.2 Export dialog (⇧⌘E)
+Lists exportable items (layers with export settings in the selection; verify scope with no selection) with checkboxes and previews, total file count, and an **Export** button that writes to a chosen folder [KNOW] (§8 V-16).
+
+### 4.3 Main menu → File (Figma, functional)
+New design file; Place image/video… (⇧⌘K); Save local copy…; Save to version history… (⌥⌘S); Show version history; Export… (⇧⌘E); Export frames to PDF…; Preferences → Color profile (default for new files) [DOC:360039825114 excerpt]; per-file color profile change with Assign/Convert choice [DOC:360039825114 excerpt]. Exact labels/placement [KNOW] (§8 V-26).
+
+### 4.4 Context menu → Copy/Paste as ▸
+Copy as text; Copy as code (CSS…); Copy as PNG (⇧⌘C); Copy as SVG; Copy link (⌘L); Paste to replace (⇧⌘R); Paste here (canvas context menu) [DOC:360040030374 excerpt][SRC:forum.figma.com/t/ctrl-shift-v-vs-ctrl-shift-r/57124 excerpt][KNOW].
+
+### 4.5 Version history panel (right sidebar)
+Opens in the right sidebar; selecting a version previews it in the viewport; per-version menu with **Restore this version** [DOC:360038006754 excerpt]; name/describe versions [DOC:360038006754 excerpt]; "+" save a named version, "Duplicate", "Copy link" [KNOW]. Illigma adds: *Show autosaves* filter, retention info, *Open as copy* [ILL].
+
+### 4.6 Missing fonts
+Warning icon in the left sidebar (file-level) and next to the font name in the right sidebar for selected text; clicking opens the **Missing fonts** modal listing missing fonts and affected layers, with replacement pickers and a replace action that changes the file for everyone [DOC:360039956994 excerpt].
+
+### 4.7 Libraries & variables
+Libraries modal (enable/disable libraries, updates review) → DS. Variables view: right-click collection → export JSON; right-click mode → Import mode [SRC:atomize.tools excerpt][SRC:github.com/civictheme/uikit/pull/1025 excerpt].
+
+### 4.8 Illigma-only shell controls [ILL]
+File ▸ New (⌘N), Open… (⌘O), Open Recent ▸, Close (⌘W), Save (⌘S), Save a Copy… (⇧⌘S), Recover Unsaved Changes…, Import ▸ (Images & Video…, SVG…, Design Tokens…, Figma file (.fig)… [flag], From Figma via API… [optional]), Export ▸ (Selection… ⇧⌘E, Frames to PDF…, Design Tokens…, Canonical JSON…), Document Color Profile…, Libraries…, Version History. Preferences ▸ Autosave & Recovery (shows journal location), Version retention, Default color profile, Fonts (folders, embedding defaults), Figma API token (keychain). Status bar: save state (Saved / Saving… / Recovery data present), memory-budget meter (§3.5). Import report panel listing converted/approximated/dropped features.
+
+### 4.9 On-canvas
+Drag-over highlight for droppable targets when dragging files into the window (frame under pointer becomes the parent — verify Figma, §8 V-12) [KNOW]; progress toasts for long imports/exports with Cancel [ILL]; placeholder rendering for missing images/fonts [ILL].
+
+---
+
+## 5. Keyboard shortcuts (macOS / Windows)
+
+| Action | macOS | Windows | Evidence |
+| --- | --- | --- | --- |
+| Copy / Cut / Paste | ⌘C / ⌘X / ⌘V | Ctrl+C / Ctrl+X / Ctrl+V | [KNOW] |
+| Paste over selection | ⇧⌘V | Ctrl+Shift+V | [SRC:forum.figma.com/t/ctrl-shift-v-vs-ctrl-shift-r/57124 excerpt] |
+| Paste to replace | ⇧⌘R | Ctrl+Shift+R | [SRC:forum.figma.com/t/ctrl-shift-v-vs-ctrl-shift-r/57124 excerpt] |
+| Copy as PNG | ⇧⌘C | Ctrl+Shift+C | [SRC:forum.figma.com paste-files-after-copy-as-png-svg-macos-15378 excerpt (2022)] |
+| Copy properties / Paste properties | ⌥⌘C / ⌥⌘V | Ctrl+Alt+C / Ctrl+Alt+V | [KNOW] (owned by CV) |
+| Copy link to selection | ⌘L | Ctrl+L | [KNOW] (Illigma: copies an `illigma://` node reference) |
+| Export… | ⇧⌘E | Ctrl+Shift+E | [KNOW] |
+| Place image / video | ⇧⌘K | Ctrl+Shift+K | [KNOW] |
+| Save to version history | ⌥⌘S | Ctrl+Alt+S | [KNOW] |
+| Save (Figma: no explicit save; behavior of ⌘S to verify) | ⌘S | Ctrl+S | [KNOW] / Illigma: force flush, first save of untitled shows dialog [ILL] |
+| Save a copy… | ⇧⌘S | Ctrl+Shift+S | [ILL] |
+| New file / Open / Close | ⌘N / ⌘O / ⌘W | Ctrl+N / Ctrl+O / Ctrl+W | [KNOW] for ⌘N/⌘W in Figma desktop; ⌘O [ILL] |
+| Undo / Redo | ⌘Z / ⇧⌘Z | Ctrl+Z / Ctrl+Shift+Z (Ctrl+Y) | [KNOW] |
+
+All entries tagged [KNOW]/[SRC] are listed in §8 V-26 for confirmation against Figma's keyboard-shortcuts panel.

@@ -707,3 +707,144 @@ Figma documents accessible prototypes [DOC:7810391964695 title]; content not see
 
 All global editor shortcuts are owned by 10-panels-shortcuts-workflow.md; conflicts are resolved there.
 
+---
+
+## 6. Parity checklist
+
+Format: `- [ ] **PR-NNN** Name — expected Figma behavior. _Data:_ … _Test:_ … _M#·P#·evidence_`. All items: **Not started**. "V-nn" refers to the experiments in §8; an item that cites a V-nn cannot be signed off until that experiment has been recorded.
+
+### 6.1 Prototype tab & editing mode
+
+- [ ] **PR-###** Design/Prototype tab switch — The right sidebar offers Design and Prototype tabs; selecting Prototype shows connection handles and all connections of the page on canvas, selecting Design hides them; switching tabs never changes the document or the undo stack. _Data:_ editor UI state only. _Test:_ Figma page with 3 connections; toggle tabs; record noodle visibility and that Undo after toggling does nothing prototype-related; Illigma identical. _M7·P0·[OBS] [KNOW]_
+- [ ] **PR-###** Prototype tab with no selection — Shows Device, Background and Flows sections (in Figma's order). _Data:_ `prototypeDevice`, `prototypeBackgrounds`, `flowStartingPoints`. _Test:_ deselect all in Figma; record section list and order; compare 1:1. _M7·P0·[DOC:21158597546391 excerpt] [DOC:360039823894 excerpt]_
+- [ ] **PR-###** Prototype tab with a screen selected — Shows Flow starting point, Interactions, Scroll behavior (Overflow) and, for frames used as overlays, Overlay settings. _Data:_ `reactions`, `overflowDirection`, `overlay*`. _Test:_ select a top-level frame that is an overlay target; record sections; compare. _M7·P0·[DOC:360039823894 excerpt] [DOC:360039818254 excerpt] [KNOW]_
+- [ ] **PR-###** Prototype tab with a nested layer selected — Shows Interactions and Scroll behavior → Position (Scroll with parent / Fixed / Sticky); Overflow additionally for frame-like layers. _Data:_ `reactions`, `scrollBehavior`, `overflowDirection`. _Test:_ select a nested rectangle, then a nested frame; record sections. _M7·P0·[DOC:360039818734 excerpt] [KNOW]_
+- [ ] **PR-###** No interactions on ineligible nodes — Sections, slices and component sets show no Interactions section and cannot hold reactions. _Data:_ node types per §2.1. _Test:_ select each in Figma; record absence; in Illigma the schema rejects `reactions` on these types. _M7·P1·[API]_
+- [ ] **PR-###** Multi-selection interactions — Identical interactions display normally; differing ones display a mixed state; "+" adds the new interaction to every selected layer. _Data:_ `reactions` per node. _Test:_ V-03. _M7·P1·[KNOW]_
+- [ ] **PR-###** Design edits keep reactions — Editing fills, size, name, auto layout or converting a frame to a component never drops its `reactions`. _Data:_ `reactions`. _Test:_ give a frame 2 interactions; change fill, resize, rename, Create component; reactions unchanged in Figma and Illigma. _M7·P0·[KNOW]_
+
+### 6.2 Screens & hotspots
+
+- [ ] **PR-###** Screen eligibility — Only FRAME/GROUP/COMPONENT/INSTANCE nodes whose parent is the page or a (possibly nested) section are screens (navigate/overlay destinations, flow starts); frames nested in frames never are. _Data:_ parent type; `prototypeStartNode` type list. _Test:_ V-36; destination dropdown lists frame-in-section and frame-in-nested-section but not frame-in-frame. _M7·P0·[API] [KNOW]_
+- [ ] **PR-###** Hotspot node types — Reactions can be set on FRAME, GROUP, TRANSFORM_GROUP, COMPONENT, INSTANCE, SLOT, RECTANGLE, LINE, ELLIPSE, POLYGON, STAR, VECTOR, TEXT, TEXT_PATH, BOOLEAN_OPERATION and the screen itself. _Data:_ `ReactionMixin`. _Test:_ in Figma add an On click to one layer of each type; all accept; Illigma accepts the same set. _M7·P0·[API]_
+- [ ] **PR-###** Hidden layers are inert — A layer with `visible:false` (directly or via an ancestor, or via a boolean variable) never receives triggers in the player. _Data:_ `visible`. _Test:_ V-08 case "hidden". _M7·P0·[KNOW]_
+- [ ] **PR-###** Zero-opacity hotspots — A layer at 0 % opacity (or with no fill) still receives triggers. _Data:_ `opacity`, `fills:[]`. _Test:_ V-08 case "invisible hotspot". _M7·P1·[KNOW]_
+- [ ] **PR-###** Locked layers interactive — `locked:true` does not affect the player. _Data:_ `locked`. _Test:_ V-08 case "locked". _M7·P1·[KNOW]_
+- [ ] **PR-###** Clipping limits hit area — Parts of a hotspot clipped by an ancestor with clip content (or by a scroll viewport) are not hit. _Data:_ `clipsContent`. _Test:_ V-08 case "clipped". _M7·P1·[KNOW]_
+- [ ] **PR-###** Rotated hotspots — Hit area follows the layer's transformed geometry bounds, not its axis-aligned bounding box. _Data:_ `relativeTransform`. _Test:_ V-08 case "rotated 45°". _M7·P2·[KNOW]_
+- [ ] **PR-###** Handler precedence & bubbling — The deepest hit layer that has a reaction for the event's trigger handles it; if it has none, the nearest ancestor (within the screen) that has one handles it; only one handler fires per event. _Data:_ `reactions`. _Test:_ V-08 cases "nested click", "child hover + parent click". _M7·P0·[KNOW]_
+- [ ] **PR-###** Pointer cursor over hotspots — Player shows a pointing-hand cursor over layers with click-type triggers (V-37). _Data:_ runtime. _Test:_ V-37. _M7·P2·[KNOW]_
+
+### 6.3 Connections (authoring)
+
+- [ ] **PR-###** Connection handle — In the Prototype tab, a hovered/selected eligible layer shows a circular handle on its right edge; dragging from it starts a noodle. _Data:_ UI. _Test:_ V-02 step 1; record handle placement for a rotated and a tiny (4×4) layer. _M7·P0·[KNOW]_
+- [ ] **PR-###** Create connection by drop — Dropping on a screen creates `{trigger: ON_CLICK, actions:[NODE NAVIGATE → screen]}`. _Data:_ `reactions`. _Test:_ drag from a button to Frame B; inspect via plugin `reactions`; Illigma JSON identical (ids aside). _M7·P0·[KNOW]_
+- [ ] **PR-###** Drop resolves to screen — Dropping over any child of a screen targets the screen itself. _Data:_ `destinationId`. _Test:_ drop over a text layer inside Frame B; destination = Frame B. _M7·P0·[KNOW]_
+- [ ] **PR-###** Default animation of new connections — New connections get Figma's default transition (Instant vs last-used, V-04). _Data:_ `transition`. _Test:_ V-04. _M7·P0·[KNOW]_
+- [ ] **PR-###** Variant-to-variant connection — Dragging between two variants of one component set creates `CHANGE_TO` instead of `NAVIGATE`. _Data:_ `navigation:'CHANGE_TO'`. _Test:_ connect Default→Hover variants; inspect `navigation`. _M7·P0·[SRC:smashingmagazine.com/2021/07/introduction-figma-interactive-components/] [DOC:360061175334 excerpt]_
+- [ ] **PR-###** Cancel on empty canvas — Releasing a new noodle on empty canvas creates nothing and leaves no undo step. _Data:_ none. _Test:_ V-02 step 2. _M7·P0·[KNOW]_
+- [ ] **PR-###** Retarget connection — Dragging the arrow end of an existing connection to another screen changes only `destinationId`; trigger, transition and flags are kept. _Data:_ `destinationId`. _Test:_ V-02 step 3; diff reactions before/after. _M7·P0·[KNOW]_
+- [ ] **PR-###** Detach connection end — Dropping an existing connection's end on empty canvas removes the connection (or clears its destination; V-02). _Data:_ `reactions`. _Test:_ V-02 step 4. _M7·P1·[KNOW]_
+- [ ] **PR-###** Select & delete noodle — Clicking a noodle selects that interaction and opens Interaction details; Delete/Backspace deletes it (one undo step). _Data:_ `reactions`. _Test:_ V-02 step 5. _M7·P0·[KNOW]_
+- [ ] **PR-###** Same-page destinations only — Destinations are limited to screens of the current page; other pages' frames are never offered. _Data:_ `destinationId`. _Test:_ two pages; open destination dropdown; only current-page screens listed. _M7·P0·[API] [KNOW]_
+- [ ] **PR-###** Destination picker — Dropdown lists screens (searchable) for navigate/overlay/swap, the current screen's descendants for Scroll to, sibling variants for Change to. _Data:_ `destinationId`. _Test:_ record list contents per action type. _M7·P1·[KNOW]_
+- [ ] **PR-###** Noodle drawing rules — Destination-less actions (Back, Close, URL, Set variable(-mode), Conditional, media) draw no noodle; Scroll to draws to the target layer; noodle endpoints update live when frames move. _Data:_ derived. _Test:_ V-02 step 6. _M7·P1·[KNOW]_
+- [ ] **PR-###** Automatic flow on first connection — Adding a connection between two frames with no existing connections creates a flow starting point on the source screen. _Data:_ `flowStartingPoints`. _Test:_ empty page, two frames, first connection; record new flow name. _M7·P0·[DOC:360039823894 excerpt]_
+- [ ] **PR-###** Add interaction with "+" — Adds a new interaction row with Figma's default trigger and action (V-04) and opens its details. _Data:_ `reactions`. _Test:_ V-04. _M7·P0·[KNOW]_
+- [ ] **PR-###** Remove interaction — "−" on a row removes that interaction (one undo step). _Data:_ `reactions`. _Test:_ remove; undo; redo. _M7·P0·[KNOW]_
+- [ ] **PR-###** Duplicate-trigger conflict — Two interactions with the same trigger on one layer show a warning; player behavior per V-06. _Data:_ `reactions`. _Test:_ V-06. _M7·P1·[KNOW]_
+- [ ] **PR-###** Multi-select connection — Dragging a noodle with several layers selected creates one interaction per selected layer. _Data:_ `reactions`. _Test:_ V-03. _M7·P1·[KNOW]_
+
+### 6.4 Flows & starting points
+
+- [ ] **PR-###** Flow list model — `flowStartingPoints` is an ordered page-level list of `{nodeId, name}`; the first is the default. _Data:_ `PageNode.flowStartingPoints`. _Test:_ create 3 flows; read via plugin; Illigma order identical. _M7·P0·[API]_
+- [ ] **PR-###** Add starting point (+) — "+" in Flow starting point on a selected screen adds a flow named "Flow N" (lowest unused N, V-05) and focuses the name field. _Data:_ `flowStartingPoints`. _Test:_ V-05. _M7·P0·[DOC:360039823894 excerpt] [SRC:forum.figma.com/t/auto-focus-flow-starting-points-name-at-creation/39496]_
+- [ ] **PR-###** Add starting point (context menu) — Right-click a screen → "Add starting point". _Data:_ same. _Test:_ record menu item label/position. _M7·P1·[DOC:360039823894 excerpt]_
+- [ ] **PR-###** One per screen — A screen can hold only one starting point; the add affordance is unavailable when present. _Data:_ unique `nodeId`. _Test:_ attempt second add; refused. _M7·P0·[DOC:360039823894 excerpt]_
+- [ ] **PR-###** Screens only — Starting points cannot be set on nested frames or non-screen layers. _Data:_ `nodeId` must be a screen. _Test:_ select nested frame; no Flow section. _M7·P0·[DOC:360039823894 excerpt]_
+- [ ] **PR-###** Rename flow — Inline edit of the flow name; empty name rule V-05. _Data:_ `name`. _Test:_ V-05. _M7·P1·[SRC:pwskills.com/blog/figma-prototype]_
+- [ ] **PR-###** Flow description — Editable multi-line description shown in the player's flow sidebar (Illigma extension field). _Data:_ `description` (Illigma ext.). _Test:_ V-05 (storage); visible in player sidebar. _M7·P1·[SRC:pwskills.com/blog/figma-prototype] [KNOW]_
+- [ ] **PR-###** Remove starting point — Removing deletes the flow entry; the screen and its interactions remain. _Data:_ `flowStartingPoints`. _Test:_ remove; undo restores same name/order. _M7·P0·[SRC:forum.figma.com/t/cant-remove-flows/25184]_
+- [ ] **PR-###** Duplicate screen with flow — Duplicating a screen that has a starting point creates a starting point on the copy (naming V-05). _Data:_ `flowStartingPoints`. _Test:_ ⌘D a flow start; record new flow name and list position. _M7·P1·[DOC:360039823894 excerpt]_
+- [ ] **PR-###** Delete screen removes flow — Deleting a screen removes its starting point; undo restores both, at the same list index. _Data:_ `flowStartingPoints`. _Test:_ delete middle flow's frame; undo; order preserved. _M7·P0·[KNOW]_
+- [ ] **PR-###** Flows list navigation — With nothing selected, hovering a flow offers "Select frame", which selects and zooms to the starting screen. _Data:_ UI. _Test:_ record behavior incl. zoom. _M7·P1·[DOC:360039823894 excerpt]_
+- [ ] **PR-###** Canvas flow badge — A starting screen shows a badge with a play icon and the flow name above it; activating it presents that flow. _Data:_ derived. _Test:_ click badge; player opens at that flow. _M7·P1·[DOC:360039823894 excerpt] [KNOW]_
+- [ ] **PR-###** Flow membership — A flow comprises all screens reachable from its start through interactions; a screen may be in several flows. _Data:_ derived graph. _Test:_ two flows sharing a screen; both reach it in the player. _M7·P1·[DOC:360039823894 excerpt]_
+- [ ] **PR-###** Reorder flows — Flow order is user-changeable if Figma allows it (V-05); order drives the player sidebar and default flow. _Data:_ list order. _Test:_ V-05. _M7·P2·[KNOW]_
+- [ ] **PR-###** Legacy start node import — A file with `prototypeStartNodeID` and no flows imports as one flow on that node. _Data:_ `prototypeStartNode`. _Test:_ import a REST JSON fixture with only `prototypeStartNodeID`; one flow created. _M8·P1·[API]_
+
+### 6.5 Triggers
+
+- [ ] **PR-###** On click — Fires on release over the same hotspot that received the press, if pointer travel stayed under the drag threshold (V-07). _Data:_ `{type:'ON_CLICK'}`. _Test:_ V-07. _M7·P0·[DOC:360040035834 excerpt] [KNOW]_
+- [ ] **PR-###** Click suppressed by gestures — No On click fires after a drag, scroll or On drag gesture. _Data:_ runtime. _Test:_ V-07 "drag-then-release on hotspot". _M7·P0·[KNOW]_
+- [ ] **PR-###** On drag start — Fires when a drag begins on the hotspot, in any direction. _Data:_ `{type:'ON_DRAG'}`. _Test:_ V-09. _M7·P1·[DOC:360040035834 excerpt]_
+- [ ] **PR-###** On drag progress — For animated transitions, transition progress follows pointer displacement while dragging (scrubbing back and forth). _Data:_ `transition`. _Test:_ V-09 (record progress vs distance). _M7·P1·[DOC:360040035834 excerpt]_
+- [ ] **PR-###** On drag release — On release the transition completes or reverts per Figma's threshold/velocity rule. _Data:_ runtime. _Test:_ V-09. _M7·P1·[KNOW]_
+- [ ] **PR-###** On drag vs scroll — A drag starting on an On drag hotspot inside a scroll container triggers the interaction instead of scrolling. _Data:_ runtime. _Test:_ V-09. _M7·P1·[KNOW]_
+- [ ] **PR-###** While hovering apply — Actions apply when the pointer enters the hotspot. _Data:_ `{type:'ON_HOVER'}`. _Test:_ hover button → Navigate to B; screen changes on enter. _M7·P0·[DOC:360040035834 excerpt] [API]_
+- [ ] **PR-###** While hovering revert — Leaving the hotspot reverts to the prior state with the reverse animation. _Data:_ runtime snapshot. _Test:_ record reverse transition on leave (Move in left → ?). _M7·P0·[DOC:360040035834 excerpt] [API] [KNOW]_
+- [ ] **PR-###** While pressing — Applies on button down, reverts on button up (including release outside the hotspot, V-12). _Data:_ `{type:'ON_PRESS'}`. _Test:_ V-12. _M7·P0·[DOC:360040035834 excerpt] [API]_
+- [ ] **PR-###** Temporary trigger action set — The set of action types offered under While hovering / While pressing matches Figma. _Data:_ allowed `Action` types. _Test:_ V-12 (record dropdown contents). _M7·P1·[KNOW]_
+- [ ] **PR-###** Mouse enter — Fires once when the pointer first crosses into the hotspot; never reverts. _Data:_ `{type:'MOUSE_ENTER', delay, deprecatedVersion:false}`. _Test:_ enter, move around inside: exactly one firing. _M7·P0·[SRC:help.figma.com/hc/en-us/articles/360040035834 excerpt] [API]_
+- [ ] **PR-###** Mouse enter/leave delay — With `delay>0`, the pointer must remain inside (enter) / outside (leave) for the delay; leaving earlier cancels. _Data:_ `delay`. _Test:_ V-10. _M7·P1·[API] [KNOW]_
+- [ ] **PR-###** Mouse leave — Fires once on first exit from the hotspot. _Data:_ `{type:'MOUSE_LEAVE'}`. _Test:_ enter/exit 3 times → 3 firings, one per exit. _M7·P0·[SRC:help.figma.com excerpt] [API]_
+- [ ] **PR-###** Legacy mouse triggers — `deprecatedVersion:true` triggers keep legacy behavior, show the legacy label ("Mouse move inside/outside", V-10) and cannot be newly created. _Data:_ `deprecatedVersion`. _Test:_ V-10 with an imported legacy fixture. _M7·P1·[API] [SRC:help.figma.com excerpt]_
+- [ ] **PR-###** Mouse down — Fires on primary button down over the hotspot (after `delay`, V-10); one-way. _Data:_ `{type:'MOUSE_DOWN', delay}`. _Test:_ V-10. _M7·P1·[API]_
+- [ ] **PR-###** Mouse up — Fires on primary button up over the hotspot (after `delay`, V-10); one-way. _Data:_ `{type:'MOUSE_UP', delay}`. _Test:_ V-10 incl. press outside then release inside. _M7·P1·[API]_
+- [ ] **PR-###** After delay — Fires once `timeout` after the screen is shown; UI default 800 ms (V-01). _Data:_ `{type:'AFTER_TIMEOUT', timeout}`. _Test:_ V-12 (timestamped capture). _M7·P0·[API] [KNOW]_
+- [ ] **PR-###** After delay availability — Offered only on screens (and variants, overlays per V-12), not on nested layers. _Data:_ trigger filter. _Test:_ V-12. _M7·P1·[SRC:uxdesign.cc/prototyping-with-figma-interactions-228dbc82fe00]_
+- [ ] **PR-###** After delay lifecycle — Timer starts when the screen becomes visible (before/after transition end: V-12), is cancelled on leaving, and restarts on every re-entry. _Data:_ runtime timers. _Test:_ V-12. _M7·P0·[KNOW]_
+- [ ] **PR-###** After delay in overlays — An overlay frame's After delay starts when the overlay opens and is cancelled when it closes. _Data:_ runtime. _Test:_ V-12. _M7·P1·[KNOW]_
+- [ ] **PR-###** Key trigger capture — Focusing the key field and pressing a key combination records it (modifiers included) into `keyCodes`. _Data:_ `{type:'ON_KEY_DOWN', device:'KEYBOARD', keyCodes}`. _Test:_ V-13 (record keyCodes for A, Shift+A, ⌘K, Space, Enter, ←). _M7·P1·[API] [KNOW]_
+- [ ] **PR-###** Key trigger firing & scope — Fires when exactly the recorded keys are down; applies to the current screen and open overlays regardless of pointer position (topmost overlay first). _Data:_ runtime. _Test:_ V-13. _M7·P1·[KNOW]_
+- [ ] **PR-###** Gamepad triggers — Devices XBOX_ONE, PS4, SWITCH_PRO, UNKNOWN_CONTROLLER map controller buttons to `keyCodes` via the Gamepad API. _Data:_ `device`, `keyCodes`. _Test:_ V-13 with one controller (record codes per button). _M7·P2·[API] [SRC:uxdesign.cc]_
+- [ ] **PR-###** Video hits time — On a layer with a video fill, fires when playback crosses `mediaHitTime` (seconds), once per crossing. _Data:_ `{type:'ON_MEDIA_HIT', mediaHitTime}`. _Test:_ V-24. _M7·P1·[API]_
+- [ ] **PR-###** Video ends — Fires when the video reaches its end (looping behavior V-24). _Data:_ `{type:'ON_MEDIA_END'}`. _Test:_ V-24. _M7·P1·[API]_
+- [ ] **PR-###** Context-filtered trigger list — Video triggers only for video-filled layers; After delay only for screens/variants; Change-to-specific options only in variants. _Data:_ UI filter. _Test:_ record trigger dropdown for rect, video rect, screen, variant. _M7·P1·[API] [KNOW]_
+- [ ] **PR-###** Incomplete interactions — `trigger:null` or empty `actions` persist through save/open and are inert in the player. _Data:_ `Reaction`. _Test:_ create via plugin in Figma; present; nothing happens; round-trip in Illigma. _M7·P0·[API]_
+- [ ] **PR-###** Delay/timeout fields — Integer-ms entry; min/max and rounding per V-01; stored in Illigma seconds (§2.11). _Data:_ `timeout`, `delay`. _Test:_ V-01. _M7·P1·[API] [KNOW]_
+
+### 6.6 Actions
+
+- [ ] **PR-###** Navigate to — Replaces the base screen, closes all overlays, pushes a history entry. _Data:_ `NODE/NAVIGATE`. _Test:_ open 2 overlays then Navigate; overlays gone; Back returns to the screen with both overlays (V-16). _M7·P0·[API]_
+- [ ] **PR-###** Navigate to current screen — Navigating to the screen already shown re-enters it per Figma (After delay restarts? scroll kept? V-16). _Data:_ same. _Test:_ V-16. _M7·P2·[KNOW]_
+- [ ] **PR-###** Back — Returns to the previous history entry, playing the reverse of the transition that led forward. _Data:_ `{type:'BACK'}`. _Test:_ V-16 (Push left forward; record Back animation). _M7·P0·[DOC:360040035874 excerpt] [KNOW]_
+- [ ] **PR-###** Back at history root — No effect at the start of history. _Data:_ runtime. _Test:_ V-16. _M7·P1·[KNOW]_
+- [ ] **PR-###** Change to availability — Offered only when the hotspot is inside a variant of a component set; destination list = sibling variants. _Data:_ `NODE/CHANGE_TO`. _Test:_ action dropdown on a plain frame vs inside a variant. _M7·P0·[SRC:smashingmagazine.com] [API]_
+- [ ] **PR-###** Change to runtime — Switches the closest ancestor instance of the hotspot to the destination variant for this session only. _Data:_ runtime `instanceVariant`. _Test:_ instance in screen; click; variant changes; exit player; document unchanged. _M7·P0·[API]_
+- [ ] **PR-###** Change to animations — Offered transition types for Change to match Figma (V-17). _Data:_ `transition`. _Test:_ V-17. _M7·P1·[KNOW]_
+- [ ] **PR-###** Scroll to targets — Destination must be a layer within the current screen (including nested scroll containers); layers on other screens/pages are not offered. _Data:_ `NODE/SCROLL_TO`. _Test:_ dropdown contents. _M7·P0·[DOC:360040035874 excerpt] [SRC:forum.figma.com/t/link-to-section-from-other-screen/67252]_
+- [ ] **PR-###** Scroll to geometry — Each scrollable ancestor (innermost first, including the screen viewport) scrolls so the destination's top-left aligns to its viewport's top-left, clamped to the scroll range. _Data:_ runtime scroll. _Test:_ V-18 (targets near top, middle, bottom end, inside nested scroller). _M7·P0·[KNOW]_
+- [ ] **PR-###** Scroll to animation — Instant (`transition:null`) or animated (`SCROLL_ANIMATE` + easing + duration). _Data:_ `transition.type`. _Test:_ V-18; read `transition.type` after choosing "animate". _M7·P1·[API]_
+- [ ] **PR-###** Scroll to offset — If Figma's UI exposes an X/Y offset for Scroll to, Illigma matches it (no data field exists in the typings; V-18). _Data:_ unknown. _Test:_ V-18. _M7·P2·[API] [KNOW]_
+- [ ] **PR-###** Open link — Opens `url` in the OS default browser (local-first adaptation of Figma's new-tab/leaving notice); `openInNewTab` persisted. _Data:_ `{type:'URL', url, openInNewTab}`. _Test:_ round-trip `openInNewTab`; activation opens browser after confirmation. _M7·P1·[DOC:360040035874 excerpt] [API]_
+- [ ] **PR-###** Open link URL handling — Empty URL is inert; scheme-less URLs are normalized as Figma does (V-38). _Data:_ `url`. _Test:_ V-38. _M7·P2·[KNOW]_
+- [ ] **PR-###** Open overlay — Opens the destination above the current stack and pushes history. _Data:_ `NODE/OVERLAY`. _Test:_ open overlay; Back closes it (V-16). _M7·P0·[API] [DOC:360040035874 excerpt]_
+- [ ] **PR-###** Open overlay animations — Smart animate is not offered/used for Open overlay; other allowed types per V-11. _Data:_ `transition`. _Test:_ V-11 (record dropdown). _M7·P1·[DOC:360040522373 excerpt]_
+- [ ] **PR-###** Swap overlay from overlay — Replaces the topmost overlay; the new overlay takes over the old overlay's settings/position; no history entry. _Data:_ `NODE/SWAP`. _Test:_ overlay A (top-right) → swap to B (center setting); B appears top-right; Back skips A. _M7·P0·[DOC:360040035874 excerpt] [SRC:forum.figma.com/suggest-a-feature-11/swap-overlay-and-set-a-different-position-1653]_
+- [ ] **PR-###** Swap from base screen — Behaves like Navigate to without adding history. _Data:_ `NODE/SWAP`. _Test:_ A→(swap)B→Back returns to the screen before A. _M7·P0·[API]_
+- [ ] **PR-###** Swap overlay smart animate — Smart animate between swapped overlays with matching layers animates them. _Data:_ `SMART_ANIMATE`. _Test:_ two overlays with a matching "Panel" layer at different heights. _M7·P1·[DOC:360040522373 excerpt]_
+- [ ] **PR-###** Close overlay — Closes the overlay per Figma scope (topmost / containing hotspot, V-19) with the reverse of its opening animation. _Data:_ `{type:'CLOSE'}`. _Test:_ V-19. _M7·P0·[DOC:360040035874 excerpt] [KNOW]_
+- [ ] **PR-###** Close overlay without overlays — No effect when no overlay is open. _Data:_ runtime. _Test:_ V-19. _M7·P1·[KNOW]_
+- [ ] **PR-###** Null destination — `NODE` actions with `destinationId:null` are kept and inert ("None"). _Data:_ `destinationId`. _Test:_ set via plugin; present; nothing happens. _M7·P0·[API]_
+- [ ] **PR-###** Deprecated single `action` — Import maps legacy `action` to `actions[0]`; export writes both. _Data:_ `Reaction.action`. _Test:_ fixture with only `action`; behavior identical. _M8·P1·[API]_
+
+### 6.7 Overlays
+
+- [ ] **PR-###** Settings live on the overlay frame — Position, close-outside and background are properties of the destination frame; editing them from any connection changes all connections that open it. _Data:_ `overlayPositionType`, `overlayBackground`, `overlayBackgroundInteraction`. _Test:_ two buttons open the same overlay; change position via one; both affected. _M7·P0·[API] [DOC:360039818254 excerpt]_
+- [ ] **PR-###** Overlay canvas icon — Frames used as overlays show an overlay icon next to the frame on canvas; clicking it shows overlay settings. _Data:_ derived. _Test:_ record icon presence for overlay vs non-overlay targets. _M7·P1·[DOC:360039818254 excerpt]_
+- [ ] **PR-###** Preset positions — CENTER, TOP_LEFT, TOP_CENTER, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_CENTER, BOTTOM_RIGHT place the overlay per §3.11 relative to the visible viewport of the base screen. _Data:_ `overlayPositionType`. _Test:_ V-11 (each preset, device viewport 390×844, overlay 200×100, base screen scrolled 300 px). _M7·P0·[DOC:360039818254 excerpt] [KNOW]_
+- [ ] **PR-###** Default position — A frame never used as overlay has `overlayPositionType` CENTER (V-11). _Data:_ default. _Test:_ V-11 read via plugin. _M7·P1·[KNOW]_
+- [ ] **PR-###** Manual position authoring — Choosing Manual lets the user drag an overlay preview on canvas; the offset is stored on the action relative to the hotspot. _Data:_ `overlayRelativePosition`. _Test:_ drag preview; read `overlayRelativePosition`. _M7·P0·[DOC:360039818254 excerpt] [API]_
+- [ ] **PR-###** Manual position runtime — Overlay opens at hotspot position + offset, using the hotspot's on-screen position at open time (scrolled). _Data:_ same. _Test:_ V-11 (hotspot in scrolled list). _M7·P1·[API] [KNOW]_
+- [ ] **PR-###** Close when clicking outside — Clicking outside the overlay's bounds closes it. _Data:_ `CLOSE_ON_CLICK_OUTSIDE`. _Test:_ click outside → closes. _M7·P0·[DOC:360039818254 excerpt]_
+- [ ] **PR-###** Outside click consumption — The outside click that closes an overlay does not also fire hotspots beneath (V-11). _Data:_ runtime. _Test:_ V-11. _M7·P1·[KNOW]_
+- [ ] **PR-###** Outside click with stacked overlays — Closes only the topmost overlay (V-11). _Data:_ runtime. _Test:_ V-11. _M7·P1·[KNOW]_
+- [ ] **PR-###** Background behind overlay — Enabling adds a solid color layer between overlay and screen; initial color #000000 at 25 %; color/opacity editable. _Data:_ `overlayBackground {SOLID_COLOR, color}`. _Test:_ enable; read color `{r:0,g:0,b:0,a:0.25}`. _M7·P0·[DOC:360039818254 excerpt] [API]_
+- [ ] **PR-###** Background and underlying interaction — Whether the base screen stays clickable around an overlay without close-outside, with/without background, matches Figma (V-11). _Data:_ runtime. _Test:_ V-11. _M7·P1·[KNOW]_
+- [ ] **PR-###** Overlay stacking — Opening an overlay from an overlay stacks it on top; each keeps its own position. _Data:_ runtime stack. _Test:_ V-11. _M7·P0·[KNOW]_
+- [ ] **PR-###** Navigate closes overlays — Navigate to from inside an overlay replaces the base screen and closes all overlays. _Data:_ `NAVIGATE`. _Test:_ button inside overlay → Navigate. _M7·P0·[API]_
+- [ ] **PR-###** Overlay close animation — Closing (Close, Back, outside click) plays the reverse of the opening transition (V-15). _Data:_ runtime. _Test:_ V-15 overlay section. _M7·P1·[KNOW]_
+- [ ] **PR-###** Large & scrolling overlays — Overlays larger than the viewport are clipped/positioned per Figma; overlays with overflow scroll internally (V-11). _Data:_ `overflowDirection`. _Test:_ V-11. _M7·P1·[KNOW]_
+- [ ] **PR-###** Overlay background blur — A background-blur effect on the overlay frame blurs the screen beneath in the player. _Data:_ overlay `effects`. _Test:_ overlay with background blur 20. _M7·P2·[SRC:forum.figma.com/suggest-a-feature-11/add-background-blur-when-opening-overlay-21951]_
+- [ ] **PR-###** No actions on implicit close — Close-on-click-outside cannot run extra actions. _Data:_ n/a. _Test:_ confirm no UI to attach actions. _M7·P2·[SRC:forum.figma.com/t/action-when-closing-overlay-when-clicking-outside/85912]_

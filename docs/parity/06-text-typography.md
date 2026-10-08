@@ -623,3 +623,354 @@ Windows mapping: ⌘ → Ctrl, ⌥ → Alt, ⇧ → Shift [SRC:https://www.rayca
 | OS emoji picker | ⌃⌘Space | Win+. | [KNOW] (OS feature) |
 
 ---
+
+## 6. Parity checklist
+
+All items: status **Not started**. IDs are stable once published; new items are appended. Each test means: perform the same steps in Figma (reference) and Illigma, record the listed values, and compare.
+
+### 6.1 Text tool & creation
+
+- [ ] **TX-###** Text tool activation — `T` and the toolbar button activate the Text tool; the pointer becomes a text cursor; the tool stays active until a layer is created or another tool is chosen. _Data:_ transient tool state _Test:_ press T on empty canvas, verify tool state; press V, verify tool switches. _M3·P0·[DOC:360039956434 excerpt]_
+- [ ] **TX-###** Click-create = Auto width — a click without drag creates a `TEXT` node with `textAutoResize = WIDTH_AND_HEIGHT`, empty characters, and a caret in edit mode. _Data:_ `type`, `textAutoResize`, `characters` _Test:_ click at (100,100), type "Hello", Esc; read resizing = Auto width, record x/y/w/h and compare the click point to the box's top-left (offset recorded in §8 E-CR-1). _M3·P0·[DOC:27378154668951 excerpt]_
+- [ ] **TX-###** Drag-create = Fixed size — dragging a rectangle creates a text box of exactly that size with `textAutoResize = NONE`. _Data:_ `textAutoResize`, `width`, `height` _Test:_ drag 200×80, type 3 lines exceeding 80 px; box stays 200×80 and text overflows below. _M3·P0·[KNOW]_
+- [ ] **TX-###** Drag-create modifiers — Shift constrains the drag to a square, Alt/Option draws from the center; a drag below the drag threshold counts as a click. _Data:_ geometry _Test:_ Shift-drag and Alt-drag; record sizes; 2 px drag yields Auto width. _M3·P2·[KNOW]_
+- [ ] **TX-###** Parent on creation — text created over a frame/section becomes a child of the top-most frame/section under the pointer-down point; over an auto-layout frame it is inserted into the flow at the nearest index. _Data:_ `parent`, child index _Test:_ create text on nested frames and inside a horizontal auto layout between two children; record parent and index. _M3·P1·[KNOW]_
+- [ ] **TX-###** Empty text is discarded — leaving edit mode with no characters deletes the new layer and leaves no layer-creation entry in undo history. _Data:_ node existence _Test:_ click with Text tool, press Esc; layer count unchanged; ⌘Z does not resurrect an empty layer. _M3·P0·[KNOW]_
+- [ ] **TX-###** New-layer default properties — new text uses the last-used text properties of the session if any, else Inter Regular 12, Auto line height, 0% letter spacing, left/top alignment, black 100% fill. _Data:_ `fontName`, `fontSize`, `lineHeight`, `letterSpacing`, alignments, `fills` _Test:_ fresh file → create text, read all props; change to Roboto 20 on one layer, create another, read props. _M3·P1·[API][KNOW]_
+- [ ] **TX-###** Tool after commit — after Esc commits a new text layer, the active tool is Move and the new layer is selected. _Data:_ tool, selection _Test:_ create text, Esc, read tool and selection. _M3·P1·[KNOW]_
+- [ ] **TX-###** Text tool on existing text — with Text tool active, clicking inside an existing text layer places the caret there instead of creating a layer. _Data:_ node count, caret offset _Test:_ click mid-word in an existing layer; no new node; caret offset recorded. _M3·P1·[KNOW]_
+- [ ] **TX-###** Auto-rename — while `autoRename` is true the layer name follows `characters`; renaming in the layers panel sets `autoRename = false` and later edits do not rename. _Data:_ `name`, `autoRename` _Test:_ type "Alpha" → name "Alpha"; edit to "Beta" → "Beta"; rename to "X"; edit text → name stays "X". _M3·P0·[API]_
+- [ ] **TX-###** Auto-name derivation details — name derived from multi-line or very long content (newline handling, length cap, whitespace trimming). _Data:_ `name` _Test:_ type "A\nB" and a 500-char string; record exact names. _M3·P2·[KNOW]_
+
+### 6.2 Entering & leaving edit mode
+
+- [ ] **TX-###** Double-click enters edit — double-click on a directly selectable text layer enters edit mode with the caret at the nearest grapheme boundary to the pointer. _Data:_ edit target, caret offset _Test:_ double-click between letters 3 and 4 of "abcdef"; caret offset 3; no characters selected (§8 E-ED-1). _M3·P0·[KNOW]_
+- [ ] **TX-###** Double-click inside groups — text inside a group requires the normal deep-select sequence (group → text → edit); text directly inside a frame is edited by double-click. _Data:_ selection depth _Test:_ text in group-in-frame; count double-clicks to reach edit mode. _M3·P1·[KNOW]_
+- [ ] **TX-###** Enter edits selected layer — Return/Enter with one text layer selected enters edit mode with all characters selected. _Data:_ selection range _Test:_ select layer, ↩, type "Z"; characters = "Z". _M3·P0·[SRC:https://forum.figma.com/report-a-problem-6/can-t-edit-the-text-layer-while-double-clicking-the-text-layer-or-any-kind-of-text-28005][KNOW]_
+- [ ] **TX-###** Esc commits — Esc leaves edit mode keeping all edits and leaves the text layer selected; a second Esc follows normal selection behavior. _Data:_ `characters`, selection _Test:_ type, Esc; text kept; layer selected; Esc again; record selection. _M3·P0·[SRC:https://forum.figma.com/suggest-a-feature-11/make-ux-of-esc-key-more-consistet-cancel-or-submit-10446]_
+- [ ] **TX-###** Click outside commits — clicking outside the edited layer commits and the click is processed (selects the clicked layer or clears selection). _Data:_ selection _Test:_ edit text, click another rectangle; text committed, rectangle selected. _M3·P0·[KNOW]_
+- [ ] **TX-###** Shortcut isolation in edit mode — single-letter tool shortcuts, Delete/Backspace, arrow keys and ⌘A act on text, not on layers or tools, while editing. _Data:_ tool, node list _Test:_ in edit mode type "vrfk", press Backspace and ⌘A; text changes only; tool unchanged; no layer deleted. _M3·P0·[KNOW]_
+- [ ] **TX-###** Locked text — a locked text layer cannot enter edit mode from the canvas. _Data:_ `locked` _Test:_ lock layer, double-click it; no edit mode. _M3·P2·[KNOW]_
+- [ ] **TX-###** Editing transformed text — edit mode, caret placement and drag-selection are correct for rotated (e.g. 37°), flipped and scaled-parent text at zoom 25%–800%. _Data:_ `relativeTransform` _Test:_ click/drag-select on rotated text; compare selected ranges with Figma. _M3·P1·[KNOW]_
+
+### 6.3 Caret, selection & navigation
+
+- [ ] **TX-###** Click caret placement — click inside text sets caret at nearest grapheme boundary; right of a line end → that line's end; below the last line → end; above the first → start. _Data:_ caret offset _Test:_ 3-line fixture; click 4 positions; record offsets. _M3·P0·[KNOW]_
+- [ ] **TX-###** Drag and Shift-click selection — drag selects a contiguous range across lines; Shift+click extends from the anchor. _Data:_ selection start/end _Test:_ drag from line1 col2 to line3 col1; then Shift+click; record ranges. _M3·P0·[KNOW]_
+- [ ] **TX-###** Double/triple click — double-click selects a word (UAX #29), triple-click selects the paragraph. _Data:_ selection _Test:_ "foo-bar baz.qux" double-click on "bar" and on "qux"; triple-click; record ranges (punctuation handling recorded). _M3·P1·[KNOW]_
+- [ ] **TX-###** Grapheme-atomic movement — arrows, Backspace, Delete, and selection never split surrogate pairs, ZWJ emoji sequences, flags or combining marks. _Data:_ UTF-16 offsets _Test:_ text "a👨‍👧b🇫🇷é(e+◌́)"; step with →; offsets 0,1,6,7,11,13 … recorded and equal. _M3·P0·[API][KNOW]_
+- [ ] **TX-###** Horizontal arrows with selection — ←/→ with a non-empty selection collapse to its start/end without moving further. _Data:_ caret _Test:_ select "bcd" in "abcde", press ← → caret 1; reselect, → → caret 4. _M3·P1·[KNOW]_
+- [ ] **TX-###** Vertical arrows — ↑/↓ move by visual line preserving goal x; ↑ on first line → start, ↓ on last line → end. _Data:_ caret _Test:_ wrapped paragraph; record offsets after ↓↓↑. _M3·P0·[KNOW]_
+- [ ] **TX-###** Word/line/document navigation — macOS ⌥←→ (word), ⌘←→ (line), ⌘↑↓ (text); Windows Ctrl+←→, Home/End, Ctrl+Home/End; Shift extends. _Data:_ caret/selection _Test:_ fixture with punctuation and wrapped lines; record offsets for each key. _M3·P0·[KNOW]_
+- [ ] **TX-###** Select all in edit mode — ⌘A/Ctrl+A selects all characters of the edited layer only. _Data:_ selection _Test:_ two text layers; edit one; ⌘A; only that layer's text selected. _M3·P0·[KNOW]_
+- [ ] **TX-###** Caret affinity at wraps — caret at a soft-wrap offset renders at the end of the upper line after End/⌘→ and at the start of the lower line after Home/click there. _Data:_ caret affinity _Test:_ place caret at wrap via both methods; record visual line. _M3·P2·[KNOW]_
+
+### 6.4 Text input
+
+- [ ] **TX-###** Typing and replacement — typed text replaces the selection and is inserted at the caret using the insertion style. _Data:_ `characters`, segments _Test:_ select "bc" (bold) in "abcd", type "X"; X is bold (style of first selected char). _M3·P0·[API][KNOW]_
+- [ ] **TX-###** Paragraph break — Return inserts `\n`; the new paragraph inherits list type/level, paragraph spacing, indent and wrap style. _Data:_ `characters`, paragraph attrs _Test:_ in a level-2 bulleted item press ↩; new item level 2 bulleted. _M3·P0·[KNOW]_
+- [ ] **TX-###** Soft line break — Shift+Return inserts a line break inside the paragraph (stored as U+2028): no paragraph spacing, no new list marker, same paragraph attrs. _Data:_ `characters` code point, `lineTypes` _Test:_ paragraphSpacing 20; Shift+↩; height grows by one line height only; read code point. _M3·P1·[KNOW]_
+- [ ] **TX-###** Tab character — Tab inserts U+0009 in a non-list paragraph; tab advance width/stops match Figma. _Data:_ `characters` _Test:_ "a\tb" at 16 px Inter; record x of "b". _M3·P2·[KNOW]_
+- [ ] **TX-###** Deletion keys — Backspace/Delete remove one grapheme cluster; ⌥⌫/Ctrl+Backspace one word; ⌘⌫ to line start. _Data:_ `characters` _Test:_ fixture with emoji and accents; record results for each key. _M3·P0·[KNOW]_
+- [ ] **TX-###** IME composition — marked text shows inline at the caret, is excluded from the document and undo until commit; ↩ commits without newline; Esc cancels composition without leaving edit mode; candidate window follows the caret. _Data:_ transient composition; `characters` _Test:_ Japanese IME: type "nihon", ↩ → "日本" committed once; Esc during composition → nothing inserted, still editing; one undo step per commit. _M3·P0·[KNOW]_
+- [ ] **TX-###** Dead keys, accent menu, OS emoji picker — all insert the expected characters at the caret. _Data:_ `characters` _Test:_ ⌥E then e → "é"; hold "e" → menu → "ê"; ⌃⌘Space insert "😀". _M3·P1·[KNOW]_
+- [ ] **TX-###** No silent character replacement — typing `->`, `--`, `"` keeps those characters in `characters`; any arrow/dash appearance comes from font features (e.g. Inter CALT) and disappears when the feature is turned off. _Data:_ `characters`, `openTypeFeatures.CALT` _Test:_ Inter "a -> b"; read characters; set CALT off; glyph changes to hyphen+greater-than. _M3·P1·[API]_
+- [ ] **TX-###** Live box growth while typing — Auto width grows horizontally per anchoring rules, Auto height grows vertically, Fixed does not change size. _Data:_ `width`, `height` _Test:_ type 3 lines in each mode; record sizes after each line. _M3·P0·[DOC:27378154668951 excerpt]_
+
+### 6.5 Range application & mixed values
+
+- [ ] **TX-###** Layer-level application — with text layer(s) selected (not editing) a character property change applies to all characters of every selected text layer. _Data:_ segments _Test:_ two layers with mixed sizes; set size 18; every segment = 18. _M3·P0·[KNOW]_
+- [ ] **TX-###** Range application — in edit mode with a selection, character-level changes apply only to the selected range. _Data:_ `getStyledTextSegments` _Test:_ select chars 2–5, set red fill and 700 weight; segments split exactly at 2 and 5. _M3·P0·[API]_
+- [ ] **TX-###** Paragraph expansion — paragraph-level properties set on a partial range apply to every paragraph intersecting the range and to no other. _Data:_ `paragraphSpacing`, `paragraphIndent`, `listSpacing`, `textWrapStyle`, `listOptions` _Test:_ 3 paragraphs; select last char of P1 + first of P2; set paragraph spacing 20; P1,P2 = 20, P3 = 0. _M3·P0·[API]_
+- [ ] **TX-###** Node-level properties ignore range — alignment, resizing, truncation, max lines, hanging punctuation/list and vertical trim always apply to the whole layer even with a partial selection. _Data:_ node props _Test:_ select one word, click Center; whole layer centered. _M3·P0·[API]_
+- [ ] **TX-###** Mixed display and override — inspector shows "Mixed" when values differ across the selected layers/range; entering a value applies it uniformly. _Data:_ `figma.mixed` _Test:_ range with 12/16 px → field "Mixed"; type 14 → all 14. _M3·P0·[API]_
+- [ ] **TX-###** Insertion style inheritance — inserted characters take the preceding character's style; at index 0 the following character's style. _Data:_ segments _Test:_ "**ab**cd": caret after b, type x → bold; caret at 0, type y → bold. _M3·P0·[API]_
+- [ ] **TX-###** Pending style at a collapsed caret — changing a property with a collapsed caret affects only the next typed characters; moving the caret without typing discards it; no document change is recorded. _Data:_ transient insertion style _Test:_ caret mid-word, set red, type "x" → only x red; repeat but move caret first → nothing red; undo history unchanged by the property click (record). _M3·P1·[KNOW]_
+- [ ] **TX-###** Multi-layer mixed fonts — selecting layers with different families shows Mixed family; choosing a family applies it to all while keeping each layer's style where available. _Data:_ `fontName` _Test:_ Inter Bold + Roboto Light → choose "Open Sans" → Open Sans Bold / Open Sans Light. _M3·P1·[KNOW]_
+
+### 6.6 Resizing modes & handles
+
+- [ ] **TX-###** Auto width semantics — width = widest line, height = content height, no soft wrapping; only Return creates lines. _Data:_ `textAutoResize=WIDTH_AND_HEIGHT` _Test:_ type 300 chars without Return; 1 line; width = advance width. _M3·P0·[API][DOC:27378154668951 excerpt]_
+- [ ] **TX-###** Auto height semantics — fixed width, text wraps, height = content height. _Data:_ `HEIGHT` _Test:_ width 120; paste paragraph; height = lines × line height; record line breaks. _M3·P0·[API][DOC:27378154668951 excerpt]_
+- [ ] **TX-###** Fixed size semantics — both dimensions fixed; wraps horizontally; vertical overflow is drawn outside the box (not clipped) and is excluded from the box bounds. _Data:_ `NONE` _Test:_ 120×40 box with 6 lines; overflow visible; layer H stays 40; render bounds recorded. _M3·P0·[API][DOC:27378154668951 excerpt]_
+- [ ] **TX-###** Resizing control — Layout section control switches Auto width / Auto height / Fixed size and recomputes size immediately. _Data:_ `textAutoResize` _Test:_ wrapped Auto height → Auto width: lines merge; → Fixed: size unchanged. _M3·P0·[DOC:27378154668951 excerpt]_
+- [ ] **TX-###** Height drag → Fixed size — dragging a top/bottom edge or a corner handle (or typing H) sets Fixed size. _Data:_ `textAutoResize` _Test:_ Auto height text; drag bottom edge +30; mode = Fixed size. _M3·P0·[DOC:27378154668951 excerpt]_
+- [ ] **TX-###** Width-only drag keeps auto height — dragging a left/right edge (or typing W) on Auto width or Auto height text yields Auto height and reflows. _Data:_ `textAutoResize` _Test:_ Auto width text; drag right edge −50; record mode (expected Auto height) and height. _M3·P0·[KNOW]_
+- [ ] **TX-###** Double-click edge handles — double-click on a left/right edge handle sets Auto width; on a top/bottom edge sets Auto height. _Data:_ `textAutoResize` _Test:_ Fixed box; double-click right edge; record; double-click bottom; record. _M3·P1·[KNOW]_
+- [ ] **TX-###** Resize never changes font size — any handle/W/H resize of a text box (including Shift for aspect, Alt for center) reflows only. _Data:_ `fontSize` _Test:_ corner-drag ×2; font size unchanged. _M3·P0·[DOC:27378154668951 excerpt][DOC:360040451453 excerpt]_
+- [ ] **TX-###** Auto width growth anchoring — LEFT grows right, CENTER grows equally both sides (x shifts by −Δw/2), RIGHT grows left. _Data:_ `x`, `width`, `textAlignHorizontal` _Test:_ for each alignment type 5 more chars; record x and width deltas. _M3·P1·[KNOW]_
+- [ ] **TX-###** Auto height growth anchoring — Auto height grows downward with the top fixed, independent of vertical alignment and constraints. _Data:_ `y`, `height` _Test:_ bottom-aligned, bottom-constrained Auto height text; add a line; record y. _M3·P1·[KNOW]_
+- [ ] **TX-###** Rotated auto-resize — growth happens along the layer's local axes for rotated text. _Data:_ `relativeTransform` _Test:_ 45° Auto width text; type; record transform/size. _M3·P2·[KNOW]_
+- [ ] **TX-###** Aspect lock unavailable for auto-resizing text — aspect-ratio lock can be set only when `textAutoResize = NONE`. _Data:_ `targetAspectRatio` _Test:_ try to lock ratio on Auto width text; record UI state. _M3·P2·[API]_
+- [ ] **TX-###** Minimum size — box width/height cannot go below 0.01; negative drags flip per M1 rules. _Data:_ `width`, `height` _Test:_ drag edge past opposite edge; record. _M3·P2·[API]_
+- [ ] **TX-###** Legacy TRUNCATE mapping — imported `textAutoResize = TRUNCATE` becomes Fixed size + Truncate on. _Data:_ `textAutoResize`, `textTruncation` _Test:_ import REST JSON fixture; read props. _M8·P1·[API]_
+
+### 6.7 Truncation & max lines
+
+- [ ] **TX-###** Truncate toggle — Type settings toggle sets `textTruncation` ENDING/DISABLED; Max lines is editable only while it is on. _Data:_ `textTruncation`, `maxLines` _Test:_ toggle; check field enablement. _M3·P0·[API][SRC:https://bringyourownlaptop.com/blog/truncate-text-responsive-ui-figma]_
+- [ ] **TX-###** Fixed-size truncation — with Fixed size and Truncate on, only lines that fit the box height are drawn and the last drawn line ends with "…" (U+2026). _Data:_ `NONE`, `ENDING` _Test:_ 120×40 box, 16 px/Auto LH, long paragraph; record visible lines and last-line text. _M3·P0·[API]_
+- [ ] **TX-###** Max lines with Auto height — `maxLines = N` limits visible lines to N; box height = height of N lines; more text does not grow the box. _Data:_ `maxLines`, `height` _Test:_ N = 2, 5-line paragraph; height = 2 lines. _M3·P0·[API][SRC:https://app.uxcel.com/lessons/working-with-texts-in-figma-889/text-truncation-and-max-lines-3569]_
+- [ ] **TX-###** Max lines validation — values < 1 are rejected/clamped to 1, non-integers rounded (rule recorded), empty field = no limit (`null`). _Data:_ `maxLines` _Test:_ type 0, 2.6, "" ; record stored values. _M3·P1·[API][KNOW]_
+- [ ] **TX-###** Auto width + truncation — with Auto width, truncation only takes effect via `maxLines`/`maxHeight` (e.g. a max width on a hug text with Max lines 1 gives a single ellipsized line). _Data:_ `WIDTH_AND_HEIGHT`, `maxWidth`, `maxLines` _Test:_ Auto width, max W 100, max lines 1; record. _M3·P1·[API][KNOW]_
+- [ ] **TX-###** Max height truncation — Auto height + Truncate + `maxHeight` truncates at the last line fitting maxHeight. _Data:_ `maxHeight` _Test:_ maxHeight 50 with 16/24 lines; 2 lines visible. _M4·P1·[API]_
+- [ ] **TX-###** Truncation unit — ellipsis replaces whole trailing words; a single word longer than the line is cut at grapheme level; trailing spaces before "…" removed. _Data:_ render only _Test:_ fixtures "aaaa bbbb cccc" and "Supercalifragilistic"; record last visible text. _M3·P0·[SRC:https://forum.figma.com/t/rules-of-text-truncate/22408][KNOW]_
+- [ ] **TX-###** Ellipsis style — "…" uses the style (font, size, fill) of the last visible character. _Data:_ render _Test:_ last visible word red bold; ellipsis red bold. _M3·P1·[KNOW]_
+- [ ] **TX-###** Truncation is render-only — `characters` unchanged; copy copies full text; edit mode shows full text; leaving edit mode re-truncates. _Data:_ `characters` _Test:_ truncated layer: copy, paste elsewhere = full text; enter edit mode, record whether full text shows. _M3·P0·[KNOW]_
+- [ ] **TX-###** Truncation with alignment — ellipsized line obeys center/right/justified alignment (justified ellipsis line is start-aligned). _Data:_ `textAlignHorizontal` _Test:_ each alignment; record ellipsis-line x. _M3·P2·[KNOW]_
+- [ ] **TX-###** Truncation in hug parents — a parent with hug height uses the truncated text height. _Data:_ parent `height` _Test:_ vertical AL hug containing Max lines 2 text; parent height = padding + 2 lines. _M4·P1·[KNOW][SRC:https://forum.figma.com/ask-the-community-7/truncate-text-not-changeable-when-turned-into-style-3300]_
+
+### 6.8 Alignment
+
+- [ ] **TX-###** Horizontal alignment — LEFT/CENTER/RIGHT position each line within the available width of its paragraph (after list/indent insets). _Data:_ `textAlignHorizontal` _Test:_ 3 lines of different length in a 200 px box; record line x positions per mode. _M3·P0·[API]_
+- [ ] **TX-###** Justified — extra space distributed over inter-word spaces; last line of each paragraph, lines ending in a forced break, and single-word lines are start-aligned. _Data:_ `JUSTIFIED` _Test:_ 2 paragraphs incl. Shift+↩ line; record word x positions. _M3·P1·[KNOW]_
+- [ ] **TX-###** Vertical alignment — TOP/CENTER/BOTTOM place the content block inside a Fixed box; no visible effect for Auto height/Auto width. _Data:_ `textAlignVertical` _Test:_ 200×200 box, 2 lines; record first baseline y per mode. _M3·P0·[API]_
+- [ ] **TX-###** Vertical alignment with overflow — content taller than a Fixed box overflows downward (TOP), both ways (CENTER), upward (BOTTOM). _Data:_ `textAlignVertical` _Test:_ 100×40 box, 5 lines; record render bounds per mode. _M3·P1·[KNOW]_
+- [ ] **TX-###** Alignment shortcuts — align left/center/right/justified via keyboard (keys per §5, to be confirmed) in both layer and edit mode. _Data:_ `textAlignHorizontal` _Test:_ press each shortcut; read value. _M3·P1·[SRC:https://linuru.com/figma/][SRC:https://www.raycast.com/arturdz/figma-shortcuts]_
+
+### 6.9 Font family, style & weight
+
+- [ ] **TX-###** Font family picker — lists every available family; type-to-filter (case-insensitive substring); keyboard navigation; Enter/click applies. _Data:_ `fontName.family` _Test:_ type "rob" → Roboto*, arrows + ↩ applies. _M3·P0·[KNOW]_
+- [ ] **TX-###** Font preview on hover/arrow — hovering or arrowing through families previews them on the selection without creating undo steps; Esc restores the original. _Data:_ transient preview _Test:_ arrow through 5 fonts, Esc; `fontName` unchanged; undo stack unchanged. _M3·P1·[KNOW]_
+- [ ] **TX-###** Family change keeps style — switching family keeps the style name if present; else nearest weight with same italic-ness, else Regular. _Data:_ `fontName.style` _Test:_ Inter "Semi Bold Italic" → family without SemiBold; record chosen style. _M3·P0·[KNOW]_
+- [ ] **TX-###** Style dropdown — lists all named styles of the family (variable fonts: named instances + axes entry); choosing one sets `fontName.style`. _Data:_ `fontName` _Test:_ Inter: list count and order recorded. _M3·P0·[SRC:https://forum.figma.com/ask-the-community-7/how-do-i-disable-variable-font-axes-option-in-font-style-dropdown-15610]_
+- [ ] **TX-###** Derived weight — `fontWeight` is read-only and derived from the chosen style (400 Regular, 700 Bold, …). _Data:_ `fontWeight` _Test:_ set styles Thin…Black; read weights. _M3·P1·[API]_
+- [ ] **TX-###** Bold toggle ⌘B — toggles to the family's bold (700 or next heavier) and back, preserving italic; no-op when no heavier style exists. _Data:_ `fontName` _Test:_ Inter Italic → ⌘B → Bold Italic → ⌘B → Italic; family with only Regular → unchanged. _M3·P0·[SRC:https://www.raycast.com/arturdz/figma-shortcuts][KNOW]_
+- [ ] **TX-###** Italic toggle ⌘I — toggles italic counterpart preserving weight; no-op without italic. _Data:_ `fontName` _Test:_ Inter Bold ⌘I → Bold Italic; repeat. _M3·P0·[SRC:https://www.raycast.com/arturdz/figma-shortcuts][KNOW]_
+- [ ] **TX-###** Weight step shortcuts — ⌥⌘> / ⌥⌘< move to next heavier/lighter named style, preserving italic, clamped at ends. _Data:_ `fontName` _Test:_ from Regular press 3×; record styles. _M3·P1·[SRC:https://linuru.com/figma/]_
+- [ ] **TX-###** Mixed fonts in range — a range spanning several fonts shows Mixed family/style; `getRangeAllFontNames` lists each. _Data:_ `fontName` _Test:_ select across two fonts; read UI and API. _M3·P1·[API]_
+- [ ] **TX-###** Recent fonts — the font picker surfaces recently used families. _Data:_ app prefs _Test:_ apply 3 fonts; open picker; record recent list. _M3·P2·[KNOW]_
+
+### 6.10 Font size
+
+- [ ] **TX-###** Font size limits — minimum 1 (smaller input clamps to 1), fractional sizes kept (precision recorded), maximum per Figma (§8). _Data:_ `fontSize` _Test:_ enter 0.5, 13.37, 5000; record stored values. _M3·P0·[API][KNOW]_
+- [ ] **TX-###** Font size shortcuts — ⌘⇧> / ⌘⇧< increase/decrease size by Figma's step (recorded) on the selection or range. _Data:_ `fontSize` _Test:_ from 16 press each 3×; record values. _M3·P1·[SRC:https://www.raycast.com/arturdz/figma-shortcuts]_
+- [ ] **TX-###** Size change and dependent units — changing size keeps px line height/letter spacing; Auto and % values scale with the new size. _Data:_ `lineHeight`, `letterSpacing` _Test:_ 16 px with LH 24 px vs LH 150%; change to 32; record line heights. _M3·P0·[API]_
+- [ ] **TX-###** Font size presets — the size combobox offers Figma's preset sizes. _Data:_ UI _Test:_ open dropdown; record list. _M3·P2·[KNOW]_
+
+### 6.11 Line height & baseline model
+
+- [ ] **TX-###** Line height units — Auto, px, % where % is relative to font size. _Data:_ `lineHeight {AUTO|PIXELS|PERCENT}` _Test:_ 20 px font: 150% → line box 30; 24 px → 24. _M3·P0·[API]_
+- [ ] **TX-###** Auto line height value — Auto uses the font's built-in metrics; single-line Auto text height equals Figma's value for Inter, Roboto, Georgia, Noto Sans JP, and a font with USE_TYPO_METRICS set. _Data:_ `height` _Test:_ 100 px single line per font; record heights to 0.01 px. _M3·P0·[KNOW]_
+- [ ] **TX-###** Half-leading distribution — extra line height is split equally above and below the glyphs; the first baseline = top + (LH − (ascent+descent))/2 + ascent. _Data:_ derived baseline _Test:_ Inter 20 px with LH 40 px; record first baseline y relative to box top. _M3·P0·[SRC:https://www.figma.com/blog/line-height-changes/][KNOW]_
+- [ ] **TX-###** Line height input parsing — "Auto" (case-insensitive) sets AUTO; "150%" sets %; "24" and "24px" set px (bare-number unit rule recorded). _Data:_ `lineHeight` _Test:_ type each; read unit/value; also bare number while current unit is %. _M3·P1·[KNOW]_
+- [ ] **TX-###** Mixed line heights on one line — a line containing runs with different line heights resolves to Figma's rule (expected: max). _Data:_ per-range `lineHeight` _Test:_ one line with 16 px/LH 20 and 32 px/LH 40 runs; record line box height. _M3·P1·[KNOW]_
+- [ ] **TX-###** Tight line height — LH below glyph extent is allowed; box height = Σ line heights; glyphs overflow; no clamping. _Data:_ `height` _Test:_ 40 px font LH 10 px, 3 lines → height 30. _M3·P1·[KNOW]_
+- [ ] **TX-###** Empty lines — empty paragraphs and a trailing newline produce lines using the style at that position. _Data:_ `height` _Test:_ "a\n\n" at 20 px; record height = 3 lines. _M3·P0·[KNOW]_
+- [ ] **TX-###** Legacy intrinsic % — imported `lineHeightUnit = INTRINSIC_%` is converted so that rendering matches the source exactly. _Data:_ REST `lineHeightUnit`, `lineHeightPercent`, `lineHeightPx` _Test:_ REST fixture with INTRINSIC_% 120; compare line boxes to `lineHeightPx`. _M8·P1·[API]_
+- [ ] **TX-###** Line height shortcuts — ⌥⇧> / ⌥⇧< change line height by Figma's step and unit behavior (reported to jump to px). _Data:_ `lineHeight` _Test:_ from 150% press each; record values/units. _M3·P2·[SRC:https://forum.figma.com/suggest-a-feature-11/fix-line-height-shortcut-behavior-23443]_
+
+### 6.12 Letter spacing
+
+- [ ] **TX-###** Letter spacing units — % (of font size) or px; default 0%; negative allowed; range limits per Figma (§8). _Data:_ `letterSpacing` _Test:_ 20 px Inter "AAAA": 10% → +2 px per char; −5 px; record advances. _M3·P0·[API][KNOW]_
+- [ ] **TX-###** Letter spacing placement — space added after each grapheme cluster; behavior at line end/last character (affects auto width and centering) matches Figma. _Data:_ `width` _Test:_ Auto width "AB" with 10 px spacing; record width vs 0 px spacing. _M3·P0·[KNOW]_
+- [ ] **TX-###** Letter spacing input & shortcuts — typed values keep the current unit unless a unit is typed; ⌥> / ⌥< step by Figma's increment. _Data:_ `letterSpacing` _Test:_ current 0%, type "2" → 2%; type "2px" → px; shortcuts 3×; record. _M3·P1·[SRC:https://www.raycast.com/arturdz/figma-shortcuts][KNOW]_
+- [ ] **TX-###** Letter spacing vs ligatures — whether non-zero letter spacing suppresses optional ligatures matches Figma. _Data:_ render _Test:_ "ffi" in a ligature font with 5% spacing; record glyphs. _M3·P2·[KNOW]_
+
+### 6.13 Paragraph spacing & indent
+
+- [ ] **TX-###** Paragraph spacing — px added between paragraphs (not after the last, not at Shift+↩ breaks); included in Auto height. _Data:_ `paragraphSpacing` _Test:_ 3 paragraphs LH 20, spacing 10 → height 80 (single-line paragraphs). _M3·P0·[API][KNOW]_
+- [ ] **TX-###** Paragraph spacing limits — negative values rejected/clamped (rule recorded); fractional allowed. _Data:_ `paragraphSpacing` _Test:_ type −5, 2.5; record. _M3·P2·[KNOW]_
+- [ ] **TX-###** Paragraph indent — offsets the first line of every paragraph (including the first) by N px; negative values not accepted. _Data:_ `paragraphIndent` _Test:_ indent 24; record first-line x of each paragraph; type −10 → rejected. _M3·P0·[API][SRC:https://forum.figma.com/suggest-a-feature-11/allow-all-kinds-of-hanging-indents-13126]_
+- [ ] **TX-###** Paragraph-level storage — paragraph spacing/indent can differ per paragraph within one layer and show Mixed. _Data:_ `getRangeParagraphSpacing` _Test:_ set P2 only; layer field shows Mixed. _M3·P1·[API]_
+- [ ] **TX-###** Paragraph vs list spacing interplay — between consecutive list items list spacing applies; between a list and a normal paragraph paragraph spacing applies (rule recorded). _Data:_ `listSpacing`, `paragraphSpacing` _Test:_ list of 3 + paragraph; listSpacing 8, paragraphSpacing 20; record gaps. _M3·P1·[KNOW]_
+
+### 6.14 Decoration
+
+- [ ] **TX-###** Underline/strikethrough exclusivity — one `textDecoration` value per range; applying one replaces the other. _Data:_ `textDecoration` _Test:_ underline a word then ⌘⇧X; value = STRIKETHROUGH only. _M3·P0·[API]_
+- [ ] **TX-###** Decoration shortcuts — ⌘U toggles underline, ⌘⇧X toggles strikethrough on selection/range. _Data:_ `textDecoration` _Test:_ press twice each; NONE at end. _M3·P0·[SRC:https://www.raycast.com/arturdz/figma-shortcuts]_
+- [ ] **TX-###** Underline style — Solid / Wavy / Dotted. _Data:_ `textDecorationStyle` _Test:_ each style at 24 px; compare rendering. _M3·P1·[API][SRC:https://alternativeto.net/news/2024/11/figma-adds-customization-options-for-underlines]_
+- [ ] **TX-###** Underline thickness & offset — Auto, px, or % of font size; Auto uses font metrics (post table). _Data:_ `textDecorationThickness`, `textDecorationOffset` _Test:_ 40 px Inter: Auto vs 3 px vs 10%; record line y/thickness. _M3·P1·[API]_
+- [ ] **TX-###** Underline color — Auto follows the text fill; or an explicit solid color (incl. opacity). _Data:_ `textDecorationColor` _Test:_ gradient-filled text with Auto vs red; record rendering. _M3·P1·[API]_
+- [ ] **TX-###** Skip ink — on: underline breaks around descenders; off: continuous. _Data:_ `textDecorationSkipInk` _Test:_ "gyp" with each; compare. _M3·P1·[API][SRC:https://forum.figma.com/suggest-a-feature-11/dotted-dashed-etc-underlines-text-decoration-style-support-36309]_
+- [ ] **TX-###** Strikethrough has no options — styling controls are unavailable for strikethrough and sub-properties read null. _Data:_ decoration sub-props _Test:_ set strikethrough; read API values; check UI. _M3·P1·[API]_
+- [ ] **TX-###** Decoration geometry — continuous across spaces inside the range, broken at line wraps, drawn per run with that run's size. _Data:_ render _Test:_ underline spanning wrap and mixed sizes; compare. _M3·P1·[KNOW]_
+
+### 6.15 Case
+
+- [ ] **TX-###** Case options — As typed, UPPER, lower, Title, Small caps, Forced small caps; render-only. _Data:_ `textCase` _Test:_ "hello World" in each; `characters` unchanged. _M3·P0·[API]_
+- [ ] **TX-###** Title case rule — first letter of each word uppercased; other letters left as typed; word boundaries per Figma (hyphen/apostrophe behavior recorded). _Data:_ `TITLE` _Test:_ "o'neil well-known iPhone"; record output. _M3·P1·[KNOW]_
+- [ ] **TX-###** Small caps — SMALL_CAPS uses the font's `smcp` (lowercase→small caps); SMALL_CAPS_FORCED also converts capitals (`c2sc`); behavior for fonts lacking these features recorded. _Data:_ `textCase` _Test:_ font with smcp and one without; record rendering/availability. _M3·P1·[API][KNOW]_
+- [ ] **TX-###** Case and clipboard — copying UPPER-cased text copies the raw characters. _Data:_ `characters` _Test:_ copy, paste into a plain text editor; compare. _M3·P2·[API][KNOW]_
+
+### 6.16 Lists
+
+- [ ] **TX-###** Bullet auto-detect — at paragraph start, "-" or "*" + Space converts the paragraph to a bulleted item and removes the marker characters. _Data:_ `listOptions=UNORDERED`, `characters` _Test:_ type "- a"; characters = "a"; list = UNORDERED. _M3·P0·[DOC:360040449773 excerpt]_
+- [ ] **TX-###** Number auto-detect — "1." or "1)" + Space converts to a numbered item. _Data:_ `ORDERED` _Test:_ type "1) a"; numbered; also "2. " (record whether non-1 starts trigger). _M3·P0·[DOC:360040449773 excerpt]_
+- [ ] **TX-###** Undo auto-list — ⌘Z right after auto-detection removes list formatting and restores the literal marker + space. _Data:_ `characters`, `listOptions` _Test:_ "- " then ⌘Z → characters "- ", list NONE. _M3·P0·[DOC:360040449773 excerpt]_
+- [ ] **TX-###** List shortcuts — ⌘⇧8 / ⌘⇧7 toggle bulleted/numbered on paragraphs in the range, or on all paragraphs of every selected text layer. _Data:_ `listOptions` _Test:_ select 2 layers, ⌘⇧7 → all paragraphs ORDERED; again → NONE (record). _M3·P0·[DOC:360040449773 excerpt]_
+- [ ] **TX-###** Indent levels — Tab (in a list item) and ⌘] increase, ⌘[ decreases; max 5 levels; min level 1 for list items. _Data:_ `indentation` _Test:_ press Tab 6×; level = 5; ⌘[ 5× → 1. _M3·P0·[DOC:360040449773 excerpt]_
+- [ ] **TX-###** Shift+Tab in lists — Shift+Tab decreases the level (expected). _Data:_ `indentation` _Test:_ level 3, Shift+Tab; record. _M3·P1·[KNOW]_
+- [ ] **TX-###** Backspace at item start — deletes the marker but keeps the indentation level (paragraph no longer a list item). _Data:_ `listOptions`, `indentation` _Test:_ level-2 item, caret at 0, ⌫; record list type and indent. _M3·P0·[DOC:360040449773 excerpt]_
+- [ ] **TX-###** Return on empty item — decreases indentation; at the outermost level ends the list. _Data:_ `indentation`, `listOptions` _Test:_ level 2 empty item ↩ → level 1; ↩ again → NONE. _M3·P0·[DOC:360040449773 excerpt][KNOW]_
+- [ ] **TX-###** Return continues list — Return at the end of a non-empty item creates a new item with same type/level. _Data:_ `listOptions` _Test:_ type "a↩b"; both items. _M3·P0·[KNOW]_
+- [ ] **TX-###** Numbering per level — counters increment within contiguous same-level items, restart at 1 under each parent item, and continue after a nested sub-list. _Data:_ generated markers _Test:_ 1, 1.a, 1.b, 2 structure; record markers. _M3·P0·[DOC:360040449773 excerpt][KNOW]_
+- [ ] **TX-###** Number format per level — format rotates numbers → letters → roman numerals with each level (exact sequence and punctuation recorded for levels 1–5). _Data:_ markers _Test:_ 5-level numbered list; record markers. _M3·P1·[DOC:360040449773 excerpt]_
+- [ ] **TX-###** Bullet glyph per level — bullet glyphs per level match Figma (recorded for levels 1–5). _Data:_ markers _Test:_ 5-level bulleted list. _M3·P1·[KNOW]_
+- [ ] **TX-###** Marker styling — marker uses the font, size and fill of the item's first character. _Data:_ render _Test:_ first char red 24 px; marker red 24 px. _M3·P1·[KNOW]_
+- [ ] **TX-###** List indentation geometry — marker position and text start for each level match Figma (indent step formula recorded). _Data:_ derived _Test:_ levels 1–3 at 16 px and 32 px; record marker x/text x. _M3·P0·[KNOW]_
+- [ ] **TX-###** List spacing — px gap between list items (default 0 for new lists and existing styles). _Data:_ `listSpacing` _Test:_ 3 items listSpacing 12; record height delta. _M3·P0·[DOC:360040449773 excerpt][API]_
+- [ ] **TX-###** Two-digit numbers — items ≥10 shift text start vs items 1–9 (Figma limitation reproduced). _Data:_ derived _Test:_ 12-item list; record text x of item 9 vs 10. _M3·P2·[SRC:https://forum.figma.com/t/is-there-a-way-to-make-a-numbered-list-without-a-hanging-indent/56402.rss]_
+- [ ] **TX-###** Wrapped list items — continuation lines align with the item text, not the marker. _Data:_ derived _Test:_ long item in 150 px box; record x of line 2. _M3·P0·[KNOW]_
+- [ ] **TX-###** Indent on non-list paragraphs — whether ⌘] indents a plain paragraph (and how it is stored) matches Figma. _Data:_ `indentation` _Test:_ plain paragraph ⌘]; record. _M3·P2·[KNOW]_
+- [ ] **TX-###** List copy/paste — copying list items within Illigma preserves list type/level/spacing; plain-text export uses markers per Figma (recorded). _Data:_ `listOptions`, clipboard text _Test:_ copy 3 items into another layer and into a plain-text editor. _M3·P1·[KNOW]_
+
+### 6.17 Hanging punctuation & hanging list
+
+- [ ] **TX-###** Hanging quotes — when on, opening quotation marks at a line start hang outside the left box edge so letters align to the edge; other punctuation (e.g. asterisks) does not hang. _Data:_ `hangingPunctuation` _Test:_ lines starting with “ " ‘ « * ; record glyph x. _M3·P1·[API][SRC:https://forum.figma.com/suggest-a-feature-11/include-asterisks-when-hanging-punctuation-19920]_
+- [ ] **TX-###** Hanging list — when on, markers sit outside the left box edge; item text aligns with the edge. _Data:_ `hangingList` _Test:_ bulleted list on/off; record marker and text x. _M3·P1·[API][DOC:360040449773 excerpt]_
+- [ ] **TX-###** Hanging bounds — hung glyphs extend render bounds but not the layer box, Auto width size, or auto-layout measurement. _Data:_ `width`, render bounds _Test:_ Auto width with hanging quote; compare width with/without. _M3·P2·[KNOW]_
+
+### 6.18 Vertical trim
+
+- [ ] **TX-###** Cap height to baseline — `CAP_HEIGHT` removes space above the first line's cap height and below the last line's baseline; inner leading unchanged. _Data:_ `leadingTrim` _Test:_ Inter 40 px, 2 lines, LH 60; Auto height box height = LH + capHeight (record exact). _M3·P1·[API][SRC:https://bejamas.com/blog/everything-you-need-to-know-about-figma-s-vertical-trim-feature]_
+- [ ] **TX-###** Trim toggling keeps glyphs in place — switching trim on/off adjusts box y/height so glyphs do not move on canvas (or record Figma's actual behavior). _Data:_ `y`, `height` _Test:_ toggle; record glyph baseline in absolute coords. _M3·P1·[KNOW]_
+- [ ] **TX-###** Trim with Fixed size & vertical alignment — vertical alignment positions the trimmed block. _Data:_ `leadingTrim`, `textAlignVertical` _Test:_ 200 px box, center; record baseline. _M3·P2·[KNOW]_
+- [ ] **TX-###** Trim in auto layout — trimmed text makes hug containers exactly padding + cap-to-baseline height (button use case). _Data:_ parent size _Test:_ button AL padding 12/12 with trimmed 16 px label; record height. _M4·P1·[SRC:https://bejamas.com/blog/everything-you-need-to-know-about-figma-s-vertical-trim-feature]_
+
+### 6.19 Text wrap style
+
+- [ ] **TX-###** Balance — makes line lengths roughly equal without changing the line count; applies only to paragraphs of ≤ 6 wrapped lines. _Data:_ `textWrapStyle=BALANCE` _Test:_ 3-line and 8-line paragraphs; record breaks vs AUTO. _M3·P1·[API][SRC:https://developers.figma.com/docs/plugins/api/TextWrapStyle/]_
+- [ ] **TX-###** Pretty — avoids a single word alone on the last line of a paragraph. _Data:_ `PRETTY` _Test:_ paragraph with an orphan under AUTO; record breaks. _M3·P1·[API][SRC:https://forum.figma.com/product-updates-3/get-responsive-text-across-screens-with-new-text-wrap-styles-56992]_
+- [ ] **TX-###** Wrap style scope — settable per paragraph, per layer and in a text style; no effect on Auto width text. _Data:_ `textWrapStyle` _Test:_ set on P2 only → layer shows Mixed; Auto width unchanged. _M3·P1·[API][SRC:https://forum.figma.com/product-updates-3/get-responsive-text-across-screens-with-new-text-wrap-styles-56992]_
+
+### 6.20 OpenType features
+
+- [ ] **TX-###** Feature storage — only features differing from the font default are stored; default-on LIGA/CLIG, default-off LNUM/TNUM per API. _Data:_ `openTypeFeatures` _Test:_ toggle LIGA off → `{LIGA:false}`; toggle back → `{}`. _M3·P0·[API]_
+- [ ] **TX-###** Details tab availability — only features supported by the current font are enabled; unsupported ones greyed out; hovering previews. _Data:_ font GSUB/GPOS _Test:_ Inter vs Arial; record enabled lists. _M3·P1·[DOC:4913951097367 excerpt]_
+- [ ] **TX-###** Letterforms — ligatures, rare/discretionary ligatures, contextual alternates, ordinals. _Data:_ `LIGA`, `CLIG`, `DLIG`, `CALT`, `ORDN` _Test:_ fixture font; compare glyph ids per toggle. _M3·P1·[DOC:4913951097367 excerpt][API]_
+- [ ] **TX-###** Stylistic sets — SS01–SS20 with names read from the font's `name` table. _Data:_ `SS01…SS20` _Test:_ Inter: record labels and glyph changes. _M3·P1·[DOC:4913951097367 excerpt][API]_
+- [ ] **TX-###** Character variants — CV01–CV99 as offered by the font. _Data:_ `CV01…CV99` _Test:_ Inter cv01 etc.; compare glyphs. _M3·P2·[DOC:4913951097367 excerpt][API]_
+- [ ] **TX-###** Kerning toggle — KERN on by default; turning it off removes pair kerning. _Data:_ `KERN` _Test:_ "AVAT" advance widths on/off. _M3·P1·[DOC:4913951097367 excerpt][API]_
+- [ ] **TX-###** Number options — figure style (lining/oldstyle), spacing (proportional/tabular), fractions, slashed zero, super/subscript-type positions — UI and storage as in Figma (not in `OpenTypeFeature` enum except ZERO/NUMR/DNOM/SINF). _Data:_ `ZERO`, `NUMR`, `DNOM`, `SINF` + unexposed numeric fields _Test:_ "0123 1/2" each option; compare glyphs; record representation. _M3·P1·[API][KNOW]_
+- [ ] **TX-###** Case-related features — case-sensitive forms (CASE), capital spacing (CPSP), petite caps (PCAP/C2PC), titling (TITL), unicase (UNIC). _Data:_ tags _Test:_ font supporting them; compare. _M3·P2·[API]_
+- [ ] **TX-###** Per-range features — features can differ per range; mixed state shown. _Data:_ `getRangeOpenTypeFeatures` _Test:_ SS01 on one word; read mixed for layer. _M3·P1·[API]_
+
+### 6.21 Variable fonts
+
+- [ ] **TX-###** Variable controls visibility — the variable-axes controls appear only for variable fonts. _Data:_ `getFontFamilyVariationAxes` _Test:_ Inter (variable) vs Arial (static). _M3·P1·[SRC:https://www.thomasphinney.com/tag/variable-fonts/][API]_
+- [ ] **TX-###** Axis controls — one slider + input per axis (standard and custom), bounded by the font's min/max; ital is binary. _Data:_ `fontName.variationSettings` _Test:_ wght 357, wdth 87, opsz 32; out-of-range inputs clamp (record). _M3·P1·[DOC:5579502031511 excerpt][SRC:https://www.figma.com/typography/variable-fonts/]_
+- [ ] **TX-###** Variation storage — reads list every axis; setting a subset keeps the named instance's other axis values; unknown axis rejected. _Data:_ `variationSettings` _Test:_ set {wght:650} on Regular; read all axes. _M3·P1·[API]_
+- [ ] **TX-###** Style label for custom values — non-instance axis values show a numeric readout (e.g. "Weight: 357") in the style field; picking a named style resets axes. _Data:_ `fontName.style` _Test:_ set wght 357; read label; choose Bold; read axes. _M3·P1·[SRC:https://forum.figma.com/ask-the-community-7/how-do-i-disable-variable-font-axes-option-in-font-style-dropdown-15610][KNOW]_
+- [ ] **TX-###** Nearest-instance resolution — a font set without style resolves to the nearest named instance (wght 900 → "Black"). _Data:_ `FontNameInput` _Test:_ import/API fixture; read style. _M3·P2·[API]_
+- [ ] **TX-###** Per-range axes — axis values can differ per range and show Mixed. _Data:_ `getRangeFontName` _Test:_ two words different wght; layer field Mixed. _M3·P2·[API]_
+
+### 6.22 Links
+
+- [ ] **TX-###** Create URL link — select range, ⌘⇧U, type URL, ↩ → range gets `{type:'URL'}` link. _Data:_ `hyperlink` _Test:_ link "Figma" to https://example.com; read API. _M3·P0·[SRC:https://forum.figma.com/ask-the-community-7/ui3-feedback-create-link-shortcuts-cmd-ctrk-k-cmd-ctrl-v-not-working-30909][DOC:360045942953 excerpt]_
+- [ ] **TX-###** Paste URL to link — with a URL on the clipboard, ⌘V over a selected range adds the link and keeps the characters. _Data:_ `hyperlink`, `characters` _Test:_ copy URL, select word, ⌘V. _M3·P1·[DOC:360045942953 excerpt]_
+- [ ] **TX-###** Link to node — link a range to a frame/page in the same file (`type:'NODE'`). _Data:_ `hyperlink.value` = node id _Test:_ create link to frame; read; delete frame → record link state. _M3·P1·[API][DOC:360045942953 excerpt]_
+- [ ] **TX-###** Link on whole layer — with a text layer selected (not editing), creating a link applies to all characters. _Data:_ `hyperlink` _Test:_ select layer, ⌘⇧U, URL; read. _M3·P1·[KNOW]_
+- [ ] **TX-###** Link appearance — linked text receives Figma's automatic link styling (underline) (recorded). _Data:_ `textDecoration`, overrides _Test:_ create link on plain text; read decoration. _M3·P1·[KNOW]_
+- [ ] **TX-###** Link hover popup — hovering a link on canvas (not editing) shows target with open/edit/remove; remove clears the link and its auto-styling. _Data:_ `hyperlink` _Test:_ hover; remove; read. _M3·P1·[KNOW]_
+- [ ] **TX-###** Link typing boundary — characters typed immediately after a link end are not linked (or Figma's rule recorded). _Data:_ `hyperlink` _Test:_ caret at link end, type "x"; read. _M3·P2·[KNOW]_
+- [ ] **TX-###** Links on styled text — creating a link on styled text records a HYPERLINK override and keeps the text style. _Data:_ `textStyleOverrides`, `textStyleId` _Test:_ apply style, add link; style id unchanged. _M6·P1·[API]_
+- [ ] **TX-###** Links in prototypes — in presentation, URL links open externally and NODE links navigate to the target frame. _Data:_ `hyperlink` _Test:_ present; click both. _M7·P1·[KNOW]_
+
+### 6.23 Fonts: local availability, fallback, missing fonts
+
+- [ ] **TX-###** Local font enumeration — all OS-installed fonts (TTF, OTF, TTC/OTC, variable) are available in the picker offline; newly installed fonts appear without restart (Illigma improvement; Figma may require relaunch). _Data:_ font catalog _Test:_ install a font while running; appears within N s. _M3·P0·[DOC:360039956894 excerpt][SRC:https://designbeep.com/2026/04/26/how-to-add-fonts-to-figma/]_
+- [ ] **TX-###** Bundled default fonts — Inter (and the bundled set) always available offline so default text works on a clean machine. _Data:_ font catalog _Test:_ clean VM, no network; create text. _M3·P0·[API (Inter default)][DOC:360039956994 excerpt]_
+- [ ] **TX-###** Font identity persistence — each run stores family, style, PostScript name (and variation settings); reopening on another machine resolves the same face. _Data:_ `fontName`, REST `fontPostScriptName` _Test:_ save/open across machines; compare. _M3·P0·[API]_
+- [ ] **TX-###** Glyph fallback — characters missing from the run font render with a fallback font without changing `fontName` and without marking the font missing. _Data:_ render _Test:_ Inter "abc 日本 😀 ⌘"; fontName unchanged; glyphs visible. _M3·P0·[KNOW]_
+- [ ] **TX-###** Missing font detection — text whose font cannot be resolved sets `hasMissingFont` on the node and the document. _Data:_ `hasMissingFont` _Test:_ open file using an uninstalled font. _M3·P0·[API]_
+- [ ] **TX-###** Missing font indicators — file-level indicator (toolbar/left area) and an icon beside the font name in the Typography section for selected affected layers. _Data:_ UI _Test:_ open fixture; check both. _M3·P0·[DOC:360039956994 excerpt]_
+- [ ] **TX-###** Missing-font preview rendering — affected text renders exactly as last laid out (preview) until the font is available or replaced. _Data:_ cached layout/outlines _Test:_ save on machine A, open on B without font; pixel-compare. _M3·P0·[DOC:360039956894 excerpt][API]_
+- [ ] **TX-###** Missing-font editing lock — affected text cannot be edited; resizing changes the box without re-layout. _Data:_ `characters` _Test:_ double-click missing-font text; record behavior; resize; layout unchanged. _M3·P0·[DOC:360039956894 excerpt][API]_
+- [ ] **TX-###** Replace fonts modal — lists missing families/styles and affected layers; Replacement family + style pickers show only available fonts; "Replace fonts" updates all affected text in the file in one undo step. _Data:_ `fontName` _Test:_ two missing fonts, replace one; undo restores. _M3·P0·[DOC:360039956994 excerpt]_
+- [ ] **TX-###** Re-layout on availability — when a missing font becomes available, affected text re-lays-out and the indicator clears. _Data:_ `hasMissingFont` _Test:_ install font while file open. _M3·P1·[KNOW]_
+- [ ] **TX-###** Source priority & conflicts — when the same family exists in several sources, a deterministic priority is applied and recorded in the file (Figma order: shared → installed → default web fonts). _Data:_ font source metadata _Test:_ two versions of a family; record resolution. _M3·P2·[DOC:360039956994 excerpt]_
+- [ ] **TX-###** Select all with same font — selects every text layer using the selected layer's font. _Data:_ selection _Test:_ 3 layers in Inter, 1 in Roboto. _M3·P2·[SRC:https://forum.figma.com/report-a-problem-6/can-t-edit-existing-text-54712]_
+- [ ] **TX-###** Recompute text layout — command re-lays-out selected text with the current engine/fonts. _Data:_ layout cache _Test:_ fixture with stale cache; run command. _M3·P2·[SRC:https://forum.figma.com/report-a-problem-6/can-t-edit-existing-text-54712]_
+- [ ] **TX-###** Icon fonts — ligature-based icon fonts render icons from typed names with LIGA on; PUA code points render. _Data:_ `characters`, `LIGA` _Test:_ Material Symbols "home"; turn LIGA off → text. _M3·P2·[KNOW]_
+
+### 6.24 Text styles
+
+- [ ] **TX-###** Create text style — captures font, size, line height, letter spacing, paragraph spacing/indent, list spacing, decoration, case, vertical trim, hanging punct/list, wrap style (not color/alignment/resizing). _Data:_ `TextStyle` fields _Test:_ create from styled text; read style fields. _M6·P0·[API]_
+- [ ] **TX-###** Apply style to layer or range — applying sets `textStyleId` and values on the layer(s) or selected range only. _Data:_ `textStyleId` _Test:_ apply to one word; segments. _M6·P0·[API]_
+- [ ] **TX-###** Style edits propagate — editing a style updates and re-lays-out all consumers (incl. Auto width sizes). _Data:_ consumers _Test:_ change style size 16→24; consumers resize. _M6·P0·[KNOW]_
+- [ ] **TX-###** Detach on non-semantic change — changing a style-controlled property (e.g. size) on a styled range removes the style link from that range only, keeping values. _Data:_ `textStyleId` _Test:_ styled layer, change size of one word; that word's style id = ""; others keep. _M6·P0·[KNOW]_
+- [ ] **TX-###** Semantic overrides keep style — bold, italic, underline/strikethrough and links on a styled range are recorded as overrides and the style stays attached. _Data:_ `textStyleOverrides`, REST `semanticWeight/semanticItalic/isOverrideOverTextStyle` _Test:_ ⌘B on a word; style id unchanged; override present. _M6·P0·[API]_
+- [ ] **TX-###** Semantic override re-resolution — after the style's font changes, a SEMANTIC_WEIGHT=BOLD range renders the bold face of the new family. _Data:_ overrides _Test:_ style Inter→Roboto; bold word = Roboto Bold. _M6·P1·[KNOW]_
+- [ ] **TX-###** Detach style — keeps all current values, clears the link. _Data:_ `textStyleId` _Test:_ detach; values unchanged. _M6·P0·[KNOW]_
+- [ ] **TX-###** Mixed styles display — selection spanning several styles shows Mixed in the style control. _Data:_ `textStyleId` mixed _Test:_ two styles in one layer. _M6·P1·[API]_
+- [ ] **TX-###** Color independent of style — fills/color styles stay per range and are not changed by applying a text style. _Data:_ `fills`, `fillStyleId` _Test:_ red text, apply style; still red. _M6·P0·[API]_
+- [ ] **TX-###** Style contents beyond typings — whether text styles also carry OpenType features, decoration sub-styles and truncation matches Figma. _Data:_ style fields _Test:_ create style from text with SS01 and wavy underline and Max lines 2; apply elsewhere; record. _M6·P1·[KNOW]_
+
+### 6.25 Typography variables
+
+- [ ] **TX-###** Bindable typography fields — font family, style, weight, size, line height, letter spacing, paragraph spacing, paragraph indent can be bound per range and on text styles. _Data:_ `VariableBindableTextField`, `boundVariables` _Test:_ bind each; read API. _M6·P0·[API][SRC:https://forum.figma.com/suggest-a-feature-11/launched-typography-variables-font-size-font-weight-and-style-24920]_
+- [ ] **TX-###** Variable types per field — family/style take STRING; size/line height/letter spacing/paragraph fields take NUMBER; weight accepts NUMBER (and STRING style names per tutorials). _Data:_ variable `resolvedType` _Test:_ try binding wrong types; record allowed set. _M6·P0·[API][SRC:https://uxdesign.cc/set-up-typography-variables-in-figma-359cfea88b68]_
+- [ ] **TX-###** Mode switching re-layout — switching a frame's mode or editing a variable value re-resolves and re-lays-out bound text (incl. auto-resize). _Data:_ resolved values _Test:_ size variable 16/24 in modes; switch; record heights. _M6·P0·[KNOW]_
+- [ ] **TX-###** Invalid font values — a family/style/weight value with no matching font face leaves the text unchanged (no missing font) per Figma (recorded). _Data:_ resolution _Test:_ weight "XBold" for Inter. _M6·P1·[SRC:https://frontendmasters.com/blog/figma-typography-variables/]_
+- [ ] **TX-###** Units of numeric typography variables — line height variable = px; letter spacing variable unit as Figma (recorded). _Data:_ `lineHeight`, `letterSpacing` _Test:_ bind number 24 to each; read unit. _M6·P1·[SRC:https://forum.figma.com/suggest-a-feature-11/launched-typography-variables-font-size-font-weight-and-style-24920]_
+- [ ] **TX-###** Characters bound to string variable — text shows the variable's value; mode switch updates characters; behavior on typing into the layer recorded. _Data:_ `boundVariables.characters` _Test:_ bind STRING with 2 modes; switch; type. _M6·P1·[API]_
+
+### 6.26 Text in auto layout
+
+- [ ] **TX-###** Sizing ↔ resizing sync — HUG/HUG ⇔ Auto width; FIXED or FILL width + HUG height ⇔ Auto height; FIXED/FILL height ⇔ Fixed size; changing either control updates the other. _Data:_ `layoutSizingHorizontal/Vertical`, `textAutoResize` _Test:_ each combination; read both. _M4·P0·[API][KNOW]_
+- [ ] **TX-###** Fill-width text wraps — FILL-width text wraps at the allotted width and its height feeds the parent's hug height in the same layout pass. _Data:_ sizes _Test:_ resize parent; text height and parent height update together. _M4·P0·[KNOW]_
+- [ ] **TX-###** Max width wraps hug text — HUG-width text with `maxWidth` wraps at the max. _Data:_ `maxWidth` _Test:_ max 120 on hug text; type long text; record lines. _M4·P1·[KNOW]_
+- [ ] **TX-###** Min width on hug text — `minWidth` keeps the box at least that wide (alignment inside the box applies). _Data:_ `minWidth` _Test:_ min 200, short centered text; record glyph x. _M4·P2·[KNOW]_
+- [ ] **TX-###** Baseline alignment — horizontal auto layout with "align to baseline" aligns children's first text baselines; unavailable for vertical layouts. _Data:_ `counterAxisAlignItems = 'BASELINE'` _Test:_ texts of 12/24/40 px; record baselines equal. _M4·P1·[API][OBS]_
+
+### 6.27 Scale tool & transforms
+
+- [ ] **TX-###** Scale tool scales type — Scale (K) by factor s multiplies box size and font size by s and scales strokes/effects. _Data:_ `fontSize`, size _Test:_ 16 px text ×2 → 32 px; box ×2. _M3·P0·[DOC:360040451453 excerpt]_
+- [ ] **TX-###** Scale tool on dependent px values — px line height, px letter spacing, paragraph spacing/indent, list spacing and px decoration values scale by s; % and Auto unchanged. _Data:_ those props _Test:_ fixture with each in px and %, ×1.5; record. _M3·P1·[KNOW]_
+- [ ] **TX-###** Scale keeps resizing mode — Auto width stays Auto width etc. after scaling. _Data:_ `textAutoResize` _Test:_ scale each mode. _M3·P1·[KNOW]_
+- [ ] **TX-###** Scaling containers with text — Scale on a frame scales nested text font sizes; plain resize of the frame applies constraints instead (no font change). _Data:_ nested `fontSize` _Test:_ frame with text: K-scale vs handle resize. _M3·P0·[DOC:360040451453 excerpt]_
+
+### 6.28 Components & instances (text-specific)
+
+- [ ] **TX-###** Text component property — `characters` of a text layer in a component can be bound to a TEXT property; instances expose it in the inspector. _Data:_ `componentPropertyReferences.characters` _Test:_ create property; edit in instance. _M5·P0·[API]_
+- [ ] **TX-###** Instance text override survives updates — edited instance characters/styles persist when the main component's text changes; non-overridden props follow the main. _Data:_ overrides _Test:_ override text in instance; change main font size and text; record instance. _M5·P0·[KNOW]_
+- [ ] **TX-###** Per-range overrides in instances — bolding one word in an instance is kept when the main's text style changes. _Data:_ segments _Test:_ as described; record. _M5·P1·[KNOW]_
+- [ ] **TX-###** Resizing in instances — instance text follows the main's resizing mode unless overridden; overriding width on Auto width text in an instance switches mode like TX rules. _Data:_ `textAutoResize` _Test:_ resize text in instance. _M5·P1·[KNOW]_
+
+### 6.29 Undo/redo
+
+- [ ] **TX-###** Typing undo granularity — ⌘Z in edit mode undoes typed text in Figma-like chunks and restores caret/selection. _Data:_ history _Test:_ type "hello world foo" with pauses; count ⌘Z steps; record caret after each. _M3·P0·[KNOW]_
+- [ ] **TX-###** Property change = one step — each inspector commit (enter, dropdown pick, toggle, scrub release) is exactly one undo step, for layer or range. _Data:_ history _Test:_ scrub letter spacing; one ⌘Z restores. _M3·P0·[KNOW]_
+- [ ] **TX-###** Undo across edit session — after committing a newly created text with Esc, repeated ⌘Z walks back the typing and finally removes the layer; ⌘⇧Z redoes in order. _Data:_ history _Test:_ create, type 2 words, Esc; ⌘Z until layer gone; count. _M3·P0·[KNOW]_
+- [ ] **TX-###** Undo of auto-list and auto-resize side effects — undo restores characters, list attrs and box size/position consistently. _Data:_ history _Test:_ auto-list then ⌘Z (TX auto-list undo) and mode switch then ⌘Z. _M3·P1·[DOC:360040449773 excerpt][KNOW]_
+
+### 6.30 Clipboard
+
+- [ ] **TX-###** Copy range (rich, internal) — copying in edit mode and pasting into another Illigma text keeps character and paragraph attributes. _Data:_ segments _Test:_ copy "ab**cd**" red; paste; segments equal. _M3·P0·[KNOW]_
+- [ ] **TX-###** Copy range to OS — system clipboard receives plain text with `\n` breaks (list markers per Figma, recorded). _Data:_ clipboard _Test:_ paste into a plain editor. _M3·P0·[KNOW]_
+- [ ] **TX-###** Paste external plain text — inserted text takes the insertion style; CRLF/CR → `\n`; tabs kept; external rich formatting ignored. _Data:_ `characters`, segments _Test:_ paste from a word processor with bold; record. _M3·P0·[KNOW]_
+- [ ] **TX-###** Paste text onto canvas — pasting text while not editing creates a new text layer (position, resizing mode and style recorded). _Data:_ new node _Test:_ copy text from OS; select nothing; ⌘V. _M3·P1·[KNOW]_
+- [ ] **TX-###** Paste text with a text layer selected — whether Figma replaces content, inserts, or creates a new layer (recorded and matched). _Data:_ nodes _Test:_ select text layer (not editing); ⌘V plain text. _M3·P2·[KNOW]_
+
+### 6.31 Export, flatten & rendering accuracy
+
+- [ ] **TX-###** Flatten text to vectors — ⌘E converts a text layer to a vector whose paths equal the rendered glyphs (incl. decorations, list markers, ellipsis) with fills/strokes/effects kept. _Data:_ resulting `VECTOR` _Test:_ flatten fixture; compare paths/bounds to Figma. _M2·P1·[KNOW]_
+- [ ] **TX-###** SVG export of text — default outlines text; option to export as `<text>`; geometry matches canvas. _Data:_ export settings _Test:_ export fixture both ways; diff. _M2·P1·[KNOW]_
+- [ ] **TX-###** PDF export of text — text remains selectable/searchable with embedded font subsets. _Data:_ export _Test:_ export; select text in a PDF viewer. _M8·P2·[KNOW]_
+- [ ] **TX-###** Raster parity — PNG export and canvas rendering of text match Figma pixel-wise within tolerance at 1×/2×. _Data:_ render _Test:_ golden image diff (ΔE, ≤1% pixels). _M2·P1·[KNOW]_
+- [ ] **TX-###** Deterministic layout — identical line breaks/glyph positions across macOS/Windows/Linux and all zoom levels. _Data:_ layout cache _Test:_ same file on 3 OSes; compare layout dumps. _M3·P0·[KNOW]_
+- [ ] **TX-###** Fractional geometry — text box sizes are not rounded to integers. _Data:_ `width`, `height` _Test:_ Inter 13 px "Hello"; record width decimals vs Figma. _M3·P0·[KNOW]_
+- [ ] **TX-###** Golden layout fixture — a fixture of ≥ 50 text layers covering §2 lays out within 0.01 px (box) / 0.1 px (glyph) of Figma with identical fonts. _Data:_ all _Test:_ compare exported REST/plugin dumps (`absoluteRenderBounds`, line breaks). _M3·P0·[KNOW]_
+- [ ] **TX-###** Complex shaping — Arabic joining, Devanagari reordering, Thai, combining marks shape like Figma (HarfBuzz-class). _Data:_ render _Test:_ multilingual fixture; compare glyphs. _M3·P1·[KNOW]_
+
+### 6.32 Layers panel, multi-edit, international text
+
+- [ ] **TX-###** Layers panel entry — text layers show the text icon and the derived name; double-clicking the name renames (does not edit text). _Data:_ `name` _Test:_ double-click name; rename mode. _M3·P1·[KNOW]_
+- [ ] **TX-###** Multi-edit — with several text layers selected, Return or "Multi-edit text" edits them together: typing, deleting and styling apply to each layer; Esc exits. _Data:_ transient carets _Test:_ 3 layers "a","b","c"; ↩, type "x"; record results. _M3·P1·[DOC:360039956434 excerpt][KNOW]_
+- [ ] **TX-###** Bidirectional text — RTL paragraphs shape/order per UAX #9; mixed LTR/RTL caret movement and selection match Figma. _Data:_ render, caret _Test:_ Hebrew+English fixture; arrow through; record offsets. _M3·P1·[KNOW]_
+- [ ] **TX-###** CJK line breaking — CJK text breaks between characters with kinsoku rules (no line-initial 。、 etc.). _Data:_ line breaks _Test:_ Japanese paragraph in 100 px box; compare breaks. _M3·P1·[KNOW]_
+- [ ] **TX-###** Color emoji — emoji render in color via fallback regardless of run font, scaled with font size. _Data:_ render _Test:_ Inter "🙂" at 12/48 px. _M3·P1·[KNOW]_
+
+### 6.33 Persistence & interop
+
+- [ ] **TX-###** Round-trip all text properties — save/reopen preserves every node, character and paragraph property of §2 including mixed ranges, overrides, variable bindings and links. _Data:_ all §2 _Test:_ fixture → save → reopen → property dump equal. _M3·P0·[API]_
+- [ ] **TX-###** REST/.fig text import mapping — import maps `characterStyleOverrides`/`styleOverrideTable`, `lineTypes`/`lineIndentations`, `opentypeFlags`, `semanticWeight/Italic`, `lineHeightUnit` correctly. _Data:_ REST `TypePropertiesTrait` _Test:_ import REST JSON fixture; compare with source render. _M8·P1·[API]_
+- [ ] **TX-###** Text-path import/edit (P2) — `TEXT_PATH` nodes import and render; start position/flip editable. _Data:_ `textPathStartData` _Test:_ fixture with circular text; drag start handle. _M3·P2·[API][SRC:https://forum.figma.com/suggest-a-feature-11/make-text-follow-a-path-or-a-circle-34880]_
+- [ ] **TX-###** Large text performance — editing a 20 000-character text layer keeps typing latency < 16 ms per keystroke and re-layout incremental per paragraph. _Data:_ perf _Test:_ benchmark. _M8·P1·[KNOW]_
+
+### 6.34 Spell check, find & replace (P2)
+
+- [ ] **TX-###** Spell check — misspelled words underlined while editing; right-click offers suggestions and "ignore"; language selectable. _Data:_ transient _Test:_ type "teh"; right-click. _M3·P2·[KNOW]_
+- [ ] **TX-###** Find & replace text — ⌘F finds text content across layers (page/file scope), replace preserves the first replaced character's style. _Data:_ `characters` _Test:_ replace "foo"→"bar" in styled text; record styles. _M3·P2·[KNOW]_
+
+---

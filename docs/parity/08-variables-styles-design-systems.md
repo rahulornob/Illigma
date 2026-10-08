@@ -482,7 +482,7 @@ Rules:
 5. **Parent mode deleted** → the corresponding extended mode becomes removable [API].
 6. **Chains**: an extension can itself be extended (`rootVariableCollectionId`) [API].
 7. **Applying**: set the extension's mode on a container (§3.12) to re-theme every variable of the root collection used in that subtree [KNOW] (→ V-46).
-8. **Publishing**: extensions are publishable collections; a consumer may extend a *library* collection locally; local extensions of subscribed collections stay editable [SRC:https://developers.figma.com/docs/rest-api/variables-types excerpt via search].
+8. **Publishing**: extensions are publishable collections [KNOW] (→ V-76); a consumer may extend a *library* collection locally [API `extendLibraryCollectionByKeyAsync`]; local extensions of subscribed collections stay editable [SRC:https://developers.figma.com/docs/rest-api/variables-types excerpt via search].
 9. **Import mode into an extension**: right-click a mode column → *Import mode* overwrites the extension's values (as overrides) from a JSON file [DOC:36346281624471 excerpt].
 
 ### 3.15 Styles — create, apply, edit, detach, delete
@@ -596,7 +596,7 @@ Every committed document mutation in this area is **exactly one undo step** and 
 | Right panel, layer selected — Layer/Appearance section | *Apply variable mode* control | Per-collection mode menu (Auto + modes) for the selected container(s); shows current resolved mode; *Mixed* for differing selection. | [KNOW] (→ V-44) |
 | Layer/Appearance section | Opacity field + *Apply variable* | Bind layer opacity to a FLOAT variable. | [API] [KNOW] |
 | Layer/Appearance section | Visibility toggle + variable binding | Bind `visible` to a BOOLEAN variable. | [API] [KNOW] (→ V-32) |
-| Position/Layout section | W, H, min/max, radius, gap, padding, grid gaps fields with *Apply variable* on hover | Bind FLOAT variables; pill display; *Detach variable*. | [OBS: these fields exist] [API] [KNOW] |
+| Position/Layout section | W, H, min/max, radius, gap, padding, grid gaps fields with *Apply variable* on hover | Bind FLOAT variables; pill display; *Detach variable*. | [OBS: W/H, gap and padding controls exist] [API] [KNOW] |
 | Fill / Stroke sections | Header *Style* control (four dots) | Opens paint-style picker; *+* creates style from current paints; when applied, shows style name + *Detach style*. | [KNOW] (→ V-49, V-51) |
 | Fill / Stroke swatch popover | **Custom** / **Libraries** tabs | Libraries tab lists color styles and color variables (local + enabled libraries), searchable; selecting binds/applies. | [OBS] tabs exist; [KNOW] content |
 | Stroke section | Weight field (+ per-side weights) with *Apply variable* | Bind stroke weights. | [OBS: weight control exists] [API] |
@@ -644,314 +644,531 @@ All items: status **Not started**. "Fixture F1" = a test file with collection `T
 
 ### 6.1 Data model & persistence
 
-- [ ] **DS-###** Variable record — persist `id, key, name, description, hiddenFromPublishing, remote, variableCollectionId, resolvedType, valuesByMode, scopes, codeSyntax` exactly; save/reopen is lossless. _Data:_ `Variable` _Test:_ Export F1 from Figma via REST `variables/local` JSON, import into Illigma, save, reopen, re-export; diff must be empty except IDs remapped consistently. _M6·P0·[API]_
-- [ ] **DS-###** Collection record — persist `id, key, name, hiddenFromPublishing, remote, isExtension, modes[] (ordered), defaultModeId`, variable order. _Data:_ `VariableCollection` _Test:_ same round-trip as above on F1 plus a 3-mode collection; mode order and default must survive. _M6·P0·[API]_
-- [ ] **DS-###** Stable identities — variable, collection and mode IDs are never reused after delete; renames/reorders never change IDs. _Data:_ `id`, `modeId`, `key` _Test:_ create, delete, create again with the same name; new `id` differs; bindings to the old ID still show deleted state (DS soft-delete item). _M6·P0·[API]_
-- [ ] **DS-###** Type immutability — `resolvedType` cannot change after creation in UI or data layer. _Data:_ `resolvedType` (read-only) _Test:_ In Figma confirm no "change type" command exists for a Number variable; Illigma exposes none and rejects a programmatic type change. _M6·P0·[API]_
-- [ ] **DS-###** Complete mode coverage invariant — every variable has a value for every mode of its collection at all times (after add/duplicate/delete mode, import, undo). _Data:_ `valuesByMode` keys == collection `modes` _Test:_ property-based test over random mode ops; Figma comparison: add mode then read values via table → every cell filled. _M6·P0·[API]_
-- [ ] **DS-###** Explicit modes stored on pages and every scene node type — `explicitVariableModes {collectionId: modeId}` persisted. _Data:_ `ExplicitVariableModesMixin` on `PageNode`, `SceneNodeMixin` _Test:_ set modes on a page, frame, section, instance; save/reopen; values preserved. _M6·P0·[API]_
-- [ ] **DS-###** Bindings persisted for every bindable site — node scalar fields, paint colors, gradient stops, effects, layout grids, text fields per range, text-range fills, component property values/defaults, style values. _Data:_ `boundVariables` (all shapes in §2.6) _Test:_ fixture with one binding of each kind; save/reopen; all bindings intact and resolve identically. _M6·P0·[API]_
-- [ ] **DS-###** Derived state not persisted — resolved modes, resolved values, inferred variables, publish status, consumers are recomputed on load. _Data:_ `resolvedVariableModes`, `inferredVariables` _Test:_ tamper a saved file's cached resolved values; reopen; values recomputed correctly. _M0·P0·[API]_
-- [ ] **DS-###** Soft-deleted referenced variables — deleting a variable that is still referenced keeps a tombstone (`deletedButReferenced`) so bindings/aliases keep their last value and can be restored by undo. _Data:_ `deletedButReferenced` _Test:_ bind a fill to `color/bg`, delete the variable; Figma: record fill appearance and inspector state; Illigma must match (see V-18). _M6·P0·[API]·[KNOW]_
-- [ ] **DS-###** Motion variable types preserved — `TIMING` (number) and `EASING` (`MotionEasing`) variables and `CUSTOM_ANIMATION` styles round-trip losslessly even though Motion UI is not implemented. _Data:_ `VariableResolvedDataType 'TIMING'|'EASING'`, `CustomAnimationStyle` _Test:_ import a Figma-exported JSON containing TIMING/EASING variables; export again; identical. _M6·P1·[API]_
-- [ ] **DS-###** Plugin data preserved — `pluginData`/`sharedPluginData` on variables, collections and styles survive load/save (no UI). _Data:_ `PluginDataMixin` _Test:_ import fixture with shared plugin data; re-export; identical. _M8·P2·[API]_
+- [ ] **DS-001** Variable record — persist `id, key, name, description, hiddenFromPublishing, remote, variableCollectionId, resolvedType, valuesByMode, scopes, codeSyntax` exactly; save/reopen is lossless. _Data:_ `Variable` _Test:_ Export F1 from Figma via REST `variables/local` JSON, import into Illigma, save, reopen, re-export; diff must be empty except IDs remapped consistently. _M6·P0·[API]_
+- [ ] **DS-002** Collection record — persist `id, key, name, hiddenFromPublishing, remote, isExtension, modes[] (ordered), defaultModeId`, variable order. _Data:_ `VariableCollection` _Test:_ same round-trip as above on F1 plus a 3-mode collection; mode order and default must survive. _M6·P0·[API]_
+- [ ] **DS-003** Stable identities — variable, collection and mode IDs are never reused after delete; renames/reorders never change IDs. _Data:_ `id`, `modeId`, `key` _Test:_ create, delete, create again with the same name; new `id` differs; bindings to the old ID still show deleted state (DS soft-delete item). _M6·P0·[API]_
+- [ ] **DS-004** Type immutability — `resolvedType` cannot change after creation in UI or data layer. _Data:_ `resolvedType` (read-only) _Test:_ In Figma confirm no "change type" command exists for a Number variable; Illigma exposes none and rejects a programmatic type change. _M6·P0·[API]_
+- [ ] **DS-005** Complete mode coverage invariant — every variable has a value for every mode of its collection at all times (after add/duplicate/delete mode, import, undo). _Data:_ `valuesByMode` keys == collection `modes` _Test:_ property-based test over random mode ops; Figma comparison: add mode then read values via table → every cell filled. _M6·P0·[API]_
+- [ ] **DS-006** Explicit modes stored on pages and every scene node type — `explicitVariableModes {collectionId: modeId}` persisted. _Data:_ `ExplicitVariableModesMixin` on `PageNode`, `SceneNodeMixin` _Test:_ set modes on a page, frame, section, instance; save/reopen; values preserved. _M6·P0·[API]_
+- [ ] **DS-007** Bindings persisted for every bindable site — node scalar fields, paint colors, gradient stops, effects, layout grids, text fields per range, text-range fills, component property values/defaults, style values. _Data:_ `boundVariables` (all shapes in §2.6) _Test:_ fixture with one binding of each kind; save/reopen; all bindings intact and resolve identically. _M6·P0·[API]_
+- [ ] **DS-008** Derived state not persisted — resolved modes, resolved values, inferred variables, publish status, consumers are recomputed on load. _Data:_ `resolvedVariableModes`, `inferredVariables` _Test:_ tamper a saved file's cached resolved values; reopen; values recomputed correctly. _M0·P0·[API]_
+- [ ] **DS-009** Soft-deleted referenced variables — deleting a variable that is still referenced keeps a tombstone (`deletedButReferenced`) so bindings/aliases keep their last value and can be restored by undo. _Data:_ `deletedButReferenced` _Test:_ bind a fill to `color/bg`, delete the variable; Figma: record fill appearance and inspector state; Illigma must match (see V-18). _M6·P0·[API]·[KNOW]_
+- [ ] **DS-010** Motion variable types preserved — `TIMING` (number) and `EASING` (`MotionEasing`) variables and `CUSTOM_ANIMATION` styles round-trip losslessly even though Motion UI is not implemented. _Data:_ `VariableResolvedDataType 'TIMING'|'EASING'`, `CustomAnimationStyle` _Test:_ import a Figma-exported JSON containing TIMING/EASING variables; export again; identical. _M6·P1·[API]_
+- [ ] **DS-011** Plugin data preserved — `pluginData`/`sharedPluginData` on variables, collections and styles survive load/save (no UI). _Data:_ `PluginDataMixin` _Test:_ import fixture with shared plugin data; re-export; identical. _M8·P2·[API]_
 
 ### 6.2 Collections
 
-- [ ] **DS-###** Create collection — *More options → Create collection* creates a collection named `Collection` with one mode `Mode 1`, selects it and puts its name in edit state. _Data:_ `createVariableCollection(name)`, `modes[0]` _Test:_ in Figma create a collection in an empty file; record default name, mode name, edit state; Illigma identical. _M6·P0·[DOC:15145852043927 excerpt]·[KNOW]_
-- [ ] **DS-###** Implicit collection — creating the first variable in a file without collections creates a collection automatically. _Data:_ `VariableCollection` _Test:_ empty file → *Create variable* → record resulting collection/mode names (V-01). _M6·P1·[KNOW]_
-- [ ] **DS-###** Rename collection — commit on Enter/blur, Esc cancels, empty name reverts; duplicate collection names allowed per V-02. _Data:_ `name` _Test:_ rename to "", to an existing name, to "Brand"; compare outcomes. _M6·P0·[KNOW]_
-- [ ] **DS-###** Delete collection — removes the collection and all its variables; bound layers keep rendering their last values with deleted-reference state. _Data:_ `VariableCollection.remove()` _Test:_ F1, bind a frame fill to `color/bg`, delete `Theme`; compare fill and inspector state; undo restores bindings live. _M6·P0·[API]·[KNOW]_
-- [ ] **DS-###** Reorder collections — drag in the sidebar changes collection order; order persists and is reflected in pickers. _Data:_ document collection order _Test:_ 3 collections, drag last to first, reopen file; compare picker grouping order (V-03). _M6·P2·[KNOW]_
-- [ ] **DS-###** Duplicate collection (conditional on V-04) — copies modes and variables with new IDs; internal aliases re-pointed to the copies; external aliases kept. _Data:_ new `VariableCollection` _Test:_ only if Figma offers it: duplicate F1 `Theme`, inspect alias targets in the copy. _M6·P2·[KNOW]_
-- [ ] **DS-###** Hide collection from publishing — flag hides every variable of the collection from publish regardless of variable flags. _Data:_ `VariableCollection.hiddenFromPublishing` _Test:_ hide `Spacing`, open publish dialog; none of its variables listed. _M6·P1·[API]_
-- [ ] **DS-###** Variable cap — a collection accepts at most 5,000 variables; creating/importing the 5,001st fails with an explanatory message and no partial corruption. _Data:_ collection size _Test:_ import 5,001-token file in Figma and Illigma; compare message and resulting count. _M6·P1·[DOC:15145852043927 excerpt]_
+- [ ] **DS-012** Create collection — *More options → Create collection* creates a collection named `Collection` with one mode `Mode 1`, selects it and puts its name in edit state. _Data:_ `createVariableCollection(name)`, `modes[0]` _Test:_ in Figma create a collection in an empty file; record default name, mode name, edit state; Illigma identical. _M6·P0·[DOC:15145852043927 excerpt]·[KNOW]_
+- [ ] **DS-013** Implicit collection — creating the first variable in a file without collections creates a collection automatically. _Data:_ `VariableCollection` _Test:_ empty file → *Create variable* → record resulting collection/mode names (V-01). _M6·P1·[KNOW]_
+- [ ] **DS-014** Rename collection — commit on Enter/blur, Esc cancels, empty name reverts; duplicate collection names allowed per V-02. _Data:_ `name` _Test:_ rename to "", to an existing name, to "Brand"; compare outcomes. _M6·P0·[KNOW]_
+- [ ] **DS-015** Delete collection — removes the collection and all its variables; bound layers keep rendering their last values with deleted-reference state. _Data:_ `VariableCollection.remove()` _Test:_ F1, bind a frame fill to `color/bg`, delete `Theme`; compare fill and inspector state; undo restores bindings live. _M6·P0·[API]·[KNOW]_
+- [ ] **DS-016** Reorder collections — drag in the sidebar changes collection order; order persists and is reflected in pickers. _Data:_ document collection order _Test:_ 3 collections, drag last to first, reopen file; compare picker grouping order (V-03). _M6·P2·[KNOW]_
+- [ ] **DS-017** Duplicate collection (conditional on V-04) — copies modes and variables with new IDs; internal aliases re-pointed to the copies; external aliases kept. _Data:_ new `VariableCollection` _Test:_ only if Figma offers it: duplicate F1 `Theme`, inspect alias targets in the copy. _M6·P2·[KNOW]_
+- [ ] **DS-018** Hide collection from publishing — flag hides every variable of the collection from publish regardless of variable flags. _Data:_ `VariableCollection.hiddenFromPublishing` _Test:_ hide `Spacing`, open publish dialog; none of its variables listed. _M6·P1·[API]_
+- [ ] **DS-019** Variable cap — a collection accepts at most 5,000 variables; creating/importing the 5,001st fails with an explanatory message and no partial corruption. _Data:_ collection size _Test:_ import 5,001-token file in Figma and Illigma; compare message and resulting count. _M6·P1·[DOC:15145852043927 excerpt]_
 
 ### 6.3 Modes
 
-- [ ] **DS-###** Add mode — *+* after the last mode column appends `Mode N` (next free integer) and focuses its name for editing. _Data:_ `addMode(name) → modeId` _Test:_ collection with Mode 1, Mode 3 (Mode 2 renamed) → add; record new name (V-05). _M6·P0·[KNOW]_
-- [ ] **DS-###** New mode values — values of a newly added mode are copied from the default mode (aliases stay aliases). _Data:_ `valuesByMode[newModeId]` _Test:_ F1 `Theme` default Light; add mode; compare new column values (V-05). _M6·P0·[KNOW]_
-- [ ] **DS-###** Rename mode — header double-click or context menu; IDs unchanged so explicit modes on layers keep working. _Data:_ `renameMode(id, name)` _Test:_ frame explicitly in Dark; rename Dark→Night; frame still renders dark values and menu shows "Night". _M6·P0·[API]_
-- [ ] **DS-###** Duplicate mode — inserts a copy with all values, named `<name> copy`, placed right of the source. _Data:_ new `modeId` _Test:_ duplicate Dark; record name/placement/values (V-06). _M6·P1·[KNOW]_
-- [ ] **DS-###** Delete mode — removes the column and its values; disabled when only one mode remains. _Data:_ `removeMode(id)` _Test:_ try deleting the only mode; then delete Dark in F1. _M6·P0·[API]·[KNOW]_
-- [ ] **DS-###** Explicit-mode fallback after mode deletion — layers explicitly set to a deleted mode resolve as Auto (inherit/default). _Data:_ stale `explicitVariableModes` entry _Test:_ frame explicit Dark; delete Dark; record frame rendering and mode menu label (V-07). _M6·P0·[KNOW]_
-- [ ] **DS-###** Default mode semantics — the default mode is used when no explicit mode exists in the ancestry, and for previews. _Data:_ `defaultModeId` _Test:_ unframed rectangle bound to `color/bg` on a page with no modes renders Light value. _M6·P0·[API]_
-- [ ] **DS-###** Change default mode — via reorder to first position and/or *Set as default*; Auto layers immediately re-resolve. _Data:_ `defaultModeId` _Test:_ make Dark default; unmoded rectangle turns black (V-08). _M6·P1·[KNOW]_
-- [ ] **DS-###** Reorder modes — drag headers; order persists; explicit modes unaffected. _Data:_ `modes[]` order _Test:_ 3 modes, drag; reopen; compare (V-08). _M6·P1·[KNOW]_
-- [ ] **DS-###** Mode cap policy — Illigma supports at least 40 modes per collection with no plan gating; behavior above the cap per Q1. _Data:_ `modes.length` _Test:_ add 40 modes; all editable; table usable (horizontal scroll). _M6·P1·[API]·[DOC:360040328273 excerpt]_
-- [ ] **DS-###** Mode IDs stable — rename/reorder/set-default never change `modeId`; export uses IDs plus names. _Data:_ `modeId` _Test:_ REST-JSON export before/after rename; IDs identical. _M6·P0·[API]_
+- [ ] **DS-020** Add mode — *+* after the last mode column appends `Mode N` (next free integer) and focuses its name for editing. _Data:_ `addMode(name) → modeId` _Test:_ collection with Mode 1, Mode 3 (Mode 2 renamed) → add; record new name (V-05). _M6·P0·[KNOW]_
+- [ ] **DS-021** New mode values — values of a newly added mode are copied from the default mode (aliases stay aliases). _Data:_ `valuesByMode[newModeId]` _Test:_ F1 `Theme` default Light; add mode; compare new column values (V-05). _M6·P0·[KNOW]_
+- [ ] **DS-022** Rename mode — header double-click or context menu; IDs unchanged so explicit modes on layers keep working. _Data:_ `renameMode(id, name)` _Test:_ frame explicitly in Dark; rename Dark→Night; frame still renders dark values and menu shows "Night". _M6·P0·[API]_
+- [ ] **DS-023** Duplicate mode — inserts a copy with all values, named `<name> copy`, placed right of the source. _Data:_ new `modeId` _Test:_ duplicate Dark; record name/placement/values (V-06). _M6·P1·[KNOW]_
+- [ ] **DS-024** Delete mode — removes the column and its values; disabled when only one mode remains. _Data:_ `removeMode(id)` _Test:_ try deleting the only mode; then delete Dark in F1. _M6·P0·[API]·[KNOW]_
+- [ ] **DS-025** Explicit-mode fallback after mode deletion — layers explicitly set to a deleted mode resolve as Auto (inherit/default). _Data:_ stale `explicitVariableModes` entry _Test:_ frame explicit Dark; delete Dark; record frame rendering and mode menu label (V-07). _M6·P0·[KNOW]_
+- [ ] **DS-026** Default mode semantics — the default mode is used when no explicit mode exists in the ancestry, and for previews. _Data:_ `defaultModeId` _Test:_ unframed rectangle bound to `color/bg` on a page with no modes renders Light value. _M6·P0·[API]_
+- [ ] **DS-027** Change default mode — via reorder to first position and/or *Set as default*; Auto layers immediately re-resolve. _Data:_ `defaultModeId` _Test:_ make Dark default; unmoded rectangle turns black (V-08). _M6·P1·[KNOW]_
+- [ ] **DS-028** Reorder modes — drag headers; order persists; explicit modes unaffected. _Data:_ `modes[]` order _Test:_ 3 modes, drag; reopen; compare (V-08). _M6·P1·[KNOW]_
+- [ ] **DS-029** Mode cap policy — Illigma supports at least 40 modes per collection with no plan gating; behavior above the cap per Q1. _Data:_ `modes.length` _Test:_ add 40 modes; all editable; table usable (horizontal scroll). _M6·P1·[API]·[DOC:360040328273 excerpt]_
+- [ ] **DS-030** Mode IDs stable — rename/reorder/set-default never change `modeId`; export uses IDs plus names. _Data:_ `modeId` _Test:_ REST-JSON export before/after rename; IDs identical. _M6·P0·[API]_
 
 ### 6.4 Variables — create, name, edit, delete
 
-- [ ] **DS-###** Create variable type menu — *+ Create variable* offers Color, Number, String, Boolean (Timing/Easing only where Motion exists). _Data:_ `createVariable(name, collection, resolvedType)` _Test:_ open menu in Figma; list items; Illigma lists the same four (Motion types hidden until M7). _M6·P0·[DOC:14506821864087 excerpt]·[KNOW]_
-- [ ] **DS-###** Create location — new variable is created in the displayed collection, inside the selected sidebar group (name prefixed), appended at the end, name in edit state. _Data:_ `name`, order _Test:_ select group `color` → create; record full name and position (V-09). _M6·P0·[KNOW]_
-- [ ] **DS-###** Default value per type — Color `#FFFFFF`/100 %, Number `0`, String empty, Boolean `true` (to be confirmed) for every mode. _Data:_ `valuesByMode` _Test:_ create one of each in a 2-mode collection; record all cells (V-10). _M6·P0·[KNOW]_
-- [ ] **DS-###** Default name per type — type-derived default name with numeric suffix on collision. _Data:_ `name` _Test:_ create three Color variables without renaming; record names (V-10). _M6·P1·[KNOW]_
-- [ ] **DS-###** Rename variable — double-click name cell; Enter commits, Esc cancels; bindings unaffected (ID-based). _Data:_ `name` _Test:_ bind fill to `color/bg`, rename to `surface/base`; fill unchanged, pill shows new name. _M6·P0·[API]_
-- [ ] **DS-###** Unique names per collection — duplicate full name (incl. group path) within a collection is rejected with feedback; same name in another collection allowed. _Data:_ `name` _Test:_ create two `space/md` in `Spacing`; then one in `Theme` (V-11). _M6·P0·[KNOW]_
-- [ ] **DS-###** Forbidden characters — names containing `$` (and `.`, `{`, `}` pending V-11) are rejected with an error toast; previous name kept. _Data:_ `name` _Test:_ try `a$b`, `a.b`, `{a}`, `.5`; record which are rejected and the message. _M6·P0·[SRC:forum.figma.com 45692, 48096 excerpt]_
-- [ ] **DS-###** Whitespace & empty names — empty name rejected; whitespace around `/` segments trimmed. _Data:_ `name` _Test:_ rename to `" color / bg "` and `""`; record stored names (V-11). _M6·P1·[KNOW]_
-- [ ] **DS-###** Edit variable panel — shows Name, Description, Scoping (not Boolean), Code syntax, Hide from publishing; edits commit individually. _Data:_ `name, description, scopes, codeSyntax, hiddenFromPublishing` _Test:_ open for each type; list sections (V-16). _M6·P0·[KNOW]_
-- [ ] **DS-###** Duplicate variable — duplicates selected variables below the source as `<name> copy` (incrementing), copying all mode values, description, scopes, code syntax and hidden flag. _Data:_ new `Variable` _Test:_ duplicate `color/bg` twice; record names, placement, copied settings (V-17). _M6·P1·[KNOW]_
-- [ ] **DS-###** Duplicate shortcut — Shift+Enter duplicates the selected variables in the table (as reported). _Data:_ — _Test:_ select 2 rows, press ⇧↵ in Figma; record effect (V-17). _M6·P2·[DOC:15145852043927 excerpt]_
-- [ ] **DS-###** Delete variable — context menu or Delete/Backspace removes selected variables from the table in one step. _Data:_ `Variable.remove()` _Test:_ select 3, press ⌫; one undo restores all three in original order. _M6·P0·[API]·[KNOW]_
-- [ ] **DS-###** Deleted-variable consumers — bindings and aliases to a deleted variable keep the last resolved value and show a deleted/missing indicator; re-binding is possible. _Data:_ `deletedButReferenced` _Test:_ see V-18; compare inspector pill, value and canvas. _M6·P0·[API]·[KNOW]_
-- [ ] **DS-###** Multi-select rows — click, Shift+click range, ⌘/Ctrl+click toggle, ⌘/Ctrl+A all visible. _Data:_ UI state _Test:_ perform each gesture; compare selected sets (V-19, V-73). _M6·P1·[DOC:15145852043927 excerpt]·[KNOW]_
-- [ ] **DS-###** Bulk settings edit — with several variables selected, Edit variable applies scope / hidden-flag changes to all (fields with differing values show Mixed). _Data:_ `scopes`, `hiddenFromPublishing` _Test:_ select 3 colors with different scopes; uncheck Stroke; record each result (V-19). _M6·P2·[KNOW]_
-- [ ] **DS-###** Reorder variables — drag rows within a group; order persists. _Data:_ collection order tree _Test:_ drag, reopen; compare order in table and pickers (V-20). _M6·P1·[KNOW]_
-- [ ] **DS-###** Drag into another group — dropping a variable into another group rewrites its path prefix. _Data:_ `name` _Test:_ drag `color/bg` into group `surface`; name becomes `surface/bg` (V-20). _M6·P1·[KNOW]_
-- [ ] **DS-###** No cross-collection move unless Figma supports it — variable cannot change collection (V-21 decides UI). _Data:_ `variableCollectionId` read-only _Test:_ attempt drag to another collection in Figma; record. _M6·P2·[API]_
-- [ ] **DS-###** Remote variables read-only — library variables never appear in the local table and cannot be edited, renamed or deleted in a consumer file. _Data:_ `remote: true` _Test:_ consumer file using a library variable; confirm no edit path. _M6·P0·[API]_
+- [ ] **DS-031** Create variable type menu — *+ Create variable* offers Color, Number, String, Boolean (Timing/Easing only where Motion exists). _Data:_ `createVariable(name, collection, resolvedType)` _Test:_ open menu in Figma; list items; Illigma lists the same four (Motion types hidden until M7). _M6·P0·[DOC:14506821864087 excerpt]·[KNOW]_
+- [ ] **DS-032** Create location — new variable is created in the displayed collection, inside the selected sidebar group (name prefixed), appended at the end, name in edit state. _Data:_ `name`, order _Test:_ select group `color` → create; record full name and position (V-09). _M6·P0·[KNOW]_
+- [ ] **DS-033** Default value per type — Color `#FFFFFF`/100 %, Number `0`, String empty, Boolean `true` (to be confirmed) for every mode. _Data:_ `valuesByMode` _Test:_ create one of each in a 2-mode collection; record all cells (V-10). _M6·P0·[KNOW]_
+- [ ] **DS-034** Default name per type — type-derived default name with numeric suffix on collision. _Data:_ `name` _Test:_ create three Color variables without renaming; record names (V-10). _M6·P1·[KNOW]_
+- [ ] **DS-035** Rename variable — double-click name cell; Enter commits, Esc cancels; bindings unaffected (ID-based). _Data:_ `name` _Test:_ bind fill to `color/bg`, rename to `surface/base`; fill unchanged, pill shows new name. _M6·P0·[API]_
+- [ ] **DS-036** Unique names per collection — duplicate full name (incl. group path) within a collection is rejected with feedback; same name in another collection allowed. _Data:_ `name` _Test:_ create two `space/md` in `Spacing`; then one in `Theme` (V-11). _M6·P0·[KNOW]_
+- [ ] **DS-037** Forbidden characters — names containing `$` (and `.`, `{`, `}` pending V-11) are rejected with an error toast; previous name kept. _Data:_ `name` _Test:_ try `a$b`, `a.b`, `{a}`, `.5`; record which are rejected and the message. _M6·P0·[SRC:forum.figma.com 45692, 48096 excerpt]_
+- [ ] **DS-038** Whitespace & empty names — empty name rejected; whitespace around `/` segments trimmed. _Data:_ `name` _Test:_ rename to `" color / bg "` and `""`; record stored names (V-11). _M6·P1·[KNOW]_
+- [ ] **DS-039** Edit variable panel — shows Name, Description, Scoping (not Boolean), Code syntax, Hide from publishing; edits commit individually. _Data:_ `name, description, scopes, codeSyntax, hiddenFromPublishing` _Test:_ open for each type; list sections (V-16). _M6·P0·[KNOW]_
+- [ ] **DS-040** Duplicate variable — duplicates selected variables below the source as `<name> copy` (incrementing), copying all mode values, description, scopes, code syntax and hidden flag. _Data:_ new `Variable` _Test:_ duplicate `color/bg` twice; record names, placement, copied settings (V-17). _M6·P1·[KNOW]_
+- [ ] **DS-041** Duplicate shortcut — Shift+Enter duplicates the selected variables in the table (as reported). _Data:_ — _Test:_ select 2 rows, press ⇧↵ in Figma; record effect (V-17). _M6·P2·[DOC:15145852043927 excerpt]_
+- [ ] **DS-042** Delete variable — context menu or Delete/Backspace removes selected variables from the table in one step. _Data:_ `Variable.remove()` _Test:_ select 3, press ⌫; one undo restores all three in original order. _M6·P0·[API]·[KNOW]_
+- [ ] **DS-043** Deleted-variable consumers — bindings and aliases to a deleted variable keep the last resolved value and show a deleted/missing indicator; re-binding is possible. _Data:_ `deletedButReferenced` _Test:_ see V-18; compare inspector pill, value and canvas. _M6·P0·[API]·[KNOW]_
+- [ ] **DS-044** Multi-select rows — click, Shift+click range, ⌘/Ctrl+click toggle, ⌘/Ctrl+A all visible. _Data:_ UI state _Test:_ perform each gesture; compare selected sets (V-19, V-73). _M6·P1·[DOC:15145852043927 excerpt]·[KNOW]_
+- [ ] **DS-045** Bulk settings edit — with several variables selected, Edit variable applies scope / hidden-flag changes to all (fields with differing values show Mixed). _Data:_ `scopes`, `hiddenFromPublishing` _Test:_ select 3 colors with different scopes; uncheck Stroke; record each result (V-19). _M6·P2·[KNOW]_
+- [ ] **DS-046** Reorder variables — drag rows within a group; order persists. _Data:_ collection order tree _Test:_ drag, reopen; compare order in table and pickers (V-20). _M6·P1·[KNOW]_
+- [ ] **DS-047** Drag into another group — dropping a variable into another group rewrites its path prefix. _Data:_ `name` _Test:_ drag `color/bg` into group `surface`; name becomes `surface/bg` (V-20). _M6·P1·[KNOW]_
+- [ ] **DS-048** No cross-collection move unless Figma supports it — variable cannot change collection (V-21 decides UI). _Data:_ `variableCollectionId` read-only _Test:_ attempt drag to another collection in Figma; record. _M6·P2·[API]_
+- [ ] **DS-049** Remote variables read-only — library variables never appear in the local table and cannot be edited, renamed or deleted in a consumer file. _Data:_ `remote: true` _Test:_ consumer file using a library variable; confirm no edit path. _M6·P0·[API]_
 
 ### 6.5 Values & aliases
 
-- [ ] **DS-###** Color cell editing — swatch opens color picker; hex field accepts 3/6/8-digit hex; opacity 0–100 %; stored RGBA 0–1. _Data:_ `RGBA` _Test:_ enter `F00`, `FF000080`, opacity 50; compare stored/displayed values. _M6·P0·[API]·[KNOW]_
-- [ ] **DS-###** Color picker drag commit — dragging in the cell's color picker previews live on canvas and commits one undo step on release. _Data:_ — _Test:_ drag hue; ⌘Z once returns to original color. _M6·P1·[KNOW]_
-- [ ] **DS-###** Number cell — accepts negative and fractional values; display precision matches Figma; arithmetic input behavior per V-22. _Data:_ `number` _Test:_ enter `-0.5`, `1.255`, `8*2`; record stored and displayed values. _M6·P0·[KNOW]_
-- [ ] **DS-###** String cell — free text; commit Enter/blur; Esc cancels. _Data:_ `string` _Test:_ enter text with spaces/unicode; compare. _M6·P0·[KNOW]_
-- [ ] **DS-###** Boolean cell — toggles between true/false in one click, one undo step per toggle. _Data:_ `boolean` _Test:_ toggle `flag/show`; undo. _M6·P0·[KNOW]_
-- [ ] **DS-###** Live propagation — a committed value change re-renders all consumers (direct, via alias chains, via styles, inside instances) whose resolved mode selects that column. _Data:_ resolution graph _Test:_ F1 frames in Light and Dark both using `color/bg`; edit Dark value; only Dark frame changes. _M6·P0·[API]_
-- [ ] **DS-###** Create alias — a cell can reference another variable of the **same resolved type** chosen from a searchable picker grouped by collection/library. _Data:_ `VariableAlias` _Test:_ alias `color/text` (Dark) → `color/bg` (Light column of another collection); picker lists only colors (V-30). _M6·P0·[API]·[KNOW]_
-- [ ] **DS-###** Cross-collection and library aliases — aliases may target variables in other local collections and in enabled libraries. _Data:_ `VariableAlias.id` _Test:_ semantic collection aliasing a primitive collection and a library color; both resolve. _M6·P0·[API]_
-- [ ] **DS-###** Alias cycle prevention — any alias that would create a cycle (including self) is impossible; the picker disables/hides such targets. _Data:_ alias graph _Test:_ A→B, then try B→A; record UI (V-48). _M6·P0·[KNOW]_
-- [ ] **DS-###** Same-collection alias — a variable may alias another variable in its own collection. _Data:_ `VariableAlias` _Test:_ `color/fg` → `color/bg` same collection (V-48). _M6·P1·[KNOW]_
-- [ ] **DS-###** Per-mode alias independence — each mode cell may independently be literal or alias. _Data:_ `valuesByMode` _Test:_ Light literal, Dark alias; both resolve correctly. _M6·P0·[API]_
-- [ ] **DS-###** Alias display — aliased cells show the target name (pill); hover/inspect shows resolved value. _Data:_ — _Test:_ compare cell rendering (V-30). _M6·P1·[KNOW]_
-- [ ] **DS-###** Detach alias — replaces the alias with the target's current resolved value for that mode column. _Data:_ `valuesByMode[mode]` _Test:_ alias across a 2-mode chain; detach in Dark; stored literal equals previously resolved Dark value (V-30). _M6·P0·[KNOW]_
-- [ ] **DS-###** Alias chain mode resolution — each hop resolves using the consumer's resolved mode for that hop's collection (2×2 modes → 4 outcomes). _Data:_ `resolveForConsumer` semantics _Test:_ reproduce the typings example (values 1,2,3,4) with frames; all four frames render the expected values. _M6·P0·[API]_
-- [ ] **DS-###** Composed color: alias + opacity — a color cell may alias a color variable and set its own opacity (literal or FLOAT alias). _Data:_ `VariableComposedColor {color: VariableAlias, opacity: number|VariableAlias}` _Test:_ `brand/primary-50` = alias `brand/primary` at 50 %; canvas alpha halves; changing the source color updates it (V-39). _M6·P1·[API]·[SRC:github plugin-typings #375]_
-- [ ] **DS-###** Composed color: literal color + aliased opacity — supported; literal+literal collapses to plain RGBA. _Data:_ `{color: RGB|RGBA, opacity: VariableAlias}` _Test:_ create and export; compare stored shape (V-39). _M6·P1·[API]_
-- [ ] **DS-###** Translucent-source opacity rule — when the aliased source color is already translucent, the opacity field is disabled, shows inherited alpha, and the stored opacity is inactive until source alpha becomes 1. _Data:_ composed color _Test:_ source alpha 40 %; record field state and rendering; then set source to 100 % (V-39). _M6·P2·[SRC:github plugin-typings #381 excerpt]_
-- [ ] **DS-###** Deleted alias target — alias cell referencing a deleted variable shows deleted state and resolves to last known value. _Data:_ `deletedButReferenced` _Test:_ delete target; record cell + canvas (V-18). _M6·P1·[API]·[KNOW]_
-- [ ] **DS-###** Alias depth — chains of ≥ 32 hops resolve without error or noticeable delay. _Data:_ alias graph _Test:_ generated chain of 32 aliases; bound node renders the leaf value. _M6·P2·[KNOW]_
+- [ ] **DS-050** Color cell editing — swatch opens color picker; hex field accepts 3/6/8-digit hex; opacity 0–100 %; stored RGBA 0–1. _Data:_ `RGBA` _Test:_ enter `F00`, `FF000080`, opacity 50; compare stored/displayed values. _M6·P0·[API]·[KNOW]_
+- [ ] **DS-051** Color picker drag commit — dragging in the cell's color picker previews live on canvas and commits one undo step on release. _Data:_ — _Test:_ drag hue; ⌘Z once returns to original color. _M6·P1·[KNOW]_
+- [ ] **DS-052** Number cell — accepts negative and fractional values; display precision matches Figma; arithmetic input behavior per V-22. _Data:_ `number` _Test:_ enter `-0.5`, `1.255`, `8*2`; record stored and displayed values. _M6·P0·[KNOW]_
+- [ ] **DS-053** String cell — free text; commit Enter/blur; Esc cancels. _Data:_ `string` _Test:_ enter text with spaces/unicode; compare. _M6·P0·[KNOW]_
+- [ ] **DS-054** Boolean cell — toggles between true/false in one click, one undo step per toggle. _Data:_ `boolean` _Test:_ toggle `flag/show`; undo. _M6·P0·[KNOW]_
+- [ ] **DS-055** Live propagation — a committed value change re-renders all consumers (direct, via alias chains, via styles, inside instances) whose resolved mode selects that column. _Data:_ resolution graph _Test:_ F1 frames in Light and Dark both using `color/bg`; edit Dark value; only Dark frame changes. _M6·P0·[API]_
+- [ ] **DS-056** Create alias — a cell can reference another variable of the **same resolved type** chosen from a searchable picker grouped by collection/library. _Data:_ `VariableAlias` _Test:_ alias `color/text` (Dark) → `color/bg` (Light column of another collection); picker lists only colors (V-30). _M6·P0·[API]·[KNOW]_
+- [ ] **DS-057** Cross-collection and library aliases — aliases may target variables in other local collections and in enabled libraries. _Data:_ `VariableAlias.id` _Test:_ semantic collection aliasing a primitive collection and a library color; both resolve. _M6·P0·[API]_
+- [ ] **DS-058** Alias cycle prevention — any alias that would create a cycle (including self) is impossible; the picker disables/hides such targets. _Data:_ alias graph _Test:_ A→B, then try B→A; record UI (V-48). _M6·P0·[KNOW]_
+- [ ] **DS-059** Same-collection alias — a variable may alias another variable in its own collection. _Data:_ `VariableAlias` _Test:_ `color/fg` → `color/bg` same collection (V-48). _M6·P1·[KNOW]_
+- [ ] **DS-060** Per-mode alias independence — each mode cell may independently be literal or alias. _Data:_ `valuesByMode` _Test:_ Light literal, Dark alias; both resolve correctly. _M6·P0·[API]_
+- [ ] **DS-061** Alias display — aliased cells show the target name (pill); hover/inspect shows resolved value. _Data:_ — _Test:_ compare cell rendering (V-30). _M6·P1·[KNOW]_
+- [ ] **DS-062** Detach alias — replaces the alias with the target's current resolved value for that mode column. _Data:_ `valuesByMode[mode]` _Test:_ alias across a 2-mode chain; detach in Dark; stored literal equals previously resolved Dark value (V-30). _M6·P0·[KNOW]_
+- [ ] **DS-063** Alias chain mode resolution — each hop resolves using the consumer's resolved mode for that hop's collection (2×2 modes → 4 outcomes). _Data:_ `resolveForConsumer` semantics _Test:_ reproduce the typings example (values 1,2,3,4) with frames; all four frames render the expected values. _M6·P0·[API]_
+- [ ] **DS-064** Composed color: alias + opacity — a color cell may alias a color variable and set its own opacity (literal or FLOAT alias). _Data:_ `VariableComposedColor {color: VariableAlias, opacity: number|VariableAlias}` _Test:_ `brand/primary-50` = alias `brand/primary` at 50 %; canvas alpha halves; changing the source color updates it (V-39). _M6·P1·[API]·[SRC:github plugin-typings #375]_
+- [ ] **DS-065** Composed color: literal color + aliased opacity — supported; literal+literal collapses to plain RGBA. _Data:_ `{color: RGB|RGBA, opacity: VariableAlias}` _Test:_ create and export; compare stored shape (V-39). _M6·P1·[API]_
+- [ ] **DS-066** Translucent-source opacity rule — when the aliased source color is already translucent, the opacity field is disabled, shows inherited alpha, and the stored opacity is inactive until source alpha becomes 1. _Data:_ composed color _Test:_ source alpha 40 %; record field state and rendering; then set source to 100 % (V-39). _M6·P2·[SRC:github plugin-typings #381 excerpt]_
+- [ ] **DS-067** Deleted alias target — alias cell referencing a deleted variable shows deleted state and resolves to last known value. _Data:_ `deletedButReferenced` _Test:_ delete target; record cell + canvas (V-18). _M6·P1·[API]·[KNOW]_
+- [ ] **DS-068** Alias depth — chains of ≥ 32 hops resolve without error or noticeable delay. _Data:_ alias graph _Test:_ generated chain of 32 aliases; bound node renders the leaf value. _M6·P2·[KNOW]_
 
 ### 6.6 Scopes
 
-- [ ] **DS-###** Default scope — new COLOR/FLOAT/STRING variables default to "All supported properties" (`ALL_SCOPES`). _Data:_ `scopes = ['ALL_SCOPES']` _Test:_ create; open Edit variable; export JSON; compare (V-12). _M6·P0·[KNOW]_
-- [ ] **DS-###** `ALL_SCOPES` exclusivity — selecting any specific scope removes `ALL_SCOPES`; re-checking "All" clears specifics. _Data:_ `scopes` _Test:_ toggle sequence; export scopes after each step. _M6·P0·[API]_
-- [ ] **DS-###** `ALL_FILLS` exclusivity — Fill parent option = `ALL_FILLS`; selecting a subset stores the sub-scopes; selecting all three collapses to `ALL_FILLS`. _Data:_ `ALL_FILLS, FRAME_FILL, SHAPE_FILL, TEXT_FILL` _Test:_ toggle sub-options; export scopes (V-12). _M6·P0·[API]·[KNOW]_
-- [ ] **DS-###** Valid scopes per type — FLOAT/STRING/COLOR scope lists exactly as §2.4 (incl. `CORNER_RADIUS` for FLOAT pending V-12); BOOLEAN has no scoping UI. _Data:_ `VariableScope` _Test:_ open scoping UI for each type; record option labels → scope mapping. _M6·P0·[API]·[KNOW]_
-- [ ] **DS-###** Picker filtering — a field's variable picker lists only variables of the matching type whose scopes include the field's scope (or `ALL_SCOPES`). _Data:_ `scopes` _Test:_ FLOAT `radius/sm` scoped to Corner radius appears in radius picker, not in gap picker. _M6·P0·[API]_
-- [ ] **DS-###** Fill sub-scopes by node kind — `FRAME_FILL` offered on frames/components/instances/sections, `SHAPE_FILL` on shapes/vectors, `TEXT_FILL` on text. _Data:_ scopes _Test:_ color scoped to Text fill only; check fill pickers of frame, rectangle, text (V-12). _M6·P0·[KNOW]_
-- [ ] **DS-###** Scopes are not validation — changing scopes never removes existing bindings; paste-properties can apply out-of-scope variables. _Data:_ `scopes` _Test:_ bind gap, then remove Gap scope; binding persists. _M6·P0·[API]_
-- [ ] **DS-###** Layer opacity vs color opacity scopes — `OPACITY` offers the variable in layer opacity; `COLOR_OPACITY` in paint/composed-color opacity. _Data:_ `OPACITY`, `COLOR_OPACITY` _Test:_ scope a FLOAT to each; check both pickers (V-12). _M6·P1·[API]_
+- [ ] **DS-069** Default scope — new COLOR/FLOAT/STRING variables default to "All supported properties" (`ALL_SCOPES`). _Data:_ `scopes = ['ALL_SCOPES']` _Test:_ create; open Edit variable; export JSON; compare (V-12). _M6·P0·[KNOW]_
+- [ ] **DS-070** `ALL_SCOPES` exclusivity — selecting any specific scope removes `ALL_SCOPES`; re-checking "All" clears specifics. _Data:_ `scopes` _Test:_ toggle sequence; export scopes after each step. _M6·P0·[API]_
+- [ ] **DS-071** `ALL_FILLS` exclusivity — Fill parent option = `ALL_FILLS`; selecting a subset stores the sub-scopes; selecting all three collapses to `ALL_FILLS`. _Data:_ `ALL_FILLS, FRAME_FILL, SHAPE_FILL, TEXT_FILL` _Test:_ toggle sub-options; export scopes (V-12). _M6·P0·[API]·[KNOW]_
+- [ ] **DS-072** Valid scopes per type — FLOAT/STRING/COLOR scope lists exactly as §2.4 (incl. `CORNER_RADIUS` for FLOAT pending V-12); BOOLEAN has no scoping UI. _Data:_ `VariableScope` _Test:_ open scoping UI for each type; record option labels → scope mapping. _M6·P0·[API]·[KNOW]_
+- [ ] **DS-073** Picker filtering — a field's variable picker lists only variables of the matching type whose scopes include the field's scope (or `ALL_SCOPES`). _Data:_ `scopes` _Test:_ FLOAT `radius/sm` scoped to Corner radius appears in radius picker, not in gap picker. _M6·P0·[API]_
+- [ ] **DS-074** Fill sub-scopes by node kind — `FRAME_FILL` offered on frames/components/instances/sections, `SHAPE_FILL` on shapes/vectors, `TEXT_FILL` on text. _Data:_ scopes _Test:_ color scoped to Text fill only; check fill pickers of frame, rectangle, text (V-12). _M6·P0·[KNOW]_
+- [ ] **DS-075** Scopes are not validation — changing scopes never removes existing bindings; paste-properties can apply out-of-scope variables. _Data:_ `scopes` _Test:_ bind gap, then remove Gap scope; binding persists. _M6·P0·[API]_
+- [ ] **DS-076** Layer opacity vs color opacity scopes — `OPACITY` offers the variable in layer opacity; `COLOR_OPACITY` in paint/composed-color opacity. _Data:_ `OPACITY`, `COLOR_OPACITY` _Test:_ scope a FLOAT to each; check both pickers (V-12). _M6·P1·[API]_
 
 ### 6.7 Code syntax, descriptions, hide from publishing
 
-- [ ] **DS-###** Add code syntax — per platform WEB/ANDROID/iOS, free text, at most one string per platform. _Data:_ `codeSyntax`, `setVariableCodeSyntax` _Test:_ add all three; export JSON; compare (V-16). _M6·P1·[API]_
-- [ ] **DS-###** Remove code syntax — removing a platform row deletes only that key. _Data:_ `removeVariableCodeSyntax` _Test:_ remove ANDROID; others remain. _M6·P1·[API]_
-- [ ] **DS-###** Variable description — plain text, multi-line allowed, shown on hover in pickers. _Data:_ `description` _Test:_ add 2-line description; hover in fill picker; compare tooltip (V-16). _M6·P1·[API]·[KNOW]_
-- [ ] **DS-###** Style description, rich description & doc link — editable in Edit style; one documentation link. _Data:_ `description`, `descriptionMarkdown`, `documentationLinks` _Test:_ set bold text + link; hover in picker. _M6·P2·[API]·[DOC:7938814091287 title]_
-- [ ] **DS-###** Variable hide-from-publishing — checkbox; hidden variables stay usable locally and are excluded from publish. _Data:_ `Variable.hiddenFromPublishing` _Test:_ hide `space/md`; still in local pickers; not in publish dialog. _M6·P1·[API]_
-- [ ] **DS-###** Publishability rule — variable published only if neither it nor its collection is hidden. _Data:_ both flags _Test:_ 4 combinations; check publish dialog. _M6·P1·[API]_
-- [ ] **DS-###** Style hide prefix — styles whose name (first segment) starts with `_` or `.` are excluded from publishing. _Data:_ `name` _Test:_ `_private/red`, `.tmp` styles; publish dialog excludes them (V-23). _M6·P1·[KNOW]·[DOC:360039238193 title]_
+- [ ] **DS-077** Add code syntax — per platform WEB/ANDROID/iOS, free text, at most one string per platform. _Data:_ `codeSyntax`, `setVariableCodeSyntax` _Test:_ add all three; export JSON; compare (V-16). _M6·P1·[API]_
+- [ ] **DS-078** Remove code syntax — removing a platform row deletes only that key. _Data:_ `removeVariableCodeSyntax` _Test:_ remove ANDROID; others remain. _M6·P1·[API]_
+- [ ] **DS-079** Variable description — plain text, multi-line allowed, shown on hover in pickers. _Data:_ `description` _Test:_ add 2-line description; hover in fill picker; compare tooltip (V-16). _M6·P1·[API]·[KNOW]_
+- [ ] **DS-080** Style description, rich description & doc link — editable in Edit style; one documentation link. _Data:_ `description`, `descriptionMarkdown`, `documentationLinks` _Test:_ set bold text + link; hover in picker. _M6·P2·[API]·[DOC:7938814091287 title]_
+- [ ] **DS-081** Variable hide-from-publishing — checkbox; hidden variables stay usable locally and are excluded from publish. _Data:_ `Variable.hiddenFromPublishing` _Test:_ hide `space/md`; still in local pickers; not in publish dialog. _M6·P1·[API]_
+- [ ] **DS-082** Publishability rule — variable published only if neither it nor its collection is hidden. _Data:_ both flags _Test:_ 4 combinations; check publish dialog. _M6·P1·[API]_
+- [ ] **DS-083** Style hide prefix — styles whose name (first segment) starts with `_` or `.` are excluded from publishing. _Data:_ `name` _Test:_ `_private/red`, `.tmp` styles; publish dialog excludes them (V-23). _M6·P1·[KNOW]·[DOC:360039238193 title]_
 
 ### 6.8 Groups & order
 
-- [ ] **DS-###** Slash grouping — `/` in a variable name creates nested groups in the sidebar and table. _Data:_ `name` _Test:_ `a/b/c` → groups a > b with c. _M6·P0·[DOC:15145852043927 excerpt]_
-- [ ] **DS-###** New group with selection — right-click selected variables → *New group with selection* prefixes them with a new group and focuses its name. _Data:_ `name` _Test:_ select 2 variables, run command; record default group name (V-25). _M6·P1·[DOC:15145852043927 excerpt]_
-- [ ] **DS-###** Rename group — renaming a group rewrites that segment in every contained (incl. nested) variable name. _Data:_ `name` _Test:_ rename `color` → `colour`; all children renamed; bindings intact. _M6·P0·[DOC:15145852043927 excerpt]_
-- [ ] **DS-###** Group rename collision — renaming a group so that names collide is rejected atomically (no partial rename). _Data:_ `name` _Test:_ groups `a` and `b` both contain `x`; rename `a`→`b` (V-25). _M6·P1·[KNOW]_
-- [ ] **DS-###** Ungroup — removes the group segment from contained variables, moving them up one level. _Data:_ `name` _Test:_ ungroup `color/bg` group `color`; result `bg` (V-25 collisions). _M6·P1·[DOC:15145852043927 excerpt]_
-- [ ] **DS-###** Duplicate group — duplicates all contained variables under a new group name. _Data:_ new variables _Test:_ duplicate `color`; record new group name and alias targets of duplicates (V-26). _M6·P2·[DOC:15145852043927 excerpt]_
-- [ ] **DS-###** Delete group — deletes all contained variables (soft-delete semantics), one undo step. _Data:_ `remove()` × n _Test:_ delete group with 5 variables; undo once restores all. _M6·P1·[DOC:15145852043927 excerpt]_
-- [ ] **DS-###** Drag groups — reorder groups in the sidebar; drop onto a group to nest it (paths rewritten). _Data:_ order tree, `name` _Test:_ nest `space` into `layout`; names become `layout/space/...`. _M6·P1·[DOC:15145852043927 excerpt]_
-- [ ] **DS-###** Group filter — selecting a group in the sidebar shows only its (nested) variables; *All variables* shows all. _Data:_ UI state _Test:_ click group; compare visible rows. _M6·P1·[KNOW]_
-- [ ] **DS-###** Persisted order with groups — variable and group order survive save/reopen and are used by pickers. _Data:_ order tree (§3.8) _Test:_ custom order; reopen; compare table and fill picker ordering. _M6·P1·[API]·[KNOW]_
+- [ ] **DS-084** Slash grouping — `/` in a variable name creates nested groups in the sidebar and table. _Data:_ `name` _Test:_ `a/b/c` → groups a > b with c. _M6·P0·[DOC:15145852043927 excerpt]_
+- [ ] **DS-085** New group with selection — right-click selected variables → *New group with selection* prefixes them with a new group and focuses its name. _Data:_ `name` _Test:_ select 2 variables, run command; record default group name (V-25). _M6·P1·[DOC:15145852043927 excerpt]_
+- [ ] **DS-086** Rename group — renaming a group rewrites that segment in every contained (incl. nested) variable name. _Data:_ `name` _Test:_ rename `color` → `colour`; all children renamed; bindings intact. _M6·P0·[DOC:15145852043927 excerpt]_
+- [ ] **DS-087** Group rename collision — renaming a group so that names collide is rejected atomically (no partial rename). _Data:_ `name` _Test:_ groups `a` and `b` both contain `x`; rename `a`→`b` (V-25). _M6·P1·[KNOW]_
+- [ ] **DS-088** Ungroup — removes the group segment from contained variables, moving them up one level. _Data:_ `name` _Test:_ ungroup `color/bg` group `color`; result `bg` (V-25 collisions). _M6·P1·[DOC:15145852043927 excerpt]_
+- [ ] **DS-089** Duplicate group — duplicates all contained variables under a new group name. _Data:_ new variables _Test:_ duplicate `color`; record new group name and alias targets of duplicates (V-26). _M6·P2·[DOC:15145852043927 excerpt]_
+- [ ] **DS-090** Delete group — deletes all contained variables (soft-delete semantics), one undo step. _Data:_ `remove()` × n _Test:_ delete group with 5 variables; undo once restores all. _M6·P1·[DOC:15145852043927 excerpt]_
+- [ ] **DS-091** Drag groups — reorder groups in the sidebar; drop onto a group to nest it (paths rewritten). _Data:_ order tree, `name` _Test:_ nest `space` into `layout`; names become `layout/space/...`. _M6·P1·[DOC:15145852043927 excerpt]_
+- [ ] **DS-092** Group filter — selecting a group in the sidebar shows only its (nested) variables; *All variables* shows all. _Data:_ UI state _Test:_ click group; compare visible rows. _M6·P1·[KNOW]_
+- [ ] **DS-093** Persisted order with groups — variable and group order survive save/reopen and are used by pickers. _Data:_ order tree (§3.8) _Test:_ custom order; reopen; compare table and fill picker ordering. _M6·P1·[API]·[KNOW]_
 
 ### 6.9 Variables table UI
 
-- [ ] **DS-###** Open variables modal — from the right panel with nothing selected; also reachable while a layer is selected via the panel's variables entry (if present). _Data:_ UI _Test:_ record entry points in Figma (V-27). _M6·P0·[KNOW]_
-- [ ] **DS-###** Non-blocking modal — canvas selection/editing remains possible while the modal is open; modal can be moved/resized; position remembered per session. _Data:_ UI state _Test:_ with modal open, select and move a layer (V-27). _M6·P1·[KNOW]_
-- [ ] **DS-###** Sidebar — lists collections, their groups (nested, collapsible), *All variables*; *Toggle sidebar* hides it. _Data:_ UI _Test:_ compare sidebar structure for F1. _M6·P1·[DOC:15145852043927 excerpt]_
-- [ ] **DS-###** Mode columns — Name column plus one column per mode in collection order, default mode first; horizontal scroll for many modes. _Data:_ `modes` _Test:_ 6-mode collection; compare column order and scrolling. _M6·P0·[KNOW]_
-- [ ] **DS-###** Search — filters rows by name (and value? per V-28) within the current collection; clearing restores the view. _Data:_ UI _Test:_ search `bg`, then a hex value; record matches (V-28). _M6·P1·[KNOW]_
-- [ ] **DS-###** Context menus — row, mode-header, group and collection menus offer exactly the Figma command set (§3.10.4). _Data:_ — _Test:_ capture each menu in Figma (V-29). _M6·P1·[KNOW]_
-- [ ] **DS-###** Large-collection performance — 5,000 variables × 10 modes scroll at 60 fps (virtualized) and exact-name search always finds a variable. _Data:_ — _Test:_ generated fixture; measure frame time; search last variable. _M6·P1·[SRC:forum.figma.com 58145 title]_
-- [ ] **DS-###** Keyboard navigation — arrow/Tab moves between cells, Enter edits, Esc cancels, Delete removes selected rows (§5). _Data:_ — _Test:_ keystroke script in both apps (V-73). _M6·P2·[KNOW]_
+- [ ] **DS-094** Open variables modal — from the right panel with nothing selected; also reachable while a layer is selected via the panel's variables entry (if present). _Data:_ UI _Test:_ record entry points in Figma (V-27). _M6·P0·[KNOW]_
+- [ ] **DS-095** Non-blocking modal — canvas selection/editing remains possible while the modal is open; modal can be moved/resized; position remembered per session. _Data:_ UI state _Test:_ with modal open, select and move a layer (V-27). _M6·P1·[KNOW]_
+- [ ] **DS-096** Sidebar — lists collections, their groups (nested, collapsible), *All variables*; *Toggle sidebar* hides it. _Data:_ UI _Test:_ compare sidebar structure for F1. _M6·P1·[DOC:15145852043927 excerpt]_
+- [ ] **DS-097** Mode columns — Name column plus one column per mode in collection order, default mode first; horizontal scroll for many modes. _Data:_ `modes` _Test:_ 6-mode collection; compare column order and scrolling. _M6·P0·[KNOW]_
+- [ ] **DS-098** Search — filters rows by name (and value? per V-28) within the current collection; clearing restores the view. _Data:_ UI _Test:_ search `bg`, then a hex value; record matches (V-28). _M6·P1·[KNOW]_
+- [ ] **DS-099** Context menus — row, mode-header, group and collection menus offer exactly the Figma command set (§3.10.4). _Data:_ — _Test:_ capture each menu in Figma (V-29). _M6·P1·[KNOW]_
+- [ ] **DS-100** Large-collection performance — 5,000 variables × 10 modes scroll at 60 fps (virtualized) and exact-name search always finds a variable. _Data:_ — _Test:_ generated fixture; measure frame time; search last variable. _M6·P1·[SRC:forum.figma.com 58145 title]_
+- [ ] **DS-101** Keyboard navigation — arrow/Tab moves between cells, Enter edits, Esc cancels, Delete removes selected rows (§5). _Data:_ — _Test:_ keystroke script in both apps (V-73). _M6·P2·[KNOW]_
 
 ### 6.10 Binding — general
 
-- [ ] **DS-###** Apply-variable affordance — hovering a bindable inspector field reveals an *Apply variable* control that opens the variable picker. _Data:_ — _Test:_ hover W, gap, radius, opacity; record affordance (V-31). _M6·P0·[KNOW]_
-- [ ] **DS-###** Picker contents — filtered by type and scope; grouped by collection (local first, then libraries by name); searchable; shows values in the selection's resolved mode. _Data:_ `scopes`, `resolvedType` _Test:_ open the gap picker in F1; compare groups, order and displayed values (V-31). _M6·P0·[API]·[KNOW]_
-- [ ] **DS-###** Bound display — a bound field shows the variable name pill; hover shows the resolved value; clicking the pill reopens the picker to swap variables. _Data:_ `boundVariables[field]` _Test:_ bind gap to `space/md`; compare field rendering (V-31). _M6·P0·[KNOW]_
-- [ ] **DS-###** Detach variable — detaching replaces the binding with the currently resolved value; canvas unchanged. _Data:_ `setBoundVariable(field, null)` _Test:_ frame in Comfortable, gap bound to `space/md`; detach → gap 16 raw. _M6·P0·[API]·[KNOW]_
-- [ ] **DS-###** Typing into a bound field — entering a number into a bound field detaches and sets the raw value. _Data:_ `boundVariables` removed _Test:_ type 20 into bound gap; record (V-33). _M6·P0·[KNOW]_
-- [ ] **DS-###** Canvas edits of bound geometry — resizing/handle-dragging a bound width/height/radius detaches the binding and writes the new raw value. _Data:_ `boundVariables.width` _Test:_ drag right edge of a frame with bound width (V-34). _M6·P0·[KNOW]_
-- [ ] **DS-###** Multi-selection binding — applying binds every selected node that supports the field; differing bindings show *Mixed*; detach on mixed detaches all. _Data:_ `boundVariables` per node _Test:_ 3 frames, 2 bound to different variables; inspect field; apply; detach (V-31). _M6·P0·[KNOW]_
-- [ ] **DS-###** Fill picker Libraries tab — lists color styles and color variables (local + enabled libraries); choosing a variable binds the active paint's color. _Data:_ `fills[i].boundVariables.color` _Test:_ open fill swatch → Libraries; bind `color/bg`. _M6·P0·[OBS]·[KNOW]_
-- [ ] **DS-###** Type safety — the data layer rejects binding a variable whose resolved type does not match the field (e.g. STRING to width). _Data:_ binding validator _Test:_ Illigma unit test; Figma: confirm such binding is impossible via UI. _M6·P0·[API]_
-- [ ] **DS-###** Library variable binding — binding a library variable imports a read-only remote copy and records library provenance. _Data:_ `remote`, `key` _Test:_ bind library color; inspect variables list/pickers in consumer. _M6·P0·[API]_
-- [ ] **DS-###** Swap bound variable — choosing another variable in the picker of a bound field replaces the binding in one undo step. _Data:_ `boundVariables` _Test:_ swap `space/md`→`space/lg`; ⌘Z restores `space/md`. _M6·P1·[KNOW]_
+- [ ] **DS-102** Apply-variable affordance — hovering a bindable inspector field reveals an *Apply variable* control that opens the variable picker. _Data:_ — _Test:_ hover W, gap, radius, opacity; record affordance (V-31). _M6·P0·[KNOW]_
+- [ ] **DS-103** Picker contents — filtered by type and scope; grouped by collection (local first, then libraries by name); searchable; shows values in the selection's resolved mode. _Data:_ `scopes`, `resolvedType` _Test:_ open the gap picker in F1; compare groups, order and displayed values (V-31). _M6·P0·[API]·[KNOW]_
+- [ ] **DS-104** Bound display — a bound field shows the variable name pill; hover shows the resolved value; clicking the pill reopens the picker to swap variables. _Data:_ `boundVariables[field]` _Test:_ bind gap to `space/md`; compare field rendering (V-31). _M6·P0·[KNOW]_
+- [ ] **DS-105** Detach variable — detaching replaces the binding with the currently resolved value; canvas unchanged. _Data:_ `setBoundVariable(field, null)` _Test:_ frame in Comfortable, gap bound to `space/md`; detach → gap 16 raw. _M6·P0·[API]·[KNOW]_
+- [ ] **DS-106** Typing into a bound field — entering a number into a bound field detaches and sets the raw value. _Data:_ `boundVariables` removed _Test:_ type 20 into bound gap; record (V-33). _M6·P0·[KNOW]_
+- [ ] **DS-107** Canvas edits of bound geometry — resizing/handle-dragging a bound width/height/radius detaches the binding and writes the new raw value. _Data:_ `boundVariables.width` _Test:_ drag right edge of a frame with bound width (V-34). _M6·P0·[KNOW]_
+- [ ] **DS-108** Multi-selection binding — applying binds every selected node that supports the field; differing bindings show *Mixed*; detach on mixed detaches all. _Data:_ `boundVariables` per node _Test:_ 3 frames, 2 bound to different variables; inspect field; apply; detach (V-31). _M6·P0·[KNOW]_
+- [ ] **DS-109** Fill picker Libraries tab — lists color styles and color variables (local + enabled libraries); choosing a variable binds the active paint's color. _Data:_ `fills[i].boundVariables.color` _Test:_ open fill swatch → Libraries; bind `color/bg`. _M6·P0·[OBS]·[KNOW]_
+- [ ] **DS-110** Type safety — the data layer rejects binding a variable whose resolved type does not match the field (e.g. STRING to width). _Data:_ binding validator _Test:_ Illigma unit test; Figma: confirm such binding is impossible via UI. _M6·P0·[API]_
+- [ ] **DS-111** Library variable binding — binding a library variable imports a read-only remote copy and records library provenance. _Data:_ `remote`, `key` _Test:_ bind library color; inspect variables list/pickers in consumer. _M6·P0·[API]_
+- [ ] **DS-112** Swap bound variable — choosing another variable in the picker of a bound field replaces the binding in one undo step. _Data:_ `boundVariables` _Test:_ swap `space/md`→`space/lg`; ⌘Z restores `space/md`. _M6·P1·[KNOW]_
 
 ### 6.11 Binding — per field
 
-- [ ] **DS-###** Width/height binding — FLOAT binds `width`/`height`; binding switches Hug/Fill sizing to Fixed. _Data:_ `width`, `height` _Test:_ hug-width auto-layout frame; bind width; record sizing mode (V-36). _M4·P0·[API]·[KNOW]_
-- [ ] **DS-###** Min/max binding — `minWidth, maxWidth, minHeight, maxHeight` bindable where min/max controls exist. _Data:_ fields _Test:_ bind maxWidth on an auto-layout child; resize parent; child clamps at variable value. _M4·P1·[API]_
-- [ ] **DS-###** Gap binding — `itemSpacing` bindable; not bindable while gap is Auto (space-between). _Data:_ `itemSpacing` _Test:_ set Auto spacing; check affordance (V-37). _M4·P0·[API]·[OBS]·[KNOW]_
-- [ ] **DS-###** Wrap gap binding — `counterAxisSpacing` bindable only when `layoutWrap = WRAP`. _Data:_ `counterAxisSpacing` _Test:_ wrap frame, bind row gap; switch wrap off → field hidden, binding retained? (record). _M4·P1·[API]_
-- [ ] **DS-###** Grid gap binding — `gridRowGap`, `gridColumnGap` bindable for GRID auto layout. _Data:_ fields _Test:_ grid frame; bind both; change Spacing mode; gaps update. _M4·P1·[API]_
-- [ ] **DS-###** Padding binding — each side bindable; binding the horizontal/vertical pair control binds both sides. _Data:_ `paddingLeft/Right/Top/Bottom` _Test:_ bind horizontal padding; export bindings (V-14). _M4·P0·[API]·[KNOW]_
-- [ ] **DS-###** Corner radius binding — binding the uniform radius on a rectangle/frame stores four per-corner bindings; inspector shows one pill. _Data:_ `topLeftRadius…bottomRightRadius` _Test:_ bind radius; REST-export node bindings; four `rectangleCornerRadii` entries. _M2·P0·[API]_
-- [ ] **DS-###** Per-corner radius binding — each corner independently bindable from the independent-corners UI. _Data:_ per-corner fields _Test:_ bind only top-left; others raw. _M2·P1·[API]_
-- [ ] **DS-###** Stroke weight binding — uniform and per-side weights bindable. _Data:_ `strokeWeight`, `stroke{Top,Right,Bottom,Left}Weight` _Test:_ bind uniform; then per-side top only; render check. _M2·P0·[API]_
-- [ ] **DS-###** Layer opacity binding — FLOAT bound to `opacity` interpreted as percent; out-of-range values clamp at render. _Data:_ `opacity` _Test:_ variable 50 → 50 %; 150 → record; −10 → record (V-38). _M6·P0·[API]·[KNOW]_
-- [ ] **DS-###** Visibility binding — BOOLEAN bound to `visible`; false hides layer on canvas and in export; layers panel reflects hidden state. _Data:_ `visible` _Test:_ bind to `flag/show`; switch frame mode to Dark (false); layer hidden (V-32). _M6·P0·[API]_
-- [ ] **DS-###** Fill color binding per paint — each SOLID paint of a multi-fill layer binds independently; paint opacity remains separate. _Data:_ `fills[i].boundVariables.color` _Test:_ 2 fills bound to different variables; reorder fills; bindings follow paints (V-39). _M2·P0·[API]_
-- [ ] **DS-###** Stroke color binding — per stroke paint. _Data:_ `strokes[i].boundVariables.color` _Test:_ bind stroke; switch mode. _M2·P0·[API]_
-- [ ] **DS-###** Gradient stop binding — each gradient stop color bindable. _Data:_ `ColorStop.boundVariables.color` _Test:_ linear gradient, bind stop 2; switch mode. _M2·P1·[API]_
-- [ ] **DS-###** Non-bindable paints — image, video, pattern and shader paints expose no variable binding. _Data:_ no `boundVariables` _Test:_ inspect image fill popover for apply-variable affordance. _M2·P1·[API]_
-- [ ] **DS-###** Shadow bindings — drop/inner shadow color, blur, spread, X, Y bindable. _Data:_ `effects[i].boundVariables{color,radius,spread,offsetX,offsetY}` _Test:_ bind all five; switch modes. _M2·P0·[API]_
-- [ ] **DS-###** Blur binding — layer/background blur radius bindable; progressive blur start radius/offsets not. _Data:_ `boundVariables.radius` _Test:_ progressive blur; check affordances. _M2·P1·[API]_
-- [ ] **DS-###** Non-bindable effects — noise, texture and glass effects have no bindable fields. _Data:_ `boundVariables: {}` _Test:_ inspect effect popovers. _M2·P2·[API]_
-- [ ] **DS-###** Layout grid bindings — columns/rows: count, gutter, offset, section size; grid: size. _Data:_ `layoutGrids[i].boundVariables` _Test:_ bind column count to FLOAT; switch mode; columns change. _M4·P1·[API]_
-- [ ] **DS-###** Text content binding (STRING) — `characters` bound to a STRING variable renders the variable text in the node's mode. _Data:_ `boundVariables.characters` _Test:_ bind to `copy/title`; Dark frame shows "Bonjour". _M3·P0·[API]_
-- [ ] **DS-###** Text content binding (FLOAT) — number variables bind to text content with Figma's number formatting. _Data:_ `characters` _Test:_ bind 1.5 / 1000 / -0.25; record rendered text (V-40). _M3·P1·[API]·[KNOW]_
-- [ ] **DS-###** Editing bound text — double-click editing of bound text content detaches (or is blocked) exactly as Figma. _Data:_ `characters` _Test:_ double-click bound text and type (V-40). _M3·P0·[KNOW]_
-- [ ] **DS-###** Font family binding — STRING bound to `fontFamily`; unavailable family → missing-font state. _Data:_ `fontFamily` _Test:_ mode A "Inter", mode B "NoSuchFont"; switch modes (V-41). _M3·P1·[API]·[KNOW]_
-- [ ] **DS-###** Font style binding — STRING bound to `fontStyle` (e.g. "Bold Italic"). _Data:_ `fontStyle` _Test:_ variable "Semi Bold"; record rendering; invalid style (V-41). _M3·P1·[API]_
-- [ ] **DS-###** Font weight binding — FLOAT bound to `fontWeight` selects the matching style of the family. _Data:_ `fontWeight` _Test:_ 700 → Bold; 650 → record (V-41). _M3·P1·[API]·[KNOW]_
-- [ ] **DS-###** Font size / paragraph spacing / paragraph indent binding — FLOAT px. _Data:_ `fontSize, paragraphSpacing, paragraphIndent` _Test:_ bind each; switch modes. _M3·P0·[API]_
-- [ ] **DS-###** Line height / letter spacing binding units — unit interpretation (px vs %) matches Figma. _Data:_ `lineHeight, letterSpacing` _Test:_ field unit % then bind variable 120; record (V-42). _M3·P1·[API]·[KNOW]_
-- [ ] **DS-###** Text range bindings — text fields and fills bind per character range; node-level fields show Mixed. _Data:_ `setRangeBoundVariable`, `textRangeFills` _Test:_ bind font size on the first word only; inspect whole node. _M3·P1·[API]_
-- [ ] **DS-###** Component property value binding (instance) — BOOLEAN and TEXT property values on instances bindable. _Data:_ `componentProperties[name].boundVariables.value` _Test:_ instance with "Show icon" bool; bind to `flag/show`; switch modes (V-43). _M5·P0·[API]_
-- [ ] **DS-###** Component property default binding (definition) — property default value bindable on the main component. _Data:_ `componentPropertyDefinitions[name].boundVariables.defaultValue` _Test:_ bind TEXT default to `copy/title`; new instances show bound value (V-43). _M5·P1·[API]_
+- [ ] **DS-113** Width/height binding — FLOAT binds `width`/`height`; binding switches Hug/Fill sizing to Fixed. _Data:_ `width`, `height` _Test:_ hug-width auto-layout frame; bind width; record sizing mode (V-36). _M4·P0·[API]·[KNOW]_
+- [ ] **DS-114** Min/max binding — `minWidth, maxWidth, minHeight, maxHeight` bindable where min/max controls exist. _Data:_ fields _Test:_ bind maxWidth on an auto-layout child; resize parent; child clamps at variable value. _M4·P1·[API]_
+- [ ] **DS-115** Gap binding — `itemSpacing` bindable; not bindable while gap is Auto (space-between). _Data:_ `itemSpacing` _Test:_ set Auto spacing; check affordance (V-37). _M4·P0·[API]·[OBS]·[KNOW]_
+- [ ] **DS-116** Wrap gap binding — `counterAxisSpacing` bindable only when `layoutWrap = WRAP`. _Data:_ `counterAxisSpacing` _Test:_ wrap frame, bind row gap; switch wrap off → field hidden, binding retained? (record). _M4·P1·[API]_
+- [ ] **DS-117** Grid gap binding — `gridRowGap`, `gridColumnGap` bindable for GRID auto layout. _Data:_ fields _Test:_ grid frame; bind both; change Spacing mode; gaps update. _M4·P1·[API]_
+- [ ] **DS-118** Padding binding — each side bindable; binding the horizontal/vertical pair control binds both sides. _Data:_ `paddingLeft/Right/Top/Bottom` _Test:_ bind horizontal padding; export bindings (V-14). _M4·P0·[API]·[KNOW]_
+- [ ] **DS-119** Corner radius binding — binding the uniform radius on a rectangle/frame stores four per-corner bindings; inspector shows one pill. _Data:_ `topLeftRadius…bottomRightRadius` _Test:_ bind radius; REST-export node bindings; four `rectangleCornerRadii` entries. _M2·P0·[API]_
+- [ ] **DS-120** Per-corner radius binding — each corner independently bindable from the independent-corners UI. _Data:_ per-corner fields _Test:_ bind only top-left; others raw. _M2·P1·[API]_
+- [ ] **DS-121** Stroke weight binding — uniform and per-side weights bindable. _Data:_ `strokeWeight`, `stroke{Top,Right,Bottom,Left}Weight` _Test:_ bind uniform; then per-side top only; render check. _M2·P0·[API]_
+- [ ] **DS-122** Layer opacity binding — FLOAT bound to `opacity` interpreted as percent; out-of-range values clamp at render. _Data:_ `opacity` _Test:_ variable 50 → 50 %; 150 → record; −10 → record (V-38). _M6·P0·[API]·[KNOW]_
+- [ ] **DS-123** Visibility binding — BOOLEAN bound to `visible`; false hides layer on canvas and in export; layers panel reflects hidden state. _Data:_ `visible` _Test:_ bind to `flag/show`; switch frame mode to Dark (false); layer hidden (V-32). _M6·P0·[API]_
+- [ ] **DS-124** Fill color binding per paint — each SOLID paint of a multi-fill layer binds independently; paint opacity remains separate. _Data:_ `fills[i].boundVariables.color` _Test:_ 2 fills bound to different variables; reorder fills; bindings follow paints (V-39). _M2·P0·[API]_
+- [ ] **DS-125** Stroke color binding — per stroke paint. _Data:_ `strokes[i].boundVariables.color` _Test:_ bind stroke; switch mode. _M2·P0·[API]_
+- [ ] **DS-126** Gradient stop binding — each gradient stop color bindable. _Data:_ `ColorStop.boundVariables.color` _Test:_ linear gradient, bind stop 2; switch mode. _M2·P1·[API]_
+- [ ] **DS-127** Non-bindable paints — image, video, pattern and shader paints expose no variable binding. _Data:_ no `boundVariables` _Test:_ inspect image fill popover for apply-variable affordance. _M2·P1·[API]_
+- [ ] **DS-128** Shadow bindings — drop/inner shadow color, blur, spread, X, Y bindable. _Data:_ `effects[i].boundVariables{color,radius,spread,offsetX,offsetY}` _Test:_ bind all five; switch modes. _M2·P0·[API]_
+- [ ] **DS-129** Blur binding — layer/background blur radius bindable; progressive blur start radius/offsets not. _Data:_ `boundVariables.radius` _Test:_ progressive blur; check affordances. _M2·P1·[API]_
+- [ ] **DS-130** Non-bindable effects — noise, texture and glass effects have no bindable fields. _Data:_ `boundVariables: {}` _Test:_ inspect effect popovers. _M2·P2·[API]_
+- [ ] **DS-131** Layout grid bindings — columns/rows: count, gutter, offset, section size; grid: size. _Data:_ `layoutGrids[i].boundVariables` _Test:_ bind column count to FLOAT; switch mode; columns change. _M4·P1·[API]_
+- [ ] **DS-132** Text content binding (STRING) — `characters` bound to a STRING variable renders the variable text in the node's mode. _Data:_ `boundVariables.characters` _Test:_ bind to `copy/title`; Dark frame shows "Bonjour". _M3·P0·[API]_
+- [ ] **DS-133** Text content binding (FLOAT) — number variables bind to text content with Figma's number formatting. _Data:_ `characters` _Test:_ bind 1.5 / 1000 / -0.25; record rendered text (V-40). _M3·P1·[API]·[KNOW]_
+- [ ] **DS-134** Editing bound text — double-click editing of bound text content detaches (or is blocked) exactly as Figma. _Data:_ `characters` _Test:_ double-click bound text and type (V-40). _M3·P0·[KNOW]_
+- [ ] **DS-135** Font family binding — STRING bound to `fontFamily`; unavailable family → missing-font state. _Data:_ `fontFamily` _Test:_ mode A "Inter", mode B "NoSuchFont"; switch modes (V-41). _M3·P1·[API]·[KNOW]_
+- [ ] **DS-136** Font style binding — STRING bound to `fontStyle` (e.g. "Bold Italic"). _Data:_ `fontStyle` _Test:_ variable "Semi Bold"; record rendering; invalid style (V-41). _M3·P1·[API]_
+- [ ] **DS-137** Font weight binding — FLOAT bound to `fontWeight` selects the matching style of the family. _Data:_ `fontWeight` _Test:_ 700 → Bold; 650 → record (V-41). _M3·P1·[API]·[KNOW]_
+- [ ] **DS-138** Font size / paragraph spacing / paragraph indent binding — FLOAT px. _Data:_ `fontSize, paragraphSpacing, paragraphIndent` _Test:_ bind each; switch modes. _M3·P0·[API]_
+- [ ] **DS-139** Line height / letter spacing binding units — unit interpretation (px vs %) matches Figma. _Data:_ `lineHeight, letterSpacing` _Test:_ field unit % then bind variable 120; record (V-42). _M3·P1·[API]·[KNOW]_
+- [ ] **DS-140** Text range bindings — text fields and fills bind per character range; node-level fields show Mixed. _Data:_ `setRangeBoundVariable`, `textRangeFills` _Test:_ bind font size on the first word only; inspect whole node. _M3·P1·[API]_
+- [ ] **DS-141** Component property value binding (instance) — BOOLEAN and TEXT property values on instances bindable. _Data:_ `componentProperties[name].boundVariables.value` _Test:_ instance with "Show icon" bool; bind to `flag/show`; switch modes (V-43). _M5·P0·[API]_
+- [ ] **DS-142** Component property default binding (definition) — property default value bindable on the main component. _Data:_ `componentPropertyDefinitions[name].boundVariables.defaultValue` _Test:_ bind TEXT default to `copy/title`; new instances show bound value (V-43). _M5·P1·[API]_
 
 ### 6.12 Explicit modes & resolution
 
-- [ ] **DS-###** Set explicit mode on a frame — *Apply variable mode* → collection → mode; descendants re-resolve. _Data:_ `setExplicitVariableModeForCollection` _Test:_ F1 frame → Theme: Dark; children bound to `color/bg` turn black (V-44). _M6·P0·[API]·[KNOW]_
-- [ ] **DS-###** Auto — choosing *Auto* clears the explicit mode; menu shows the inherited mode name. _Data:_ `clearExplicitVariableModeForCollection` _Test:_ nested frame Auto under Dark parent shows "Auto (Dark)" (V-44). _M6·P0·[API]·[KNOW]_
-- [ ] **DS-###** Nearest-ancestor inheritance — resolution walks node → ancestors → page → default. _Data:_ `resolvedVariableModes` _Test:_ page Dark, frame Light, child Auto → Light; remove frame mode → Dark. _M6·P0·[API]_
-- [ ] **DS-###** Page mode — page-level explicit modes set from the page panel apply to all layers without an override. _Data:_ `PageNode.explicitVariableModes` _Test:_ set page Dark; loose rectangle on page turns black. _M6·P0·[API]·[KNOW]_
-- [ ] **DS-###** Per-collection independence — explicit modes are independent per collection. _Data:_ map keyed by collection _Test:_ frame Theme Dark + Spacing Compact; both apply. _M6·P0·[API]_
-- [ ] **DS-###** Relevant-collection menu — mode menu lists collections with > 1 mode used within the selection (incl. library collections) per V-44. _Data:_ — _Test:_ frame containing only Theme-bound layers; record listed collections (V-44). _M6·P1·[KNOW]_
-- [ ] **DS-###** Mixed mode display — multi-selection with differing modes shows Mixed; choosing a mode sets all. _Data:_ — _Test:_ 2 frames Light/Dark selected (V-44). _M6·P1·[KNOW]_
-- [ ] **DS-###** Explicit modes on sections, components, groups — available on every layer type Figma exposes (V-44 list). _Data:_ `explicitVariableModes` _Test:_ try section, component, group, rectangle. _M6·P1·[API]·[KNOW]_
-- [ ] **DS-###** Component explicit modes propagate — explicit modes inside a main component apply in all instances. _Data:_ component subtree modes _Test:_ main component child set Dark; instances show Dark child (V-47). _M5·P0·[KNOW]_
-- [ ] **DS-###** Instance mode override — setting a mode on an instance is an instance override and wins over inherited context for that collection; *Reset all changes* clears it. _Data:_ `InstanceNode.explicitVariableModes` _Test:_ instance in Light frame set Dark; reset (V-47). _M5·P0·[KNOW]_
-- [ ] **DS-###** Re-resolution on move — moving/pasting a layer into another mode context re-resolves values; its own explicit modes travel with it. _Data:_ — _Test:_ drag child from Dark to Light frame. _M6·P0·[API]_
-- [ ] **DS-###** Library collection modes — modes of remote collections can be set on layers and resolve with the accepted library version. _Data:_ remote `modeId` _Test:_ library Theme; consumer frame Dark. _M6·P0·[API]_
-- [ ] **DS-###** Resolution cache invalidation — any value, alias, mode, explicit-mode or tree change invalidates exactly the affected resolutions (no stale renders). _Data:_ cache _Test:_ randomized edit sequence; compare render with uncached resolver. _M6·P0·[API]_
+- [ ] **DS-143** Set explicit mode on a frame — *Apply variable mode* → collection → mode; descendants re-resolve. _Data:_ `setExplicitVariableModeForCollection` _Test:_ F1 frame → Theme: Dark; children bound to `color/bg` turn black (V-44). _M6·P0·[API]·[KNOW]_
+- [ ] **DS-144** Auto — choosing *Auto* clears the explicit mode; menu shows the inherited mode name. _Data:_ `clearExplicitVariableModeForCollection` _Test:_ nested frame Auto under Dark parent shows "Auto (Dark)" (V-44). _M6·P0·[API]·[KNOW]_
+- [ ] **DS-145** Nearest-ancestor inheritance — resolution walks node → ancestors → page → default. _Data:_ `resolvedVariableModes` _Test:_ page Dark, frame Light, child Auto → Light; remove frame mode → Dark. _M6·P0·[API]_
+- [ ] **DS-146** Page mode — page-level explicit modes set from the page panel apply to all layers without an override. _Data:_ `PageNode.explicitVariableModes` _Test:_ set page Dark; loose rectangle on page turns black. _M6·P0·[API]·[KNOW]_
+- [ ] **DS-147** Per-collection independence — explicit modes are independent per collection. _Data:_ map keyed by collection _Test:_ frame Theme Dark + Spacing Compact; both apply. _M6·P0·[API]_
+- [ ] **DS-148** Relevant-collection menu — mode menu lists collections with > 1 mode used within the selection (incl. library collections) per V-44. _Data:_ — _Test:_ frame containing only Theme-bound layers; record listed collections (V-44). _M6·P1·[KNOW]_
+- [ ] **DS-149** Mixed mode display — multi-selection with differing modes shows Mixed; choosing a mode sets all. _Data:_ — _Test:_ 2 frames Light/Dark selected (V-44). _M6·P1·[KNOW]_
+- [ ] **DS-150** Explicit modes on sections, components, groups — available on every layer type Figma exposes (V-44 list). _Data:_ `explicitVariableModes` _Test:_ try section, component, group, rectangle. _M6·P1·[API]·[KNOW]_
+- [ ] **DS-151** Component explicit modes propagate — explicit modes inside a main component apply in all instances. _Data:_ component subtree modes _Test:_ main component child set Dark; instances show Dark child (V-47). _M5·P0·[KNOW]_
+- [ ] **DS-152** Instance mode override — setting a mode on an instance is an instance override and wins over inherited context for that collection; *Reset all changes* clears it. _Data:_ `InstanceNode.explicitVariableModes` _Test:_ instance in Light frame set Dark; reset (V-47). _M5·P0·[KNOW]_
+- [ ] **DS-153** Re-resolution on move — moving/pasting a layer into another mode context re-resolves values; its own explicit modes travel with it. _Data:_ — _Test:_ drag child from Dark to Light frame. _M6·P0·[API]_
+- [ ] **DS-154** Library collection modes — modes of remote collections can be set on layers and resolve with the accepted library version. _Data:_ remote `modeId` _Test:_ library Theme; consumer frame Dark. _M6·P0·[API]_
+- [ ] **DS-155** Resolution cache invalidation — any value, alias, mode, explicit-mode or tree change invalidates exactly the affected resolutions (no stale renders). _Data:_ cache _Test:_ randomized edit sequence; compare render with uncached resolver. _M6·P0·[API]_
 
 ### 6.13 Extended collections
 
-- [ ] **DS-###** Extend local collection — context menu *Extend collection* creates a named extension inheriting all variables and modes. _Data:_ `collection.extend(name)` _Test:_ extend Theme as "Brand B"; compare variables/modes listed (V-45). _M6·P1·[API]·[DOC:36346281624471 excerpt]_
-- [ ] **DS-###** Extend library collection — a consumer file can extend a library collection locally. _Data:_ `extendLibraryCollectionByKeyAsync` _Test:_ extend library Theme; edit overrides locally. _M6·P2·[API]_
-- [ ] **DS-###** Override per mode — editing a cell in the extension stores an override for that variable+mode only; cell highlighted as overridden. _Data:_ `variableOverrides` _Test:_ override Dark `color/bg`; Light remains inherited. _M6·P1·[DOC:36346281624471 excerpt]_
-- [ ] **DS-###** Reset change — *Reset change* on an overridden cell restores inheritance. _Data:_ `removeOverrideForMode` _Test:_ reset; cell value equals parent's. _M6·P1·[DOC:36346281624471 excerpt]·[API]_
-- [ ] **DS-###** Reset all overrides for a variable. _Data:_ `removeOverridesForVariable` _Test:_ variable overridden in 2 modes; reset all (UI per V-45). _M6·P2·[API]_
-- [ ] **DS-###** Structural edits blocked — no add variable/mode, no description/scope/code-syntax edits, no reorder/rename of modes in the extension. _Data:_ — _Test:_ attempt each in Figma and record (V-45). _M6·P1·[DOC:36346281624471 excerpt]_
-- [ ] **DS-###** Parent propagation — parent value changes appear in non-overridden cells; new parent variables/modes appear in the extension. _Data:_ inheritance _Test:_ add variable and mode to parent; inspect extension. _M6·P1·[DOC:36346281624471 excerpt]_
-- [ ] **DS-###** Parent mode deletion — the corresponding extended mode becomes removable (and resolves per V-45 until removed). _Data:_ `ExtendedVariableCollection.removeMode` _Test:_ delete parent Dark; inspect extension. _M6·P2·[API]_
-- [ ] **DS-###** Extension chains — an extension can be extended again; values resolve through the chain. _Data:_ `rootVariableCollectionId` _Test:_ A→B→C, override in B only; C shows B's value. _M6·P2·[API]_
-- [ ] **DS-###** Theming by extension mode — setting the extension's mode on a frame re-themes all root-collection variables in that subtree; precedence per V-46. _Data:_ explicit mode keyed by extension id _Test:_ frame "Brand B / Dark" vs sibling "Theme / Dark". _M6·P1·[KNOW]_
-- [ ] **DS-###** Publish extensions — extensions publish as collections; overrides travel with them. _Data:_ publish snapshot _Test:_ publish; consumer applies Brand B mode. _M6·P2·[SRC:developers.figma.com variables-types excerpt]_
+- [ ] **DS-156** Extend local collection — context menu *Extend collection* creates a named extension inheriting all variables and modes. _Data:_ `collection.extend(name)` _Test:_ extend Theme as "Brand B"; compare variables/modes listed (V-45). _M6·P1·[API]·[DOC:36346281624471 excerpt]_
+- [ ] **DS-157** Extend library collection — a consumer file can extend a library collection locally. _Data:_ `extendLibraryCollectionByKeyAsync` _Test:_ extend library Theme; edit overrides locally. _M6·P2·[API]_
+- [ ] **DS-158** Override per mode — editing a cell in the extension stores an override for that variable+mode only; cell highlighted as overridden. _Data:_ `variableOverrides` _Test:_ override Dark `color/bg`; Light remains inherited. _M6·P1·[DOC:36346281624471 excerpt]_
+- [ ] **DS-159** Reset change — *Reset change* on an overridden cell restores inheritance. _Data:_ `removeOverrideForMode` _Test:_ reset; cell value equals parent's. _M6·P1·[DOC:36346281624471 excerpt]·[API]_
+- [ ] **DS-160** Reset all overrides for a variable. _Data:_ `removeOverridesForVariable` _Test:_ variable overridden in 2 modes; reset all (UI per V-45). _M6·P2·[API]_
+- [ ] **DS-161** Structural edits blocked — no add variable/mode, no description/scope/code-syntax edits, no reorder/rename of modes in the extension. _Data:_ — _Test:_ attempt each in Figma and record (V-45). _M6·P1·[DOC:36346281624471 excerpt]_
+- [ ] **DS-162** Parent propagation — parent value changes appear in non-overridden cells; new parent variables/modes appear in the extension. _Data:_ inheritance _Test:_ add variable and mode to parent; inspect extension. _M6·P1·[DOC:36346281624471 excerpt]_
+- [ ] **DS-163** Parent mode deletion — the corresponding extended mode becomes removable (and resolves per V-45 until removed). _Data:_ `ExtendedVariableCollection.removeMode` _Test:_ delete parent Dark; inspect extension. _M6·P2·[API]_
+- [ ] **DS-164** Extension chains — an extension can be extended again; values resolve through the chain. _Data:_ `rootVariableCollectionId` _Test:_ A→B→C, override in B only; C shows B's value. _M6·P2·[API]_
+- [ ] **DS-165** Theming by extension mode — setting the extension's mode on a frame re-themes all root-collection variables in that subtree; precedence per V-46. _Data:_ explicit mode keyed by extension id _Test:_ frame "Brand B / Dark" vs sibling "Theme / Dark". _M6·P1·[KNOW]_
+- [ ] **DS-166** Publish extensions — extensions publish as collections; overrides travel with them. _Data:_ publish snapshot _Test:_ publish; consumer applies Brand B mode (V-76). _M6·P2·[KNOW]·[SRC:developers.figma.com variables-types excerpt]_
 
 ### 6.14 Styles — create & apply
 
-- [ ] **DS-###** Create color (paint) style from selection — Style control → *+* → name/description → style created from all fills of the selection and applied in the same undo step. _Data:_ `createPaintStyle`, `paints`, `fillStyleId` _Test:_ rectangle with 2 fills; create style; ⌘Z once removes style and application (V-49). _M6·P0·[KNOW]_
-- [ ] **DS-###** Create text style from selection — captures fontName, size, line height, letter spacing, paragraph spacing/indent, list spacing, hanging punctuation/list, case, decoration, leading trim, wrap style; not color/alignment. _Data:_ `TextStyle` fields _Test:_ create from styled text; inspect style editor (V-49). _M6·P0·[API]·[KNOW]_
-- [ ] **DS-###** Create effect style from selection — captures the whole effect list in order. _Data:_ `EffectStyle.effects` _Test:_ 2 shadows + blur → style; apply elsewhere; identical. _M6·P0·[API]·[KNOW]_
-- [ ] **DS-###** Create layout-guide (grid) style from selection — captures all layout grids. _Data:_ `GridStyle.layoutGrids` _Test:_ 12-col + 8px grid → style. _M6·P1·[API]·[KNOW]_
-- [ ] **DS-###** Create style without selection — *+* in right-panel styles list creates a style with default values (text default Inter Regular 12). _Data:_ `createTextStyle()` default _Test:_ create each type with nothing selected; record defaults (V-50). _M6·P1·[API]·[KNOW]_
-- [ ] **DS-###** Mixed values block creation — create-style is unavailable when the section shows Mixed. _Data:_ — _Test:_ select two rectangles with different fills (V-49). _M6·P1·[KNOW]_
-- [ ] **DS-###** Apply paint style to fill — replaces the entire fills array; `fillStyleId` set. _Data:_ `fillStyleId` _Test:_ 3-fill layer + 1-paint style → 1 paint. _M6·P0·[API]_
-- [ ] **DS-###** Apply paint style to stroke — replaces strokes; `strokeStyleId` set. _Data:_ `strokeStyleId` _Test:_ apply from stroke Style control. _M6·P0·[API]_
-- [ ] **DS-###** Apply text style — to whole node or selected range; range application yields mixed `textStyleId` at node level. _Data:_ `textStyleId`, `setRangeTextStyleIdAsync` _Test:_ apply to one word; node shows Mixed. _M6·P0·[API]_
-- [ ] **DS-###** Apply paint style to text range — character range fill style. _Data:_ `setRangeFillStyleIdAsync` _Test:_ color one word with a color style. _M6·P1·[API]_
-- [ ] **DS-###** Apply effect style — replaces effect list; `effectStyleId`. _Data:_ `effectStyleId` _Test:_ layer with 1 effect + 2-effect style. _M6·P0·[API]_
-- [ ] **DS-###** Apply grid style — replaces layout grids; `gridStyleId`. _Data:_ `gridStyleId` _Test:_ frame with grid + grid style. _M6·P1·[API]_
-- [ ] **DS-###** Applied-style display — section shows style name/preview; individual property fields hidden until detach. _Data:_ — _Test:_ compare fill/text sections (V-51). _M6·P0·[KNOW]_
-- [ ] **DS-###** Style picker — list/grid toggle, search, local section first then each enabled library in order, folders shown as headers/nested. _Data:_ UI _Test:_ open picker in a file with local + 2 library styles (V-51). _M6·P1·[KNOW]_
-- [ ] **DS-###** Multi-selection apply — applying a style applies to all selected nodes that have the property. _Data:_ style ids _Test:_ 3 layers; apply effect style. _M6·P0·[KNOW]_
+- [ ] **DS-167** Create color (paint) style from selection — Style control → *+* → name/description → style created from all fills of the selection and applied in the same undo step. _Data:_ `createPaintStyle`, `paints`, `fillStyleId` _Test:_ rectangle with 2 fills; create style; ⌘Z once removes style and application (V-49). _M6·P0·[KNOW]_
+- [ ] **DS-168** Create text style from selection — captures fontName, size, line height, letter spacing, paragraph spacing/indent, list spacing, hanging punctuation/list, case, decoration, leading trim, wrap style; not color/alignment. _Data:_ `TextStyle` fields _Test:_ create from styled text; inspect style editor (V-49). _M6·P0·[API]·[KNOW]_
+- [ ] **DS-169** Create effect style from selection — captures the whole effect list in order. _Data:_ `EffectStyle.effects` _Test:_ 2 shadows + blur → style; apply elsewhere; identical. _M6·P0·[API]·[KNOW]_
+- [ ] **DS-170** Create layout-guide (grid) style from selection — captures all layout grids. _Data:_ `GridStyle.layoutGrids` _Test:_ 12-col + 8px grid → style. _M6·P1·[API]·[KNOW]_
+- [ ] **DS-171** Create style without selection — *+* in right-panel styles list creates a style with default values (text default Inter Regular 12). _Data:_ `createTextStyle()` default _Test:_ create each type with nothing selected; record defaults (V-50). _M6·P1·[API]·[KNOW]_
+- [ ] **DS-172** Mixed values block creation — create-style is unavailable when the section shows Mixed. _Data:_ — _Test:_ select two rectangles with different fills (V-49). _M6·P1·[KNOW]_
+- [ ] **DS-173** Apply paint style to fill — replaces the entire fills array; `fillStyleId` set. _Data:_ `fillStyleId` _Test:_ 3-fill layer + 1-paint style → 1 paint. _M6·P0·[API]_
+- [ ] **DS-174** Apply paint style to stroke — replaces strokes; `strokeStyleId` set. _Data:_ `strokeStyleId` _Test:_ apply from stroke Style control. _M6·P0·[API]_
+- [ ] **DS-175** Apply text style — to whole node or selected range; range application yields mixed `textStyleId` at node level. _Data:_ `textStyleId`, `setRangeTextStyleIdAsync` _Test:_ apply to one word; node shows Mixed. _M6·P0·[API]_
+- [ ] **DS-176** Apply paint style to text range — character range fill style. _Data:_ `setRangeFillStyleIdAsync` _Test:_ color one word with a color style. _M6·P1·[API]_
+- [ ] **DS-177** Apply effect style — replaces effect list; `effectStyleId`. _Data:_ `effectStyleId` _Test:_ layer with 1 effect + 2-effect style. _M6·P0·[API]_
+- [ ] **DS-178** Apply grid style — replaces layout grids; `gridStyleId`. _Data:_ `gridStyleId` _Test:_ frame with grid + grid style. _M6·P1·[API]_
+- [ ] **DS-179** Applied-style display — section shows style name/preview; individual property fields hidden until detach. _Data:_ — _Test:_ compare fill/text sections (V-51). _M6·P0·[KNOW]_
+- [ ] **DS-180** Style picker — list/grid toggle, search, local section first then each enabled library in order, folders shown as headers/nested. _Data:_ UI _Test:_ open picker in a file with local + 2 library styles (V-51). _M6·P1·[KNOW]_
+- [ ] **DS-181** Multi-selection apply — applying a style applies to all selected nodes that have the property. _Data:_ style ids _Test:_ 3 layers; apply effect style. _M6·P0·[KNOW]_
 
 ### 6.15 Styles — edit, detach, delete, organize
 
-- [ ] **DS-###** Detach style — keeps resolved values; clears style reference; behavior of variable bindings inside the style values per V-52. _Data:_ `…StyleId = ''` _Test:_ detach a paint style whose color is variable-bound; inspect fill binding (V-52). _M6·P0·[KNOW]_
-- [ ] **DS-###** Text style semantic overrides — ⌘B/⌘I, underline/decoration and hyperlinks on styled text keep the style applied (recorded as overrides). _Data:_ `textStyleOverrides` _Test:_ apply Body style, ⌘B a word; style still shown (V-53). _M3·P0·[API]·[KNOW]_
-- [ ] **DS-###** Other typography edits on styled text — changing size/family etc. requires detach or style edit, exactly as Figma. _Data:_ — _Test:_ attempt ⌘⇧> on styled text; record (V-53). _M3·P1·[KNOW]_
-- [ ] **DS-###** Edit style — editor with name, description and properties; changes propagate live to all consumers in the file. _Data:_ style fields _Test:_ edit color style hue; 5 consumers update. _M6·P0·[KNOW]_
-- [ ] **DS-###** Rename style — renaming (incl. folder path) keeps all references. _Data:_ `name` _Test:_ rename `Brand/Red` → `Accent/Red`. _M6·P0·[API]_
-- [ ] **DS-###** Duplicate style (conditional on V-54). _Data:_ new style _Test:_ check context menu in Figma. _M6·P2·[KNOW]_
-- [ ] **DS-###** Delete style — consumers keep visuals; reference semantics per V-55; undo restores reference. _Data:_ `remove()` _Test:_ delete used style; inspect consumer; undo. _M6·P0·[KNOW]_
-- [ ] **DS-###** Style folders — `/` creates nested folders in lists and pickers. _Data:_ `name` _Test:_ `Brand/Primary/500`. _M6·P0·[API]_
-- [ ] **DS-###** Reorder styles — drag within a folder; order persisted and published. _Data:_ `moveLocal*StyleAfter`, `sort_position` _Test:_ reorder; reopen; consumer picker order (V-56). _M6·P1·[API]·[KNOW]_
-- [ ] **DS-###** Reorder folders — drag folders within their parent folder. _Data:_ `moveLocal*FolderAfter` _Test:_ reorder 3 folders (V-56). _M6·P1·[API]_
-- [ ] **DS-###** Folder rename/ungroup/delete — rename rewrites contained style paths; other ops per V-56. _Data:_ `name` _Test:_ rename folder; record menu options (V-56). _M6·P2·[KNOW]_
-- [ ] **DS-###** Style consumers query — list nodes and fields using a style (internal capability for find-usages and delete warnings). _Data:_ `getStyleConsumersAsync` _Test:_ unit test against fixture; Figma parity via plugin call. _M6·P1·[API]_
+- [ ] **DS-182** Detach style — keeps resolved values; clears style reference; behavior of variable bindings inside the style values per V-52. _Data:_ `…StyleId = ''` _Test:_ detach a paint style whose color is variable-bound; inspect fill binding (V-52). _M6·P0·[KNOW]_
+- [ ] **DS-183** Text style semantic overrides — ⌘B/⌘I, underline/decoration and hyperlinks on styled text keep the style applied (recorded as overrides). _Data:_ `textStyleOverrides` _Test:_ apply Body style, ⌘B a word; style still shown (V-53). _M3·P0·[API]·[KNOW]_
+- [ ] **DS-184** Other typography edits on styled text — changing size/family etc. requires detach or style edit, exactly as Figma. _Data:_ — _Test:_ attempt ⌘⇧> on styled text; record (V-53). _M3·P1·[KNOW]_
+- [ ] **DS-185** Edit style — editor with name, description and properties; changes propagate live to all consumers in the file. _Data:_ style fields _Test:_ edit color style hue; 5 consumers update. _M6·P0·[KNOW]_
+- [ ] **DS-186** Rename style — renaming (incl. folder path) keeps all references. _Data:_ `name` _Test:_ rename `Brand/Red` → `Accent/Red`. _M6·P0·[API]_
+- [ ] **DS-187** Duplicate style (conditional on V-54). _Data:_ new style _Test:_ check context menu in Figma. _M6·P2·[KNOW]_
+- [ ] **DS-188** Delete style — consumers keep visuals; reference semantics per V-55; undo restores reference. _Data:_ `remove()` _Test:_ delete used style; inspect consumer; undo. _M6·P0·[KNOW]_
+- [ ] **DS-189** Style folders — `/` creates nested folders in lists and pickers. _Data:_ `name` _Test:_ `Brand/Primary/500`. _M6·P0·[API]_
+- [ ] **DS-190** Reorder styles — drag within a folder; order persisted and published. _Data:_ `moveLocal*StyleAfter`, `sort_position` _Test:_ reorder; reopen; consumer picker order (V-56). _M6·P1·[API]·[KNOW]_
+- [ ] **DS-191** Reorder folders — drag folders within their parent folder. _Data:_ `moveLocal*FolderAfter` _Test:_ reorder 3 folders (V-56). _M6·P1·[API]_
+- [ ] **DS-192** Folder rename/ungroup/delete — rename rewrites contained style paths; other ops per V-56. _Data:_ `name` _Test:_ rename folder; record menu options (V-56). _M6·P2·[KNOW]_
+- [ ] **DS-193** Style consumers query — list nodes and fields using a style (internal capability for find-usages and delete warnings). _Data:_ `getStyleConsumersAsync` _Test:_ unit test against fixture; Figma parity via plugin call. _M6·P1·[API]_
 
 ### 6.16 Styles with variable values
 
-- [ ] **DS-###** Paint style with variables — paint colors/gradient stops in a style bindable to COLOR variables. _Data:_ `PaintStyle.boundVariables.paints` _Test:_ style color bound to `color/bg`; consumer in Dark frame renders black (V-57). _M6·P0·[API]_
-- [ ] **DS-###** Text style with variables — family, style, weight, size, line height, letter spacing, paragraph spacing, indent bindable on the style. _Data:_ `TextStyle.setBoundVariable` _Test:_ size bound to FLOAT with modes; consumers in two modes differ. _M6·P0·[API]_
-- [ ] **DS-###** Effect style with variables — shadow color/blur/spread/offsets and blur radius bindable. _Data:_ `EffectStyle.boundVariables.effects` _Test:_ shadow color bound; switch modes. _M6·P1·[API]_
-- [ ] **DS-###** Grid style with variables — grid numeric fields bindable. _Data:_ `GridStyle.boundVariables.layoutGrids` _Test:_ gutter bound to `space/md`. _M6·P2·[API]_
-- [ ] **DS-###** Consumer-context resolution — variable values inside styles resolve in each consumer's resolved modes. _Data:_ resolver _Test:_ same style in Light & Dark frames renders differently (V-57). _M6·P0·[KNOW]_
-- [ ] **DS-###** Style preview mode — style swatches/previews in pickers use the default modes. _Data:_ — _Test:_ record preview while selection is in Dark (V-57). _M6·P2·[KNOW]_
+- [ ] **DS-194** Paint style with variables — paint colors/gradient stops in a style bindable to COLOR variables. _Data:_ `PaintStyle.boundVariables.paints` _Test:_ style color bound to `color/bg`; consumer in Dark frame renders black (V-57). _M6·P0·[API]_
+- [ ] **DS-195** Text style with variables — family, style, weight, size, line height, letter spacing, paragraph spacing, indent bindable on the style. _Data:_ `TextStyle.setBoundVariable` _Test:_ size bound to FLOAT with modes; consumers in two modes differ. _M6·P0·[API]_
+- [ ] **DS-196** Effect style with variables — shadow color/blur/spread/offsets and blur radius bindable. _Data:_ `EffectStyle.boundVariables.effects` _Test:_ shadow color bound; switch modes. _M6·P1·[API]_
+- [ ] **DS-197** Grid style with variables — grid numeric fields bindable. _Data:_ `GridStyle.boundVariables.layoutGrids` _Test:_ gutter bound to `space/md`. _M6·P2·[API]_
+- [ ] **DS-198** Consumer-context resolution — variable values inside styles resolve in each consumer's resolved modes. _Data:_ resolver _Test:_ same style in Light & Dark frames renders differently (V-57). _M6·P0·[KNOW]_
+- [ ] **DS-199** Style preview mode — style swatches/previews in pickers use the default modes. _Data:_ — _Test:_ record preview while selection is in Dark (V-57). _M6·P2·[KNOW]_
 
 ### 6.17 Components & instances interplay
 
-- [ ] **DS-###** Bindings in main components propagate — bindings on layers inside a main component appear in all instances. _Data:_ component tree _Test:_ bind button fill in main; instances follow mode switches. _M5·P0·[KNOW]_
-- [ ] **DS-###** Instance override of bound field — changing a bound property on an instance layer (bind another variable, detach, or raw value) is an override; *Reset* restores the main's binding. _Data:_ instance overrides _Test:_ rebind instance fill; reset. _M5·P0·[KNOW]_
-- [ ] **DS-###** Style override on instance — applying/detaching a style on an instance layer is an override and resets with *Reset all changes*. _Data:_ instance overrides _Test:_ apply other color style to instance child; reset. _M5·P0·[KNOW]_
-- [ ] **DS-###** Main-component edits keep instance overrides — changing a variable binding in the main does not overwrite instance layers that override that field. _Data:_ override precedence _Test:_ instance overrides fill; change main binding; instance keeps override. _M5·P0·[KNOW]_
+- [ ] **DS-200** Bindings in main components propagate — bindings on layers inside a main component appear in all instances. _Data:_ component tree _Test:_ bind button fill in main; instances follow mode switches. _M5·P0·[KNOW]_
+- [ ] **DS-201** Instance override of bound field — changing a bound property on an instance layer (bind another variable, detach, or raw value) is an override; *Reset* restores the main's binding. _Data:_ instance overrides _Test:_ rebind instance fill; reset. _M5·P0·[KNOW]_
+- [ ] **DS-202** Style override on instance — applying/detaching a style on an instance layer is an override and resets with *Reset all changes*. _Data:_ instance overrides _Test:_ apply other color style to instance child; reset. _M5·P0·[KNOW]_
+- [ ] **DS-203** Main-component edits keep instance overrides — changing a variable binding in the main does not overwrite instance layers that override that field. _Data:_ override precedence _Test:_ instance overrides fill; change main binding; instance keeps override. _M5·P0·[KNOW]_
 
 ### 6.18 Clipboard, undo/redo, export
 
-- [ ] **DS-###** Same-file duplicate/copy-paste keeps bindings, style refs and explicit modes. _Data:_ node data _Test:_ ⌘D a bound frame; compare inspector. _M6·P0·[KNOW]_
-- [ ] **DS-###** Copy/paste properties carry bindings — ⌘⌥C/⌘⌥V transfers fills/strokes/effects with their variable bindings and style references. _Data:_ — _Test:_ paste properties from bound to raw layer (V-68). _M6·P1·[KNOW]·[DOC:4412765442967 title]_
-- [ ] **DS-###** Cross-file paste — library references stay library references; local references of the source file are handled exactly as Figma (V-69); visual value never lost. _Data:_ remote refs _Test:_ copy from file A (local + library vars) to file B. _M8·P1·[KNOW]_
-- [ ] **DS-###** Undo granularity — each operation listed in §3.20 is exactly one undo step; undo restores identical IDs. _Data:_ undo stack _Test:_ scripted sequence of 20 ops; undo 20 times; document equals initial (V-67). _M0·P0·[KNOW]_
-- [ ] **DS-###** UI state excluded from undo — opening/closing modal, search, row selection, collapse do not create undo steps. _Data:_ — _Test:_ open modal, search, ⌘Z → last document change undone, not UI. _M0·P1·[KNOW]_
-- [ ] **DS-###** Export uses resolved values — PNG/SVG/PDF export renders each node in its resolved modes. _Data:_ — _Test:_ export Light and Dark frames; compare pixels. _M2·P0·[KNOW]_
-- [ ] **DS-###** Code export uses code syntax — handoff/CSS copy emits WEB code syntax when present. _Data:_ `codeSyntax.WEB` _Test:_ variable with `var(--bg)`; copy CSS (handoff area). _M8·P2·[KNOW]_
+- [ ] **DS-204** Same-file duplicate/copy-paste keeps bindings, style refs and explicit modes. _Data:_ node data _Test:_ ⌘D a bound frame; compare inspector. _M6·P0·[KNOW]_
+- [ ] **DS-205** Copy/paste properties carry bindings — ⌘⌥C/⌘⌥V transfers fills/strokes/effects with their variable bindings and style references. _Data:_ — _Test:_ paste properties from bound to raw layer (V-68). _M6·P1·[KNOW]·[DOC:4412765442967 title]_
+- [ ] **DS-206** Cross-file paste — library references stay library references; local references of the source file are handled exactly as Figma (V-69); visual value never lost. _Data:_ remote refs _Test:_ copy from file A (local + library vars) to file B. _M8·P1·[KNOW]_
+- [ ] **DS-207** Undo granularity — each operation listed in §3.20 is exactly one undo step; undo restores identical IDs. _Data:_ undo stack _Test:_ scripted sequence of 20 ops; undo 20 times; document equals initial (V-67). _M0·P0·[KNOW]_
+- [ ] **DS-208** UI state excluded from undo — opening/closing modal, search, row selection, collapse do not create undo steps. _Data:_ — _Test:_ open modal, search, ⌘Z → last document change undone, not UI. _M0·P1·[KNOW]_
+- [ ] **DS-209** Export uses resolved values — PNG/SVG/PDF export renders each node in its resolved modes. _Data:_ — _Test:_ export Light and Dark frames; compare pixels. _M2·P0·[KNOW]_
+- [ ] **DS-210** Code export uses code syntax — handoff/CSS copy emits WEB code syntax when present. _Data:_ `codeSyntax.WEB` _Test:_ variable with `var(--bg)`; copy CSS (handoff area). _M8·P2·[KNOW]_
 
 ### 6.19 Libraries (local-first)
 
-- [ ] **DS-###** Publish dialog — lists new/changed/removed components, styles and variables (by collection) with per-item include checkboxes and a description field. _Data:_ publish snapshot _Test:_ change 1 style, add 1 variable; compare dialog lists (V-61). _M6·P0·[KNOW]·[DOC:360025508373 title]_
-- [ ] **DS-###** Publish status — each asset reports `UNPUBLISHED`/`CURRENT`/`CHANGED` correctly before and after publish. _Data:_ `PublishStatus` _Test:_ edit a published style → CHANGED; publish → CURRENT. _M6·P0·[API]_
-- [ ] **DS-###** Hidden assets never published — variables/collections with hidden flags and `_`/`.` styles are excluded. _Data:_ flags _Test:_ publish; consumer cannot see them. _M6·P0·[API]·[KNOW]_
-- [ ] **DS-###** Library version on disk — publishing writes an immutable versioned snapshot (Illigma local-first format) with keys, values, timestamps and message. _Data:_ `PublishedSnapshot` _Test:_ publish twice; both versions readable; keys stable. _M6·P0·[API keys]_
-- [ ] **DS-###** Enable library — a file can enable a library file from disk; its published assets appear in pickers and the Assets panel. _Data:_ `LibraryRef` _Test:_ enable; library variables listed in fill picker. _M6·P0·[DOC:1500008731201 title]·[KNOW]_
-- [ ] **DS-###** Remote assets read-only — library styles/variables cannot be edited in consumers; *Go to main/library* opens the library file. _Data:_ `remote` _Test:_ attempt edit; record. _M6·P0·[API]_
-- [ ] **DS-###** Update notification — opening/focusing a consumer when its library has a newer version shows an updates notification. _Data:_ `acceptedVersion` vs latest _Test:_ publish change; open consumer (V-64). _M6·P0·[KNOW]_
-- [ ] **DS-###** Review & accept updates — Updates view lists changed styles/variables/components; *Update all* or per-item accept; one undo step. _Data:_ remote cache _Test:_ accept one of two; record (V-64). _M6·P0·[DOC:360039234193 title]·[KNOW]_
-- [ ] **DS-###** Pending updates do not apply — until accepted, consumers render the previously accepted values. _Data:_ cached remote values _Test:_ publish color change; consumer unchanged until accept. _M6·P0·[KNOW]_
-- [ ] **DS-###** Swap library — replaces usages of library A assets with same-named (same-type) assets of library B; unmatched assets reported and left; one undo step. _Data:_ remote refs _Test:_ two libraries with partially overlapping names (V-65). _M6·P1·[DOC:4404856784663 title]·[KNOW]_
-- [ ] **DS-###** Missing libraries — unavailable library listed with usage count; assets keep rendering from cache; actions: locate file, swap, localize. _Data:_ `LibraryRef.lastKnownPath` _Test:_ move library file; reopen consumer (V-66). _M6·P1·[KNOW]_
-- [ ] **DS-###** Unpublish library — no further updates; existing consumer usages keep working. _Data:_ snapshot status _Test:_ unpublish; consumer behavior (V-62). _M6·P2·[DOC:360039236853 title]·[KNOW]_
-- [ ] **DS-###** Upstream deletion — accepting an update that removes a variable/style keeps consumer bindings with deleted indicator and last values. _Data:_ `deletedButReferenced` _Test:_ delete library variable, publish, accept in consumer (V-18). _M6·P1·[API]·[KNOW]_
-- [ ] **DS-###** Remove library from file — disabling a library with used assets keeps those assets (remote/missing) exactly as Figma. _Data:_ `LibraryRef.enabled` _Test:_ disable used library (V-63). _M6·P1·[KNOW]_
-- [ ] **DS-###** Show updates for all pages — Updates view toggle includes updates on non-current pages. _Data:_ UI _Test:_ library change used only on page 2 (V-64). _M6·P2·[SRC:forum.figma.com 58360 excerpt]_
+- [ ] **DS-211** Publish dialog — lists new/changed/removed components, styles and variables (by collection) with per-item include checkboxes and a description field. _Data:_ publish snapshot _Test:_ change 1 style, add 1 variable; compare dialog lists (V-61). _M6·P0·[KNOW]·[DOC:360025508373 title]_
+- [ ] **DS-212** Publish status — each asset reports `UNPUBLISHED`/`CURRENT`/`CHANGED` correctly before and after publish. _Data:_ `PublishStatus` _Test:_ edit a published style → CHANGED; publish → CURRENT. _M6·P0·[API]_
+- [ ] **DS-213** Hidden assets never published — variables/collections with hidden flags and `_`/`.` styles are excluded. _Data:_ flags _Test:_ publish; consumer cannot see them. _M6·P0·[API]·[KNOW]_
+- [ ] **DS-214** Library version on disk — publishing writes an immutable versioned snapshot (Illigma local-first format) with keys, values, timestamps and message. _Data:_ `PublishedSnapshot` _Test:_ publish twice; both versions readable; keys stable. _M6·P0·[API keys]_
+- [ ] **DS-215** Enable library — a file can enable a library file from disk; its published assets appear in pickers and the Assets panel. _Data:_ `LibraryRef` _Test:_ enable; library variables listed in fill picker. _M6·P0·[DOC:1500008731201 title]·[KNOW]_
+- [ ] **DS-216** Remote assets read-only — library styles/variables cannot be edited in consumers; *Go to main/library* opens the library file. _Data:_ `remote` _Test:_ attempt edit; record. _M6·P0·[API]_
+- [ ] **DS-217** Update notification — opening/focusing a consumer when its library has a newer version shows an updates notification. _Data:_ `acceptedVersion` vs latest _Test:_ publish change; open consumer (V-64). _M6·P0·[KNOW]_
+- [ ] **DS-218** Review & accept updates — Updates view lists changed styles/variables/components; *Update all* or per-item accept; one undo step. _Data:_ remote cache _Test:_ accept one of two; record (V-64). _M6·P0·[DOC:360039234193 title]·[KNOW]_
+- [ ] **DS-219** Pending updates do not apply — until accepted, consumers render the previously accepted values. _Data:_ cached remote values _Test:_ publish color change; consumer unchanged until accept. _M6·P0·[KNOW]_
+- [ ] **DS-220** Swap library — replaces usages of library A assets with same-named (same-type) assets of library B; unmatched assets reported and left; one undo step. _Data:_ remote refs _Test:_ two libraries with partially overlapping names (V-65). _M6·P1·[DOC:4404856784663 title]·[KNOW]_
+- [ ] **DS-221** Missing libraries — unavailable library listed with usage count; assets keep rendering from cache; actions: locate file, swap, localize. _Data:_ `LibraryRef.lastKnownPath` _Test:_ move library file; reopen consumer (V-66). _M6·P1·[KNOW]_
+- [ ] **DS-222** Unpublish library — no further updates; existing consumer usages keep working. _Data:_ snapshot status _Test:_ unpublish; consumer behavior (V-62). _M6·P2·[DOC:360039236853 title]·[KNOW]_
+- [ ] **DS-223** Upstream deletion — accepting an update that removes a variable/style keeps consumer bindings with deleted indicator and last values. _Data:_ `deletedButReferenced` _Test:_ delete library variable, publish, accept in consumer (V-18). _M6·P1·[API]·[KNOW]_
+- [ ] **DS-224** Remove library from file — disabling a library with used assets keeps those assets (remote/missing) exactly as Figma. _Data:_ `LibraryRef.enabled` _Test:_ disable used library (V-63). _M6·P1·[KNOW]_
+- [ ] **DS-225** Show updates for all pages — Updates view toggle includes updates on non-current pages. _Data:_ UI _Test:_ library change used only on page 2 (V-64). _M6·P2·[SRC:forum.figma.com 58360 excerpt]_
 
 ### 6.20 Import / export
 
-- [ ] **DS-###** Export mode — right-click a mode header → *Export mode* writes that mode's variables to a JSON file. _Data:_ mode values _Test:_ export F1 Dark in Figma; compare file structure with Illigma output (V-60). _M6·P1·[DOC:36346281624471 excerpt]_
-- [ ] **DS-###** Import mode — *Import mode* overwrites values of variables matched by name **and** type; behavior for unmatched tokens per V-59. _Data:_ `valuesByMode` _Test:_ import a JSON with 1 match, 1 type mismatch, 1 new token (V-59). _M6·P1·[DOC:15343816063383 excerpt]_
-- [ ] **DS-###** Import mode into an extension — writes overrides on the extended collection. _Data:_ `variableOverrides` _Test:_ import Brand B JSON into extension mode. _M6·P2·[DOC:36346281624471 excerpt]_
-- [ ] **DS-###** Import validation report — type mismatches, unresolved aliases, cycles and cap overflow are reported; no partial corruption. _Data:_ — _Test:_ malformed fixture set. _M6·P1·[KNOW]_
-- [ ] **DS-###** DTCG 2025.10 export — full collections to W3C DTCG JSON (groups nested, `$type`, `$value`, `$description`, curly-brace aliases, Figma extensions for scopes/code syntax). _Data:_ §3.18 mapping _Test:_ validate against DTCG schema; compare with Figma export where overlapping (V-60). _M6·P1·[SRC:figma.com/blog/schema-2025 excerpt]·[KNOW]_
-- [ ] **DS-###** DTCG import — creates/updates collections, modes, variables and aliases from DTCG files. _Data:_ — _Test:_ import Figma-exported mode files into a new Illigma file; values identical. _M6·P1·[KNOW]_
-- [ ] **DS-###** Figma REST JSON round-trip — import/export `variables/local` response shape losslessly (incl. extensions, `deletedButReferenced`). _Data:_ REST `LocalVariable`, `LocalVariableCollection` _Test:_ round-trip a captured REST payload. _M8·P1·[API]_
-- [ ] **DS-###** Import is one undo step. _Data:_ undo stack _Test:_ import 100 tokens; ⌘Z once removes all (V-59). _M6·P1·[KNOW]_
-- [ ] **DS-###** Description export gap — document (and test) whether descriptions are exported; Illigma includes `$description` (Figma reportedly omits it). _Data:_ `description` _Test:_ export a described variable from Figma (V-60). _M6·P2·[SRC:forum.figma.com 51314 excerpt]_
+- [ ] **DS-226** Export mode — right-click a mode header → *Export mode* writes that mode's variables to a JSON file. _Data:_ mode values _Test:_ export F1 Dark in Figma; compare file structure with Illigma output (V-60). _M6·P1·[DOC:36346281624471 excerpt]_
+- [ ] **DS-227** Import mode — *Import mode* overwrites values of variables matched by name **and** type; behavior for unmatched tokens per V-59. _Data:_ `valuesByMode` _Test:_ import a JSON with 1 match, 1 type mismatch, 1 new token (V-59). _M6·P1·[DOC:15343816063383 excerpt]_
+- [ ] **DS-228** Import mode into an extension — writes overrides on the extended collection. _Data:_ `variableOverrides` _Test:_ import Brand B JSON into extension mode. _M6·P2·[DOC:36346281624471 excerpt]_
+- [ ] **DS-229** Import validation report — type mismatches, unresolved aliases, cycles and cap overflow are reported; no partial corruption. _Data:_ — _Test:_ malformed fixture set. _M6·P1·[KNOW]_
+- [ ] **DS-230** DTCG 2025.10 export — full collections to W3C DTCG JSON (groups nested, `$type`, `$value`, `$description`, curly-brace aliases, Figma extensions for scopes/code syntax). _Data:_ §3.18 mapping _Test:_ validate against DTCG schema; compare with Figma export where overlapping (V-60). _M6·P1·[SRC:figma.com/blog/schema-2025 excerpt]·[KNOW]_
+- [ ] **DS-231** DTCG import — creates/updates collections, modes, variables and aliases from DTCG files. _Data:_ — _Test:_ import Figma-exported mode files into a new Illigma file; values identical. _M6·P1·[KNOW]_
+- [ ] **DS-232** Figma REST JSON round-trip — import/export `variables/local` response shape losslessly (incl. extensions, `deletedButReferenced`). _Data:_ REST `LocalVariable`, `LocalVariableCollection` _Test:_ round-trip a captured REST payload. _M8·P1·[API]_
+- [ ] **DS-233** Import is one undo step. _Data:_ undo stack _Test:_ import 100 tokens; ⌘Z once removes all (V-59). _M6·P1·[KNOW]_
+- [ ] **DS-234** Description export gap — document (and test) whether descriptions are exported; Illigma includes `$description` (Figma reportedly omits it). _Data:_ `description` _Test:_ export a described variable from Figma (V-60). _M6·P2·[SRC:forum.figma.com 51314 excerpt]_
 
 ### 6.21 Design-system management
 
-- [ ] **DS-###** Selection colors list — distinct raw colors, color styles and color variables in the selection; hidden/null above 1,000 colors. _Data:_ `getSelectionColors` _Test:_ frame with mixed sources; compare list (V-35). _M6·P1·[API]·[KNOW]_
-- [ ] **DS-###** Select matching layers — from a selection-colors entry, selects all layers in the selection using that color/style/variable. _Data:_ — _Test:_ click target icon (V-35). _M6·P1·[KNOW]_
-- [ ] **DS-###** Bulk edit via selection colors — editing a raw color rewrites all occurrences; applying a variable/style to an entry binds/applies all occurrences in one undo step. _Data:_ — _Test:_ replace `#FF0000` everywhere with `color/bg` (V-35). _M6·P1·[KNOW]_
-- [ ] **DS-###** Select all with same fill/stroke/effect/font — Edit-menu commands compare per Figma (raw vs style/variable identity, V-71). _Data:_ — _Test:_ layers with same raw color but different binding (V-71). _M1·P2·[KNOW]_
-- [ ] **DS-###** Find usages of a style (Illigma extension) — list and select consumers. _Data:_ `getStyleConsumersAsync` _Test:_ fixture with 7 consumers across 2 pages. _M6·P2·[API]_
-- [ ] **DS-###** Find usages of a variable (Illigma extension) — list bound fields, aliases and styles referencing it. _Data:_ reverse index _Test:_ fixture with direct, alias and style usages. _M6·P2·[KNOW]_
-- [ ] **DS-###** Inferred-variable suggestion — unbound field whose raw value uniquely matches one in-scope variable offers a one-click bind; ambiguous matches offer none. _Data:_ `inferredVariables` rule _Test:_ width 100 with one WIDTH_HEIGHT variable = 100 → suggestion; two → none. _M6·P2·[API]_
-- [ ] **DS-###** Rename safety — renaming variables, groups, collections, styles or folders never breaks bindings/references. _Data:_ ID references _Test:_ rename everything in F1; render unchanged. _M6·P0·[API]_
+- [ ] **DS-235** Selection colors list — distinct raw colors, color styles and color variables in the selection; hidden/null above 1,000 colors. _Data:_ `getSelectionColors` _Test:_ frame with mixed sources; compare list (V-35). _M6·P1·[API]·[KNOW]_
+- [ ] **DS-236** Select matching layers — from a selection-colors entry, selects all layers in the selection using that color/style/variable. _Data:_ — _Test:_ click target icon (V-35). _M6·P1·[KNOW]_
+- [ ] **DS-237** Bulk edit via selection colors — editing a raw color rewrites all occurrences; applying a variable/style to an entry binds/applies all occurrences in one undo step. _Data:_ — _Test:_ replace `#FF0000` everywhere with `color/bg` (V-35). _M6·P1·[KNOW]_
+- [ ] **DS-238** Select all with same fill/stroke/effect/font — Edit-menu commands compare per Figma (raw vs style/variable identity, V-71). _Data:_ — _Test:_ layers with same raw color but different binding (V-71). _M1·P2·[KNOW]_
+- [ ] **DS-239** Find usages of a style (Illigma extension) — list and select consumers. _Data:_ `getStyleConsumersAsync` _Test:_ fixture with 7 consumers across 2 pages. _M6·P2·[API]_
+- [ ] **DS-240** Find usages of a variable (Illigma extension) — list bound fields, aliases and styles referencing it. _Data:_ reverse index _Test:_ fixture with direct, alias and style usages. _M6·P2·[KNOW]_
+- [ ] **DS-241** Inferred-variable suggestion — unbound field whose raw value uniquely matches one in-scope variable offers a one-click bind; ambiguous matches offer none. _Data:_ `inferredVariables` rule _Test:_ width 100 with one WIDTH_HEIGHT variable = 100 → suggestion; two → none. _M6·P2·[API]_
+- [ ] **DS-242** Rename safety — renaming variables, groups, collections, styles or folders never breaks bindings/references. _Data:_ ID references _Test:_ rename everything in F1; render unchanged. _M6·P0·[API]_
 
 ### 6.22 Prototype & Motion interplay (data only in this area)
 
-- [ ] **DS-###** No expressions in variable values — variable cells accept only literals, aliases or composed colors; expressions exist only in prototype actions. _Data:_ `VariableValue` vs `VariableValueWithExpression` _Test:_ attempt `=a+b` style input in a Figma cell; record (V-22). _M6·P0·[API]_
-- [ ] **DS-###** Prototype variable data preserved — `SET_VARIABLE`, `SET_VARIABLE_MODE`, `CONDITIONAL` actions with expressions round-trip losslessly until M7 implements them. _Data:_ `Action`, `VariableData`, `Expression` _Test:_ import a prototype with conditionals; export; identical. _M7·P1·[API]_
-- [ ] **DS-###** Prototype mode switching does not mutate document — `SET_VARIABLE_MODE` at playback changes runtime modes only. _Data:_ runtime state _Test:_ play prototype, switch mode, stop; document modes unchanged. _M7·P0·[API]·[KNOW]_
-- [ ] **DS-###** Timing/easing variables (Motion) — create/edit TIMING (duration) and EASING (curve/spring) variables and bind to Motion durations/easings, with page-level mode switching. _Data:_ `TIMING`, `EASING`, `MotionEasing` _Test:_ easing variable with 2 modes applied to keyframes; switch page mode (V-58). _M7·P2·[DOC:14506821864087 excerpt]·[API]_
+- [ ] **DS-243** No expressions in variable values — variable cells accept only literals, aliases or composed colors; expressions exist only in prototype actions. _Data:_ `VariableValue` vs `VariableValueWithExpression` _Test:_ attempt `=a+b` style input in a Figma cell; record (V-22). _M6·P0·[API]_
+- [ ] **DS-244** Prototype variable data preserved — `SET_VARIABLE`, `SET_VARIABLE_MODE`, `CONDITIONAL` actions with expressions round-trip losslessly until M7 implements them. _Data:_ `Action`, `VariableData`, `Expression` _Test:_ import a prototype with conditionals; export; identical. _M7·P1·[API]_
+- [ ] **DS-245** Prototype mode switching does not mutate document — `SET_VARIABLE_MODE` at playback changes runtime modes only. _Data:_ runtime state _Test:_ play prototype, switch mode, stop; document modes unchanged. _M7·P0·[API]·[KNOW]_
+- [ ] **DS-246** Timing/easing variables (Motion) — create/edit TIMING (duration) and EASING (curve/spring) variables and bind to Motion durations/easings, with page-level mode switching. _Data:_ `TIMING`, `EASING`, `MotionEasing` _Test:_ easing variable with 2 modes applied to keyframes; switch page mode (V-58). _M7·P2·[DOC:14506821864087 excerpt]·[API]_
 
 ---
+## 7. Cross-area dependencies
+
+| Area (milestone) | Dependency |
+| --- | --- |
+| Document model, persistence, undo/redo (M0) | ID-stable entity store for variables/collections/styles; ordered trees for variable order and style folders; soft-delete tombstones; single-step compound transactions (bulk bind, import, swap library); derived-state caches excluded from persistence. |
+| Renderer (M0) | Resolution service (`resolve(variable, node)`) consulted for every bound field at render; invalidation graph (variable → aliases → styles → nodes); per-node resolved-mode computation. |
+| UI component kit (M0) | Variable pill, apply-variable affordance on every numeric/color field, searchable grouped picker, data-grid (virtualized, resizable columns), context menus, floating modal. |
+| Layers panel & selection (M1) | Visibility bound to BOOLEAN; Edit → *Select all with same …*; selection-colors section; multi-select Mixed states. |
+| Shapes, frames, sections, pages (M1) | Explicit modes on pages, frames, sections, groups; corner radius per-corner storage; width/height binding vs fixed sizing. |
+| Paint, color picker, effects, export (M2) | Paint/gradient-stop/effect bindings; composed color opacity; Libraries tab in color popover; style application on fills/strokes/effects; export resolves modes. |
+| Text & typography (M3) | Text-field and per-range bindings, text styles, semantic overrides (`textStyleOverrides`), missing-font handling for STRING-bound families, text content binding. |
+| Layout (M4) | Gap/padding/min-max/grid-gap bindings; Auto gap disables gap binding; layout grids and grid styles; Hug/Fill → Fixed when width/height bound. |
+| Components (M5) | Bindings inside main components; instance overrides of bindings, styles and explicit modes; component property value/default bindings; library publishing of components shares the publish/update pipeline. |
+| Prototyping & Motion (M7) | `SET_VARIABLE`, `SET_VARIABLE_MODE`, conditionals, expressions; runtime mode state; TIMING/EASING variables and custom animation styles. |
+| Interop & hardening (M8) | `.fig` import of variables/styles/bindings; REST-JSON and DTCG interop; cross-file clipboard; version history of library snapshots; performance at 5,000 variables × N modes. |
+| Developer handoff / inspect (M8) | Code syntax display; CSS/token output. |
+| Framer-styled design system (UI looks) | Visual design of pills, pickers, table, modal — **looks only**; behavior defined here. |
+
+---
+
+## 8. Needs live Figma verification
+
+Each experiment: **Setup → Action → Record**. Use Figma Design (UI3) on desktop or web, a fresh draft file unless noted, and record screenshots plus exported REST/plugin JSON where possible. Results must be written to `docs/figma/observations/` with date, platform and plan.
+
+| ID | Setup | Action | Record |
+| --- | --- | --- | --- |
+| V-01 | Empty file, no collections | Open variables modal, *Create variable* → Color | Whether a collection is auto-created; its name; mode name; variable default name/value |
+| V-02 | Two collections | Rename one to "" and to the other's name | Rejection/acceptance, messages |
+| V-03 | 3 collections | Drag to reorder in sidebar; reopen file | Whether reordering exists and persists; picker order |
+| V-04 | Collection with aliases inside and outside | Look for *Duplicate collection* in all menus; if present run it | Command presence; new names; alias targets in the copy |
+| V-05 | Collection with Mode 1 (values incl. an alias) + Mode 3 | Click *+* add mode | New mode name; values copied from which mode; alias preserved? |
+| V-06 | Collection with Dark mode | *Duplicate mode* | Name, position, values |
+| V-07 | Frame explicitly set to Dark; library collection likewise | Delete Dark mode (local); in library delete a used mode, publish, accept in consumer | Frame rendering; mode menu label ("Auto"? blank? warning?) |
+| V-08 | 3-mode collection | Drag mode headers; look for *Set as default* | Whether default = first column; command presence; effect on Auto layers |
+| V-09 | Collection with group `color` selected in sidebar | *Create variable* | Full name (prefix), insertion position |
+| V-10 | 2-mode collection | Create one variable of each type, and three Colors without renaming | Default names and values in every mode |
+| V-11 | Collection | Names: duplicate full name; `a$b`, `a.b`, `{a}`, `.5`, `a/ b /c`, `""`, very long (300 chars) | Rejections, toast text, stored names |
+| V-12 | One variable per type | Open scoping UI; toggle every option; export via REST/plugin | Label→scope mapping; defaults; collapse to ALL_FILLS; whether CORNER_RADIUS and COLOR_OPACITY are present; fill sub-scopes per node kind |
+| V-13 | FLOAT variable | Inspect scoping options for any transform/rotation entry | Existence of a `TRANSFORM`-like scope and the fields it offers |
+| V-14 | Auto-layout frame | Bind padding via the H/V pair control and individual sides; check whether a Gap-scoped variable appears in padding pickers | Stored bindings per side; scope used for padding |
+| V-15 | Frame with column grid | Open grid popover; apply variable to count/gutter/offset with a variable scoped only to Gap | Which scope(s) make variables appear in grid fields |
+| V-16 | Each variable type | Open *Edit variable* | Sections, field order, code-syntax add/remove UI, read-only state for remote variables |
+| V-17 | 2 selected variables | Context *Duplicate*; then press ⇧↵ | Names, placement, copied settings; shortcut effect |
+| V-18 | Fill bound to variable X; alias Y→X | Delete X; inspect fill, Y's cell, canvas; save/reopen; undo | Pill appearance (strike/warning), resolved value, ability to rebind, persistence |
+| V-19 | 3 variables with differing scopes | Multi-select, open Edit variable, change scope | Mixed display; bulk application |
+| V-20 | Groups `a`, `b` | Drag rows within/between groups; rename into other group | Resulting names and positions |
+| V-21 | Two collections | Try dragging a variable to another collection; look for "Move to collection" | Whether moving is possible; ID preserved? bindings? |
+| V-22 | Number and String cells | Enter `8*2`, `1.255`, `-0.5`, `=a+b` | Stored vs displayed values; math support; precision |
+| V-23 | Styles `_private/red`, `.tmp`, `ok/_x`; variable named `_hidden` | Open publish dialog | Which assets are excluded |
+| V-24 | Published variable used in consumer | Hide it, republish, accept in consumer | Consumer binding state; picker visibility |
+| V-25 | Groups `a/x`, `b/x` | Rename `a`→`b`; ungroup to collide; *New group with selection* | Collision handling; default group name |
+| V-26 | Group with internal alias (`g/b` → `g/a`) | *Duplicate group* | Copy's group name; whether copied alias points to copy or original |
+| V-27 | File with variables | Find every entry point to the variables modal (nothing selected, layer selected, menus) | Entry points; modal non-blocking; position persistence |
+| V-28 | Collection with names and hex values | Search by name substring, by group, by hex | What search matches |
+| V-29 | Variables modal | Right-click row, multi-row, mode header, group, collection, empty area | Full menu item lists |
+| V-30 | Two collections | Create alias in a cell (all entry points); detach alias in a non-default mode | UI flow; detached value = resolved value of that mode? |
+| V-31 | Frame with all bindable fields | Hover each field; bind; hover pill; click pill; multi-select with mixed bindings | Affordance presence per field; pill text; Mixed |
+| V-32 | Layer | Find how to bind visibility (eye, right-click, Appearance) | Entry point; layers-panel indication |
+| V-33 | Bound gap | Type a raw value; also scrub-drag the label | Detach vs blocked |
+| V-34 | Frame with bound width and bound radius | Drag resize handle; drag radius handle; use arrow-key nudge resize (⇧⌘→) | Binding detached or kept |
+| V-35 | Frame with raw, styled and variable colors (>3 occurrences) | Use selection colors: hover, select matching layers, edit raw color, apply variable | Available actions; scope of selection; undo steps; look for any "find usages" feature for variables/styles |
+| V-36 | Hug-width auto-layout frame | Bind width | Sizing mode afterwards |
+| V-37 | Auto-layout frame | Set gap to Auto (space between); hover gap | Bindability |
+| V-38 | Layer | Bind opacity to FLOAT 50, 150, −10, 0.5 | Rendered opacity; display |
+| V-39 | Fill bound to color variable with paint opacity 50 %; composed-color variables | Inspect paint opacity field; change composed opacity; export JSON | How paint opacity and variable alpha combine; composed opacity unit (0–1 vs %); translucent-source rule |
+| V-40 | Text layer | Bind content to FLOAT 1.5, 1000, −0.25; then double-click and type | Rendered string; edit behavior |
+| V-41 | Text layer | Bind family to "NoSuchFont"; style to "Bogus"; weight 650 | Missing-font UI; fallback; nearest weight? |
+| V-42 | Text layer with line height in % and letter spacing in % | Bind FLOAT 120 to each | Unit after binding; rendering |
+| V-43 | Component with BOOLEAN, TEXT, VARIANT, INSTANCE_SWAP, SLOT properties | Try binding each on instance and definition | Which types accept variables and of which type |
+| V-44 | Page, frame, section, group, component, instance, rectangle | Look for *Apply variable mode* on each; open menu with collections used/unused, single-mode collections, library collections; multi-select | Availability per type; listed collections; "Auto (X)" label; Mixed |
+| V-45 | Extended collection | Try rename mode, reorder, add variable, edit description/scope/code syntax, reset single/all overrides; delete a parent mode | Allowed/blocked actions; UI for reset-all; extended mode state after parent deletion |
+| V-46 | Root `Theme`, extension `Brand B`; nested frames | Outer frame Brand B/Dark, inner frame Theme/Light (and reverse) | Which values render (precedence rule) |
+| V-47 | Main component with inner frame explicitly Dark; instance in Light frame | Observe; set instance to Dark/Light; *Reset all changes* | Propagation and override semantics |
+| V-48 | Variables A, B same collection; C other collection | Alias A→B, then B→A; A→A; A→C→A | Cycle prevention UI; same-collection alias allowed |
+| V-49 | Rectangle with 2 fills; text; mixed selection | Create style from each section; check undo steps | Dialog fields; captured properties; applied immediately; Mixed handling |
+| V-50 | Nothing selected | *+* for each style type | Default contents of new styles |
+| V-51 | Layers with applied styles | Inspect sections; open picker (list/grid, search, library order) | Display; hidden fields; picker structure |
+| V-52 | Paint style with variable-bound color applied to a layer | *Detach style* | Whether resulting fill keeps the variable binding or raw color |
+| V-53 | Text with text style | ⌘B, ⌘I, ⌘U, add link, change size via field and ⌘⇧> | Which keep the style (override) vs detach |
+| V-54 | Local styles | Right-click a style in list and in picker | Presence of *Duplicate style* and all items |
+| V-55 | Style used by layers | Delete style; save/reopen; undo | Consumer state (reference kept vs detached); UI |
+| V-56 | Styles in folders | Drag style into another folder; folder context menu | Possible operations; resulting names |
+| V-57 | Paint/text style with variable values | Apply in Light and Dark frames; open picker while selection is in Dark | Consumer-context resolution; preview mode |
+| V-58 | Motion enabled file | Create TIMING variable; inspect value units in UI and via plugin | ms vs s; display format |
+| V-59 | Collection with existing variables | *Import mode* with matching, type-mismatched and new tokens; undo | Update/create/skip rules; messages; undo steps |
+| V-60 | F1 (all types, aliases, descriptions, scopes, code syntax, composed colors) | *Export mode* for each mode | Exact JSON: types for FLOAT/STRING/BOOLEAN, alias syntax, extensions keys, descriptions, file naming |
+| V-61 | Library file with changes in each asset type | Open publish dialog | Grouping, checkboxes, description field, hidden-asset handling |
+| V-62 | Published library used by consumer | Unpublish | Consumer state and messages |
+| V-63 | Consumer using library assets | Disable/remove the library | Assets kept? Missing state? |
+| V-64 | Consumer + library with changes on 2 pages | Publish; open consumer; review updates; accept one; toggle "show updates for all pages" | Notification, list contents, partial accept, undo |
+| V-65 | Libraries A and B with partially matching names (styles, variables in differently named collections) | *Swap library* A→B | Matching rule (name, type, collection name?), unmatched report, undo |
+| V-66 | Consumer whose library was deleted | Open Libraries modal | *Missing libraries* presentation and actions |
+| V-67 | Any | Perform each §3.20 operation and undo once | Exactly one step each? |
+| V-68 | Bound and styled source layer | ⌘⌥C → ⌘⌥V onto raw layer | Bindings/styles transferred? |
+| V-69 | File A with local variables/styles (unpublished and published) and library variables | Copy layers to file B | Resulting references (local copy, remote ref to A, detached) |
+| V-70 | Variables modal | Select variables, ⌘C, switch file, ⌘V in modal | Whether variables can be copied between files |
+| V-71 | Layers with same raw color, one bound to a variable with that value, one styled | *Select all with same fill* | Which layers are selected |
+| V-72 | Any | Search keyboard shortcut list (⌃⇧? / Help → Keyboard shortcuts) for variables, styles, libraries | Exact default shortcuts |
+| V-73 | Variables table | Arrow keys, Tab, Enter, Esc, ⌘A, ⌘-click, Delete | Navigation and editing behavior |
+| V-74 | Starter vs paid plan files (if available) | Try adding modes beyond cap | Exact caps and error texts (for documentation only; Illigma ungated) |
+| V-75 | Prototype with expression using VAR_MODE_LOOKUP | Inspect expression builder | Semantics of VAR_MODE_LOOKUP (M7) |
+| V-76 | Library with an extended collection (Enterprise file) | Publish; in a consumer, apply the extension's modes and inspect overrides | Whether extensions publish/consume as collections with overrides |
+
+### Open questions (product decisions, not Figma facts)
+
+- **Q1 — Mode cap.** Figma caps modes per plan (Starter 1; current table Pro 10 / Org 20 / Enterprise "unlimited with extended collections"; historically 40). Illigma has no plans. Proposal: no hard cap below 40; soft performance warning above 40.
+- **Q2 — Library container format.** Publish snapshots embedded in the library `.illigma` file vs a sidecar `.illigma-lib` file; both must keep immutable versions.
+- **Q3 — Cross-file paste of local variables** if Figma creates remote references to an unpublished source file (V-69): Illigma may need to localize instead, since there is no cloud identity.
+- **Q4 — Find-usages features** that exceed Figma's UI (style/variable usage lists) — keep as P2 extensions or drop for strict parity.
+- **Q5 — DTCG output for STRING/BOOLEAN** (no DTCG primitive) — follow Figma's exact export once V-60 is recorded.
+
+---
+
+## 9. Sources
+
+### 9.1 Typings (offline, authoritative) — `refs/_figma_plugin-typings/package/plugin-api.d.ts` v1.141.0
+
+| Lines | Content |
+| --- | --- |
+| 431 | `getStyleByIdAsync` |
+| 1459–1483 | `createPaintStyle/TextStyle/EffectStyle/GridStyle/CustomAnimationStyle` (text default Inter Regular 12) |
+| 1487–1533 | `getLocal*StylesAsync` |
+| 1545–1552 | `getSelectionColors` (null > 1000 colors) |
+| 1558–1615 | `moveLocal*StyleAfter`, `moveLocal*FolderAfter` |
+| 1627 | `importStyleByKeyAsync` |
+| 2148–2299 | `VariablesAPI` (create, extend, alias helpers, bind helpers, import) |
+| 2300–2315 | `LibraryVariableCollection`, `LibraryVariable` |
+| 2504–2541 | `TeamLibraryAPI` |
+| 3699–3740 | Style document-change events |
+| 4293–4430 | Drop/inner shadow and blur effects with `boundVariables` |
+| 4432–4600 | Noise/Texture/Glass effects (`boundVariables: {}`) |
+| 4643–4658 | `ColorStop.boundVariables` |
+| 4674–4725 | `SolidPaint.boundVariables` |
+| 5000–5060 | Layout grid `boundVariables` |
+| 5508–5511 | `TextStyleOverrideType` |
+| 5511–5632 | `StyledTextSegment` (`textStyleId`, `boundVariables`, `textStyleOverrides`) |
+| 5656–5690 | `VariableDataType`, `ExpressionFunction`, `Expression`, `VariableData`, `ConditionalBlock` |
+| 5720–5740 | `SET_VARIABLE`, `SET_VARIABLE_MODE`, `CONDITIONAL` actions |
+| 5847–5866 | `MotionEasing` |
+| 6262 | `PublishStatus` |
+| 6584 | `SceneNodeMixin extends ExplicitVariableModesMixin` |
+| 6636–6745 | `boundVariables` (incl. corner-radius remark), `setBoundVariable`, `inferredVariables`, `resolvedVariableModes` |
+| 6910–6955 | `VariableBindable*Field` types |
+| 7594–7598, 8662–8666, 8754–8758, 9406–9410, 11007–11011 | `effectStyleId`, `strokeStyleId`, `fillStyleId`, `gridStyleId`, `textStyleId` + async setters |
+| 9306–9356 | `PublishableMixin` (description, descriptionMarkdown, documentationLinks, remote, key, publish status) |
+| 9900–9950 | Text range fill/style/variable APIs |
+| 10528–10562 | `ExplicitVariableModesMixin` (workspace/team-default modes note) |
+| 10563 | `PageNode` carries explicit modes |
+| 11078, 11104–11116, 11176–11185, 11216 | Component property types, definition/instance `boundVariables`, `setProperties` with `VariableAlias` |
+| 11664–11710 | `VariableResolvedDataType`, `VariableAlias`, `VariableComposedColor`, `VariableValue`, `VariableScope`, `CodeSyntaxPlatform` |
+| 11711–11924 | `Variable` (incl. `resolveForConsumer` examples, `setValueForMode`, `scopes` remark, code syntax, extension helpers) |
+| 11925–11993 | `VariableCollection` (mode limit error text, extend, remove) |
+| 11994–12028 | `ExtendedVariableCollection` |
+| 12465–12503 | `StyleType`, `InheritedStyleField`, `StyleConsumers`, `BaseStyleMixin` |
+| 12513–12633 | `PaintStyle`, `TextStyle`, `EffectStyle`, `GridStyle` |
+| 12634+ | `CustomAnimationStyle` |
+
+### 9.2 REST types (offline, authoritative) — `refs/_figma_rest-api-spec/package/dist/api_types.ts` v0.44.0
+
+| Lines | Content |
+| --- | --- |
+| 63–162 | Node `boundVariables` (incl. `size`, `individualStrokeWeights`, `rectangleCornerRadii`), `explicitVariableModes` |
+| 550–561 | Node `styles` map |
+| 1484, 1574, 1796–1803, 1851–1860, 1910 | Paint/effect/grid `boundVariables` (`numSections`) |
+| 2050–2072 | `Style` |
+| 2359–2405 | `TypeStyle.isOverrideOverTextStyle`, text `boundVariables` |
+| 2474 | Component property `boundVariables.value` |
+| 2639–2650 | `VariableAlias` (local or remote) |
+| 2919–3015 | `SetVariableAction`, `SetVariableModeAction`, `VariableData`, `Expression`, `ExpressionFunction`, `ConditionalBlock` |
+| 3415–3472 | `StyleType`, `PublishedStyle` (`sort_position`) |
+| 4512–4583 | `VariableScope` documentation (valid scopes per type, exclusivity, OPACITY vs COLOR_OPACITY, FONT_VARIATIONS) |
+| 4590–4598 | `VariableCodeSyntax` |
+| 4601–4689 | `LocalVariableCollection` (extension fields) |
+| 4691–4761 | `LocalVariable` (`deletedButReferenced`) |
+| 4766–4836 | `PublishedVariableCollection`, `PublishedVariable` (`subscribed_id`) |
+| 4841–5096 | Collection/mode/variable create/update/delete (extension restrictions) |
+| 5101–5143 | `VariableModeValue`, `VariableValue` (type rule for aliases), `VariableComposedColor` |
+| 7952–7972 | `PostVariablesRequestBody` |
+
+### 9.3 Official Figma Help Center articles (IDs from the 2026-09-27 source catalog)
+
+Seen as **search excerpts** in this session: 15145852043927 *Create and manage variables and collections*; 36346281624471 *Extend a variable collection*; 15343816063383 *Modes for variables*; 14506821864087 *Overview of variables, collections, and modes*; 360040328273 *Figma plans and features* (mode caps table); 41414048690839 *Adjust an animation's easing* (Motion; listed in results only).
+
+Known by **title only** (catalog): 15339657135383 *Guide to variables in Figma*; 15343107263511 *Apply variables to designs*; 15871097384471 *The difference between variables and styles*; 360038746534 *Create color, text, effect, and layout guide styles*; 360039820134 *Manage and share styles*; 360039238753 *Styles in Figma Design*; 360039957034 *Create and apply text styles*; 360040316193 *Apply styles to layers and objects*; 7938814091287 *Add descriptions to styles, components, and variables*; 360041051154 *Guide to libraries in Figma*; 360039238193 *Hide styles, components, and variables when publishing*; 360025508373 *Publish a library*; 360039236853 *Unpublish a library*; 1500008731201 *Add or remove a library from a design file*; 360039234193 *Review and accept library updates*; 4404856784663 *Swap libraries*; 39592284074263 *Check designs in Figma*; 4412765442967 *Copy and paste properties between layers*; 14506587589399 *Use variables in prototypes*; 15253268379799 *Variable modes in prototypes*; 15253194385943 *Use expressions in prototypes*; 15253220891799 *Multiple actions and conditionals*; 5579502031511 *Use variable fonts*.
+
+### 9.4 Other web sources (search excerpts only; none read in full)
+
+- Figma blog, Schema 2025 design systems recap — https://www.figma.com/blog/schema-2025-design-systems-recap/ (extended collections, native DTCG import/export, slots, Check designs).
+- Figma forum: mode limits thread — https://forum.figma.com/suggest-a-feature-11/launched-all-plans-should-offer-more-than-4-variable-modes-13979/
+- Figma forum: variable count limits — https://forum.figma.com/ask-the-community-7/what-are-the-limits-for-the-number-of-variables-in-a-file-10909
+- Figma forum: special characters in variable names — https://forum.figma.com/t/allow-special-characters-in-variable-names/45692/3 ; dots — https://forum.figma.com/share-your-feedback-26/allow-dots-in-variable-names-48096
+- Figma forum: large collection display issue — https://forum.figma.com/report-a-problem-6/variables-panel-doesn-t-show-some-existing-local-variables-large-collection-1000-variables-58145
+- Figma forum: plugin-created extended collection empty / "Show updates for all pages" — https://forum.figma.com/report-a-problem-6/plugin-created-extended-collection-is-empty-while-manually-created-one-works-58360
+- Figma forum: DTCG composite token export — https://forum.figma.com/suggest-a-feature-11/dtcg-composite-token-export-support-51314 ; native variable export — https://forum.figma.com/ask-the-community-7/native-variable-export-feature-47831
+- GitHub figma/plugin-typings issues #375 (composed colors read-only at first; COLOR_OPACITY/TRANSFORM scopes) and #381 (opacity on translucent source) — https://github.com/figma/plugin-typings/issues/375 , https://github.com/figma/plugin-typings/issues/381
+- Figma developer docs (via search excerpt): REST variables types — https://developers.figma.com/docs/rest-api/variables-types ; Plugin API update 121 (extended collections) and 133 (EASING/TIMING) — https://developers.figma.com/docs/plugins/updates/2025/11/20/version-1-update-121 , https://developers.figma.com/docs/plugins/updates/2026/08/05/version-1-update-133/
+- DTCG 2025.10 stable specification context (via search excerpt) — https://www.designtokens.org/
+
+### 9.5 Web searches performed (2026-10-08)
+
+1. "Create and manage variables and collections" rename/duplicate/group — excerpts of 15145852043927.
+2. Mode limits per plan — 360040328273 excerpt + forum.
+3. Extended collections — 36346281624471 excerpt, developer docs, forum, Supernova.
+4. Native variable JSON / DTCG import-export — plugins and forum.
+5. "Import mode" / "Export mode" — 36346281624471 and 15343816063383 excerpts.
+6. Schema 2025 announcements — Figma blog, forum.
+7. Easing/timing variables — Motion help excerpts, plugin update 133.
+8. Color alias with opacity — plugin-typings issues.
+9. Variable name character restrictions — forum.
+10. Max variables per collection — 15145852043927 excerpt, forum.
+
+Four further searches (apply-variable UI, mode UI, scoping labels, code syntax) were **not executed** because the shared web-search budget was exhausted; the corresponding claims are [KNOW] and listed in §8.
+
+### 9.6 Prior Illigma context (not evidence of Figma behavior)
+
+- `old/docs/figma/observations/2026-09-27-live-figma.md` — [OBS]: fill popover Custom/Libraries tabs; Layout guide section; auto-layout gap "Between" state.
+- `old/docs/figma/feature-guide.md` §14 — notes timing/easing variables exist; checks list (stable IDs, alias cycles, mode inheritance, missing assets).

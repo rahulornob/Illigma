@@ -943,3 +943,78 @@ These are normative for Illigma (UPDATED version). Each fixture becomes a test i
 - If Figma turns out to round computed child sizes or positions (to whole pixels or to 1/100), the contract changes to match.
 - Auto layout output is not snapped to the pixel grid. "Snap to pixel grid" only affects user transforms [KNOW → V-30].
 - The tolerance for wrap line breaking is 1e-6 px (Illigma choice), to avoid float noise sending an exactly-fitting item to the next line.
+
+---
+
+## 4. Inspector & on-canvas controls (Figma UI3, functional only)
+
+### 4.1 Right sidebar: Design tab, frame-like node selected
+
+The [OBS] recorded these Layout-section controls on a Figma UI3 frame and on an auto layout container: flow choice with **Freeform**, Vertical and a **Wrap** control; width/height controls; nine-position alignment; gap; padding; **Clip content**; and a layout settings popover.
+
+| Control | Function | Data | Evidence |
+| --- | --- | --- | --- |
+| Flow selector: Freeform / Vertical / Horizontal / Grid | Freeform removes auto layout. Choosing a flow on a Freeform frame applies auto layout with that flow | `layoutMode` | [OBS][KNOW → V-03] |
+| Wrap control (stack flows only) | Toggles wrap for the current flow | `layoutWrap` | [OBS][SRC:forum-58389] |
+| W / H fields + sizing dropdown | Type a value (→ Fixed). Dropdown: Fixed width/height, Hug contents, Fill container (unavailable options are disabled), Add min…, Add max…, Remove min and max, apply variable | `layoutSizing*`, `min*/max*`, `width/height` | [DOC:360040451373 excerpt][OBS] |
+| Alignment box (9 positions) | Sets primary × counter alignment. Shows only counter options when gap = Auto. Focusable for keyboard (§5) | `primaryAxisAlignItems`, `counterAxisAlignItems` | [OBS][DOC excerpt] |
+| Gap field (`↔` or `↕` gap), with an **Auto** option | Fixed numeric gap (may be negative) or Auto | `itemSpacing`, `primaryAxisAlignItems=SPACE_*` | [OBS][DOC excerpt] |
+| Counter-axis gap field (wrap only) | Gap between lines. Supports Auto (→ `counterAxisAlignContent=SPACE_BETWEEN`) | `counterAxisSpacing`, `counterAxisAlignContent` | [API][KNOW → V-17] |
+| Padding: horizontal + vertical fields; **individual padding** toggle → 4 fields | Sets the paddings. Fields accept variables | `padding*` | [OBS][KNOW] |
+| Clip content checkbox | Clip descendants | `clipsContent` | [OBS] |
+| **Layout settings popover**: Inside stroke (Included/Excluded) · Canvas stacking (First on top/Last on top) · Layout (Updated/Legacy) · Text baseline alignment (enabled only for horizontal + text) · Auto spacing type (Between/Around/Evenly) | Advanced settings | `strokesIncludedInLayout`, `itemReverseZIndex`, `layoutVersion`, `counterAxisAlignItems=BASELINE`, `SPACE_*` | [OBS] (all five observed; baseline and auto spacing were disabled in that context) |
+| Grid: rows × columns fields + interactive grid picker | Set counts (arithmetic allowed) | `gridRowCount`, `gridColumnCount` | [DOC:31289469907863 excerpt] |
+| Grid: row gap, column gap | Track gaps | `gridRowGap`, `gridColumnGap` | [API] |
+| Grid: auto rows / automatic placement toggles (UI form unknown) | `gridAutoTracks`, `gridItemsPositioning` | | [API][SRC:forum-54244] → V-33 |
+| Selected grid track: size type (Fixed / Hug / Flex·fr) + value | Track sizing | `GridTrackSize` | [API][SRC:forum-40316] → V-36 |
+
+### 4.2 Child of an auto layout frame selected
+
+| Control | Function | Evidence |
+| --- | --- | --- |
+| W/H sizing dropdown incl. **Fill container** | Per-axis sizing in the parent | [DOC:360040451373 excerpt] |
+| **Ignore auto layout** toggle (Position section) | `layoutPositioning` | [DOC:360040451373 excerpt] |
+| X/Y fields | For flow children: read-only or disabled (writes are no-ops). For absolute children: editable | [API][KNOW → V-19] |
+| Constraints | Only shown for absolute children | [DOC:31441443713047 excerpt][KNOW] |
+| Grid child: row/column span + position, alignment in cell (UI form unknown) | `gridRowSpan`, `gridColumnSpan`, anchors, `gridChild*Align` | [API][DOC:31289469907863 excerpt] → V-35 |
+
+### 4.3 On-canvas affordances
+
+1. **Gap handles** between adjacent flow children, and **padding handles** along the inner edges. They appear on hover of a selected auto layout frame (pink overlays). Drag to change the value; click to type [DOC excerpt].
+2. **Insertion indicator** while dragging layers into or within an auto layout frame. Siblings reflow live around the placeholder [KNOW → V-22].
+3. **Resize handles.** Dragging switches the axis to Fixed. Double-clicking an edge may set Hug [KNOW → V-08].
+4. **Min/max preview** on hover of the W/H icon [DOC:360040451373 excerpt].
+5. **Grid track pills** on the top and left edges: hover label, grabber to drag-reorder (blue line preview), selection for sizing and deletion. Cell highlighting while dropping into a grid [DOC:31289469907863 excerpt][KNOW → V-36].
+6. **Grid span handles / edge dragging** to change a child's span [DOC:31289469907863 excerpt: "controls … for setting spans"] → V-35.
+
+### 4.4 Menus
+
+- Context menu / Object menu: Add auto layout, Remove auto layout, **More layout options → Suggest auto layout** [DOC:5731482952599 excerpt].
+- Actions menu: Suggest auto layout [DOC:5731482952599 excerpt]; **Update layout version for selection/page** [SRC:blog-2026-07].
+
+---
+
+## 5. Keyboard shortcuts (macOS / Windows)
+
+| Action | macOS | Windows | Evidence |
+| --- | --- | --- | --- |
+| Add auto layout / wrap selection in auto layout | ⇧A | Shift+A | [DOC:5731482952599 excerpt] |
+| Remove auto layout | ⌥⇧A | Alt+Shift+A | [SRC:kinney][SRC:shortcut-guides] → V-02 |
+| Suggest auto layout | ⌃⇧A (Control, not Command) | Ctrl+Alt+Shift+A | [DOC:5731482952599 excerpt] |
+| Alignment box focused: move alignment | ← ↑ → ↓ | same | [DOC:360040451373\|31289464393751 excerpt] |
+| Alignment box focused: align to edge | W / A / S / D | same | [DOC excerpt] |
+| Alignment box focused: toggle Auto gap ⇄ fixed | X | X | [DOC excerpt] |
+| Alignment box focused: toggle text baseline | B | B | [DOC excerpt] |
+| Reorder selected flow child | ← → (horizontal) / ↑ ↓ (vertical); possibly `[` `]` | same | [SRC:uxdesign-tips][SRC:forum-23623] → V-23 |
+| Drag into auto layout as Ignore auto layout | hold ⌃ while dragging | hold Ctrl | [DOC:360040451373 excerpt] → V-19 |
+| Drag without nesting / override large-object safeguard | hold ⌘ while dragging | hold Ctrl | [DOC:5731482952599 excerpt] → V-19 |
+| Handle drag: big-nudge steps | ⇧ | Shift | [SRC:kinney] |
+| Padding handle drag: opposite side too | ⌥ | Alt | [SRC:kinney][SRC:uxdesign-tricks] |
+| Padding handle drag: all four sides | ⌥⇧ | Alt+Shift | [SRC:kinney][SRC:pixso] |
+| Edit all padding from an input | ⌘-click input | Ctrl-click input | [SRC:kinney] |
+| Select children / parent (general) | ↵ / ⇧↵ | Enter / Shift+Enter | [KNOW] (`10-panels-shortcuts-workflow.md`) |
+| Deep select inside nested auto layout | ⌘-click | Ctrl-click | [DOC:31441443713047 excerpt] |
+| Align selection to parent (general) | ⌥W/A/S/D/H/V | Alt+W/A/S/D/H/V | [SRC:skillademia] → V-14 |
+| Show shortcut list | ⌘⇧? | Ctrl+Shift+? | [SRC:search excerpt] |
+
+**Conflict to resolve in V-19:** ⌃ (macOS) is documented for "drag in as Ignore auto layout", and ⌘ for "don't nest / override safeguard". On Windows both are documented as Ctrl. Record the actual Windows behavior.
