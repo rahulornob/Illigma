@@ -413,7 +413,7 @@ Format: **Context · Options · Decision · Consequences · Risks · Revisit whe
   2. Narrow phase, in z-order from the top: fill containment using the winding rule on cached flattened polylines (TS, to avoid a WASM call per test), distance-to-stroke ≤ `max(strokeWidth/2, tolScreenPx/zoom)`, the text box, and image or frame bounds.
   3. Return an ordered candidate list with the kind of hit (fill, stroke, label, handle).
 - The selection tool applies Figma's selection semantics to that list.
-- **Tolerances are screen-pixel constants** (provisional values, verified in the parity doc), converted with `tolDoc = tolPx / (zoom · 1)`. Canvas pixels are CSS pixels; DPR only affects raster.
+- **Tolerances are screen-pixel constants** (provisional values, verified in the parity doc), converted with `tolDoc = tolPx / zoom`. Canvas pixels are CSS pixels; DPR only affects raster resolution, never tolerances.
 - **Snapping.** At gesture start, `SnapIndex` collects candidate edges, centres, spacing gaps and pixel-grid lines from nodes in or near the viewport into sorted arrays. Per-frame queries are binary searches. The threshold is in screen pixels.
 - Handles and overlay controls are hit-tested **before** scene nodes, in screen space.
 
@@ -744,7 +744,7 @@ Three consumers read it: the renderer (draws glyph runs as TextBlobs with no re-
   - A value edit invalidates its bindings.
   - A mode change on a frame invalidates bindings in its subtree that reference that collection.
 - **Persisted literals.** A bound property also stores its last resolved literal (§12). Exporters and older readers stay meaningful, and the renderer never shows unresolved data.
-- **Styles** are documents-level entities that nodes reference (`fillStyleId` etc.). Style values may bind variables. A style edit propagates through the same dependency mechanism.
+- **Styles** are document-level entities that nodes reference (`fillStyleId` etc.). Style values may bind variables. A style edit propagates through the same dependency mechanism.
 - Runtime evaluation of prototype expressions lives in `prototype`. `variables` provides pure evaluation functions.
 
 ---

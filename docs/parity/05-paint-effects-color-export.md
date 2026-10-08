@@ -458,7 +458,7 @@ drop(e):  a = dilate(silhouette, e.spread)            // spread only on supporte
           a = gaussian(a, sigma = e.radius / 2); a = translate(a, e.offset)
           if !e.showShadowBehindNode: a = a * (1 - shapeCoverage(node))   // knock-out
           draw color e.color with alpha a, blend e.blendMode, behind content
-inner(e): a = 1 - silhouette; a = dilate(a, e.spread) // positive spread contracts the lit area [API]
+inner(e): a = 1 - silhouette; a = dilate(a, e.spread) // sign per API: "positive spread contracts the shadow"; direction vs CSS inset spread unverified (V-27)
           a = gaussian(translate(a, e.offset), e.radius/2) * silhouette
           draw e.color with alpha a above fills, blend e.blendMode
 ```
