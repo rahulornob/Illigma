@@ -14,7 +14,7 @@
 > | `[KNOW]` | The author's prior knowledge of Figma. **Not verified in this session.** Wherever it affects correctness, it is repeated in §8. |
 > | `[SRC:<url>]` | A non-help-center web source (Figma blog or best-practices page, Figma forum, third-party tutorial), seen only as a search excerpt. |
 >
-> **Research limitations (stated plainly).** help.figma.com, figma.com and framer.com could not be fetched; the proxy refused the connection. Official articles were seen only as WebSearch excerpts. Partway through the research, the WebSearch budget shared by all parallel agents ran out, so several planned confirmation searches never ran: preset catalog, Resize to fit placement, group→frame conversion, drag-reparent modifiers, section defaults and others. These behaviors are tagged `[KNOW]` and listed in §8. No video was watched, and no live Figma interaction was performed for this document.
+> **Research limitations (stated plainly).** help.figma.com, figma.com and framer.com could not be fetched; the proxy refused the connection. Official articles were seen only as WebSearch excerpts (some via the `figma-signup.helpjuice.com` mirror of the help center, marked "mirror"). In the first research pass the shared WebSearch budget ran out. When the work resumed on 2026-10-08, a second round of searches covered the preset catalog, Resize to fit, group/frame/section conversion, drag-reparent modifiers, section defaults, the Wrap-in-section shortcut, the Clip content default, layout-guide defaults, dev status and duplicate placement. Sections 1–5 were corrected where those excerpts contradicted earlier `[KNOW]` claims. Several answers rest only on forum posts (`[SRC]`) and stay in §8. No video was watched, and no live Figma interaction was performed for this document.
 
 ---
 
@@ -64,7 +64,8 @@
 | Resize to fit | (command) | One-time fit of a frame's bounds to its children `[DOC:360041539473 excerpt]` | Hug contents (continuous, auto layout only) |
 | Frame selection | (command, ⌥⌘G) | Wraps the selection in a new frame `[SRC:forum.figma.com/t/unframe-selection/46384]` | Create component (⌥⌘K) |
 | Remove frame | Ungroup (⇧⌘G) applied to a frame | Deletes the frame and keeps its children in place `[SRC:https://www.figma.com/best-practices/groups-versus-frames/]` | Delete (which removes the children too) |
-| Wrap in new section | (context-menu command) | Wraps the selection in a new section `[DOC:9771500257687 excerpt]` | Frame selection |
+| Wrap in new section | (context-menu command, ⌘S / Ctrl+S) | Wraps the selection in a new section `[DOC:9771500257687 excerpt]` `[SRC:https://forum.figma.com/t/wrap-in-a-section-not-available-in-new-ui3/83232]` | Frame selection; the Section tool (⇧S), which draws an empty section |
+| Convert to frame / group / section | Container-type dropdown above the Position fields, context menu "Convert to frame" / "Convert to section", Object menu | Changes the container kind of the selected frame, group or section in place, keeping its name `[SRC:https://forum.figma.com/t/changing-a-section-into-a-group-or-frame/31994]` `[SRC:https://forum.figma.com/suggest-a-feature-11/allow-the-name-to-be-preserved-when-a-group-is-made-into-a-frame-via-ctrl-alt-g-15688]` | Frame selection (⌥⌘G), which adds a new wrapper |
 | Scale (constraint) | `SCALE` | Proportional position and size relative to the container, when the container resizes `[DOC:360039957734 excerpt]` | The Scale tool (K), which also scales stroke widths, effects and text size `[KNOW]` |
 
 ### 1.5 When to use which (Figma's guidance)
@@ -130,7 +131,7 @@ Nodes that carry `constraints` (`ConstraintMixin`) `[API]`: FRAME, COMPONENT, CO
 | `fills` | `Paint[]` | `[SOLID #FFFFFF, opacity 1]` for `createFrame` / the Frame tool `[API]` | – | Doc |
 | `strokes`, `strokeWeight`, individual stroke weights | – | none `[KNOW]` | – | Doc |
 | `cornerRadius`, `topLeftRadius`… , `cornerSmoothing` | number; smoothing 0..1 | 0 | ≥ 0; clamped to half the edge length when rendering `[API]` | Doc |
-| `clipsContent` | boolean | **unverified**: believed `true` for Frame-tool frames `[KNOW]` (see §8 V-07) | – | Doc |
+| `clipsContent` | boolean | **Unverified, and the sources conflict.** A February 2024 forum report says all new frames clip. A September 2025 feature request, "Clip content in Layout should be on by default", implies Frame-tool frames now start with `false` `[SRC:https://forum.figma.com/suggest-a-feature-11/clip-content-in-layout-should-be-on-by-default-45504]`. Illigma must make the default a single named constant so it can be set once V-07 is resolved | – | Doc |
 | `layoutGrids` | `LayoutGrid[]` | `[]` | ordered list | Doc |
 | `gridStyleId` | string | `""` | id of a `GridStyle` | Doc |
 | `guides` | `Guide[]` (`axis: 'X'\|'Y'`, `offset`) | `[]` | frame-owned ruler guides `[API]` | Doc |
@@ -222,9 +223,13 @@ GridLayoutGrid {
 | --- | --- | --- |
 | Frame created by click | 100 × 100, white fill | `[API]` (`createFrame`: "similar to using the F shortcut followed by a click") |
 | Constraints of any new layer | Left, Top | `[DOC:360039957734 excerpt]` |
-| Layout guide color | red at 10% opacity | `[SRC:https://uxcel.com/lessons/layout-grids-439]` (third-party) |
-| Uniform grid size | 10 | `[KNOW]` |
-| Columns/Rows when first chosen | count 5, Stretch, margin 0, gutter 20 | `[KNOW]` |
+| Type of a newly added layout guide | Uniform grid | `[DOC:360040450513 excerpt]` ("a uniform grid will be applied to the frame by default") |
+| Settings flyout on add | Opens automatically when a layout guide is added (since April 2025) | `[SRC:https://forum.figma.com/forum-news-and-guidelines-25/updates-announced-on-the-april-25-release-notes-livestream-39496]` |
+| Layout guide color | red `#FF0000` at 10% opacity | `[SRC:https://uxcel.com/lessons/layout-grids-439]` plus a second tutorial (third-party) |
+| Uniform grid size | 10 | `[SRC]` (tutorial excerpt) `[KNOW]` |
+| Columns/Rows when first chosen | count 5, Stretch, margin 0, gutter 20 per `[KNOW]`. Tutorials disagree (count 12; margin 0 or 24) `[SRC]` | V-36 |
+| Section fill/stroke | Sources conflict: grey (2023 forum) or white `#FFFFFF` (later forum). There is no user setting for the default | `[SRC:https://forum.figma.com/t/default-section-colours-in-figma/35557]` (V-46) |
+| Duplicate of a top-level frame | Placed 40 px to the right of the original (2021 report) | `[SRC:https://forum.figma.com/t/set-default-frame-spacing/2306]` (V-38) |
 | Layout guide visible | true | `[API]` ("Defaults to true") |
 | `layoutMode` | NONE (Freeform) | `[API]` |
 | Group/frame/section names | "Group N" / "Frame N" / "Section N" | `[KNOW]` |
@@ -257,7 +262,7 @@ GridLayoutGrid {
 4. **Target parent.** The new frame becomes a child of the innermost eligible container under the drag start point: a frame or component (not an instance's internals), a section, or the page. If that container uses auto layout, the new frame is inserted into the flow (cross-area). `[KNOW]`
 5. **Auto-adoption.** Drawing a frame so that it fully encloses existing sibling layers moves those layers into the new frame, keeping their absolute positions. `[KNOW]`, scope unverified: V-04. Partially enclosed layers are not adopted. `[KNOW]`
 6. **Z-order.** The new frame is placed above all existing siblings in its parent. `[KNOW]`
-7. **Presets.** While the Frame tool is active, the right sidebar lists frame presets grouped by category `[DOC:360041539473 excerpt]`. The categories are believed to be Phone, Tablet, Desktop, Presentation, Watch, Paper, Social media, Figma Community and Archive `[KNOW]`. Clicking a preset creates a frame of that exact size, named after the preset `[KNOW]`. Where it is placed (beside existing content, or at the viewport center) is unverified: V-02.
+7. **Presets.** While the Frame tool is active, the right sidebar lists frame presets grouped by category `[DOC:360041539473 excerpt]`. The nine categories are Phone, Tablet, Desktop, Presentation, Watch, Paper, Social media, Figma Community and Archive `[DOC:360041539473 excerpt, mirror]` `[SRC:https://forum.figma.com/suggest-a-feature-11/ability-to-pin-or-customize-default-frame-presets-50212]`. The individual entries and sizes are not in any source seen (V-01). Users cannot add, pin or reorder presets `[SRC:forum 50212]`. Clicking a preset creates a frame of that exact size, named after the preset `[KNOW]`. Where it is placed (beside existing content, or at the viewport center) is unverified: V-02.
 8. **Changing the preset of an existing frame** (selected frame → frame preset dropdown at the top of the Design panel) sets the frame's width and height to the preset's. **Children's constraints are applied**; layers with default Left/Top constraints keep their size and position. `[DOC:360041539473 excerpt]`
 9. **Orientation swap** (portrait/landscape) swaps width and height through the same constraint-applying resize. `[KNOW]`, and its presence in UI3 is unverified.
 10. **No preset identity is stored.** After creation, a preset frame is an ordinary frame. `[API]` (absence of a field)
@@ -266,14 +271,18 @@ GridLayoutGrid {
 
 - Frames can contain any layer type **except** sections (and pages) `[DOC:9771500257687 excerpt]`, and they nest to any depth `[SRC:https://www.figma.com/best-practices/groups-versus-frames/]`.
 - A frame's bounds never follow its content. Children may extend outside the frame, and resizing a frame never adds or removes children. `[DOC:360041539473 excerpt]` `[KNOW]`
-- **Drag-reparenting (canvas):** when a moved layer is dropped so that the drop location is inside a different frame, it becomes a child of the deepest eligible frame there. When it is dropped outside its frame, it moves to the next container (section or page). The absolute transform (position and rotation) is preserved; the layer is appended at the top of the new parent's z-order. `[KNOW]` Whether the decision uses the pointer position or the layer's bounds, and whether a modifier suppresses reparenting, is unverified: V-05.
+- **Drag-reparenting (canvas):** Figma calls this automatic nesting. When a moved layer is dropped so that the drop location is inside a different frame, it becomes a child of the deepest eligible frame there. When it is dropped outside its frame, it moves to the next container (section or page). The absolute transform (position and rotation) is preserved; the layer is appended at the top of the new parent's z-order. `[KNOW]` `[SRC:https://forum.figma.com/t/disable-auto-nesting-auto-reparenting-while-moving-objects/799]`
+  - **Space** pressed at pointer-down, before the drag starts, suppresses reparenting for that gesture. Users report the timing is fussy. `[SRC:forum 799]`
+  - A **locked** frame does not adopt layers dragged over it `[SRC:forum 799]`.
+  - There is no setting that disables automatic nesting `[SRC:forum 799]`.
+  - Whether the decision uses the pointer position or the layer's bounds is unverified: V-05.
 - Instance sublayers cannot be reparented, and nodes cannot be moved into an instance. `[API]` (`group` doc: "cannot include any node that cannot be reparented, such as children of instances")
 - A container cannot be moved into its own descendant (cycle prevention). `[KNOW]`
 - Frames can be rotated. Children rotate with the frame, and constraints are evaluated in the frame's local, unrotated space. `[API]` (rotation), `[KNOW]`
 
 ### 3.3 Frame labels & selecting frames on the canvas
 
-- Name labels are drawn for **top-level frames** only `[DOC:360041539473 excerpt]`. Nested frames have no label, and wrapping a labelled frame in another frame removes its label `[SRC:https://forum.figma.com/suggest-a-feature-11/option-to-hide-frame-labels-10420]`. Frames directly inside sections keep their labels `[SRC:https://forum.figma.com/suggest-a-feature-11/option-to-hide-frame-labels-10420]` `[KNOW]`. Components and instances at the top level also show labels `[KNOW]`.
+- Name labels are drawn for **top-level frames** only `[DOC:360041539473 excerpt]`. Nested frames have no label, and wrapping a labelled frame in another frame removes its label `[SRC:https://forum.figma.com/suggest-a-feature-11/option-to-hide-frame-labels-10420]`. Frames directly inside sections keep their labels `[SRC:https://forum.figma.com/suggest-a-feature-11/option-to-hide-frame-labels-10420]` `[KNOW]`. Grouping a top-level frame (⌘G) removes its label, because the frame is no longer a direct child of the page `[SRC:forum 10420]`. Components and instances at the top level also show labels `[KNOW]`. There is no built-in setting that hides frame labels; the request has been open since 2021 `[SRC:forum 10420]`. One forum reply disputes the "top level only" rule, so it is listed in V-47.
 - Label interactions `[KNOW]` (with partial `[SRC:forum anecdote]`):
   - **Click** selects the frame, replacing the selection. **Shift-click** toggles it into the selection.
   - **Drag** moves the frame, even when its content fully covers its area.
@@ -309,14 +318,24 @@ frameSelection(sel):
 ```
 
 - If the parent uses auto layout, the new frame takes the flow slot of the topmost selected item. `[KNOW]`
-- With a single **group** selected, whether Figma converts the group into a frame (keeping its name) or wraps it is unverified: V-11.
+- With a single **group** selected, a 2024 forum request reports that ⌥⌘G turns it into a frame with a generic name ("Frame 40"), not the group's name `[SRC:https://forum.figma.com/suggest-a-feature-11/allow-the-name-to-be-preserved-when-a-group-is-made-into-a-frame-via-ctrl-alt-g-15688]`. Whether that is an in-place conversion or a wrap that leaves the group nested inside is unverified: V-11.
+
+**Convert between frame, group and section** `[SRC:https://forum.figma.com/t/changing-a-section-into-a-group-or-frame/31994]` `[SRC:https://uxplanet.org/my-tips-from-our-figma-like-the-pros-talk-during-config-2023-af05ccf25831]` `[SRC:forum 15688]`
+
+- The container-type dropdown above the Position fields lists **Frame**, **Group** and **Section**. Choosing another entry converts the selected container in place. Context-menu, Object-menu and quick-action commands do the same ("Convert to frame", "Convert to section").
+- Conversion through the dropdown or the menu **keeps the layer name**, unlike ⌥⌘G.
+- Group → frame: the frame takes the group's current bounds and keeps the children's absolute positions. Its default fill and clip are unverified (V-44).
+- Frame → group: the frame's fills, strokes, clip, layout guides, auto layout and constraints are lost; the group's bounds snap to the children's union (V-44).
+- Frame → section is only offered for a frame whose parent is a page or a section. A nested frame does not offer "Convert to section" `[SRC:https://forum.figma.com/report-a-problem-6/section-in-a-frame-36868]` (January 2025).
+- Section → frame, and frame → section, keep the bounds. Which properties survive (fills, strokes, radius, dev status) is unverified (V-44).
+- The Plugin API has no conversion call. A converted node gets a new node ID, according to a community answer `[SRC:https://forum.figma.com/t/not-able-to-convert-existing-group-into-frame-by-using-plugin-api/35735]`. Illigma may keep the ID, but the file must stay valid either way.
 
 **Remove frame = Ungroup (⇧⌘G / Ctrl+Shift+G) on a frame** `[SRC:https://www.figma.com/best-practices/groups-versus-frames/]` `[API]` (`ungroup`):
 
 - The children move into the frame's parent at the frame's z-index, keeping their order and absolute transforms. The frame is deleted along with its fills, strokes, effects, layout guides, clip, auto layout and prototype settings. The children's own constraints are kept as values. If the frame was selected, the selection becomes its children.
 - Alternative shortcuts (⇧⌫ / ⌘⌫) are only reported by third-party or forum sources; see V-12.
 
-**Resize to fit (⌥⇧⌘R / Ctrl+Alt+Shift+R `[KNOW]`; also available as a properties-panel action `[DOC:360041539473 excerpt]`):**
+**Resize to fit (⌥⇧⌘R / Ctrl+Alt+Shift+R `[SRC:https://app.uxcel.com/lessons/frames-in-figma-489]` `[SRC:https://forum.figma.com/ask-the-community-7/no-resize-to-fit-option-for-auto-layouts-40657]`; also a properties-panel action `[DOC:360041539473 excerpt]` and a context-menu entry `[SRC:skyeng.ru tutorial]`):**
 
 ```
 resizeToFit(f):                     // f: FRAME/COMPONENT with layoutMode == NONE
@@ -329,7 +348,17 @@ resizeToFit(f):                     // f: FRAME/COMPONENT with layoutMode == NON
 ```
 
 - With multiple frames selected, each frame fits its own children. `[KNOW]`
-- It does not apply to auto-layout frames (use Hug), groups (already fitted) or sections (V-14). `[KNOW]`
+- It is not offered for groups, which are already fitted `[KNOW]`.
+- **Auto-layout frames:** the menu item is hidden (use Hug), but a May 2025 report says the shortcut still acts on them `[SRC:forum 40657]` (V-14).
+- **Sections:** Resize to fit **is** available. It leaves padding between the section edge and the union of its children; reports give 100 px and 80 px, and the padding is not configurable `[SRC:https://forum.figma.com/t/resize-to-fit-in-sections/32400]` (2022, V-14). Double-clicking a section's corner handle also fits the section to its contents in Figma Design (not in FigJam) `[SRC:https://forum.figma.com/t/double-click-corner-of-a-section-in-figjam-to-expand-and-center-objects/51531]` (V-48).
+- **Component sets** accept the same shortcut `[SRC:forum, 2021 thread cited in the 2026-10-08 search]`.
+
+```
+resizeSectionToFit(s):               // [SRC] only; padding value V-14
+  b = union(layoutBounds(k) in page space for k in s.children)
+  s.bounds = inflate(b, P)            // P ≈ 100 (or 80) on every side
+  // children keep their absolute positions; sections never propagate constraints
+```
 
 ### 3.6 Groups
 
@@ -368,6 +397,7 @@ resizeGroup(g, newBox):
 **Constraints and groups** `[DOC:360039957734 excerpt]` `[API]`:
 
 - A group has no constraints of its own. Setting constraints while a group is selected writes them to **every child** (recursively through nested groups and booleans `[KNOW]`). If the children differ, the UI shows "Mixed" `[KNOW]`.
+  - **The sources conflict on whether UI3 offers this.** The plugin docs page for `GroupNode` says that in the UI, "you can change the constraints of a group … Under the hood, Figma applies the provided constraints to each child" `[SRC:https://developers.figma.com/docs/plugins/api/GroupNode excerpt]`. The 2026-09-27 constraints note summarizes the full article as "groups applying to members" `[OBS:constraints-note]`. Against that, a 2024 community-support reply and a help-center excerpt say "You can't apply constraints to groups" `[DOC:360039957734 excerpt, mirror]` `[SRC:https://forum.figma.com/ask-the-community-7/constraints-not-showing-in-the-right-panel-8037]`. V-43 decides; until then Illigma implements the write-through above.
 - Children of a group are constrained relative to the **nearest frame ancestor**, never to the group's bounds. When that frame resizes, each child applies its own constraints, and the group's bounds are then recomputed.
 - A child's X/Y in the inspector are relative to the container parent, not to the group. `[API]`
 
@@ -390,8 +420,14 @@ resizeGroup(g, newBox):
 **Create** `[DOC:9771500257687 excerpt]`
 
 - Section tool from the toolbar, or ⇧S. Then click-and-drag on the canvas.
-- Context menu → **Wrap in new section** wraps the current selection. Its keyboard shortcut (believed ⌥⌘S / Ctrl+Alt+S) and whether the new section is padded around the selection are `[KNOW]` (V-19).
-- The click-without-drag default size and the default fill and stroke are unverified (V-19).
+- Context menu → **Wrap in new section** wraps the current selection `[DOC:9771500257687 excerpt]`. The command is also available as follows:
+  - **⌘S / Ctrl+S** `[SRC:https://forum.figma.com/t/wrap-in-a-section-not-available-in-new-ui3/83232]`. Figma community support confirmed it still works in UI3 (2024).
+  - The properties panel's "…" menu, and a "Wrap in new section" icon / container-type dropdown shown for multi-selections `[SRC:forum 83232]` `[SRC:forum, September 2026 staff reply]`.
+  - Quick actions (⌘K / ⌘/) `[SRC:forum 83232]`.
+  - A feature request asks for ⌘S to work on a **single** object, which implies it currently needs two or more selected layers `[SRC:https://forum.figma.com/suggest-a-feature-11/create-section-when-selecting-single-object-and-hitting-cmd-s-46600]`.
+  - Whether the new section is padded around the selection: V-19.
+- In UI2, clicking the Section tool with frames selected created a padded section around them. **UI3 removed this**: the tool always draws `[SRC:https://forum.figma.com/t/ui3-removed-auto-create-section-by-clicking-the-section-button-on-toolbar/90156]` (October 2024).
+- The click-without-drag default size is unverified (V-19). The default fill is grey or white (sources conflict) and cannot be changed by the user (V-46).
 
 **Nesting rules** `[DOC:9771500257687 excerpt]`
 
@@ -419,9 +455,14 @@ resizeGroup(g, newBox):
 
 **Dev status** `[DOC:9771500257687 excerpt]` `[DOC:26781702258583 excerpt]` `[API]`
 
-- **Mark as ready for dev** sets `devStatus = {type:'READY_FOR_DEV'}`. The status can be removed from the overflow menu on the status label, and Figma's two articles word that menu item differently ("Remove ready status" vs "Remove status"). `COMPLETED` is the other value.
-- Editing marked content changes the shown status to "Changed". The user can then acknowledge the change, optionally with a description, which returns the status to Ready for dev. The plan entitlement for this flow is unclear.
-- A status can only be set on a node directly under a page or section, and never inside a node that already has a status.
+- **Mark as ready for dev** sets `devStatus = {type:'READY_FOR_DEV'}`. It applies to sections, frames and components; for sections and frames the control sits next to the canvas label, and for components it sits above the upper-right corner `[DOC:26781702258583 excerpt]` ("Dev Mode statuses and notifications"). The status can be removed from the overflow menu on the status label, and Figma's two articles word that menu item differently ("Remove ready status" vs "Remove status"). `COMPLETED` is the other value; Figma offers it only on Organization/Enterprise plans `[DOC:26781702258583 excerpt]`.
+- Marking does not lock the content `[DOC:26781702258583 excerpt]`.
+- **Changed** is set automatically when marked content is edited, and users cannot set it by hand. The following do **not** trigger it `[DOC:26781702258583 excerpt]`:
+  - instances updated from a shared library;
+  - a value change of a variable or style that is already applied;
+  - temporary states such as hover previews inside auto layout.
+- To clear Changed, the designer clicks the status, may type a reason in the text box, and confirms with **Done with changes**. The status returns to Ready for dev, and the reason goes into version history and notifications `[DOC:26781702258583 excerpt]`. In the plugin data, the reason is `devStatus.description` `[API]`. "Changed" has no enum value in the typings, so it is derived state; V-45 decides how Illigma computes it.
+- A status can only be set on a node directly under a page or section, and never inside a node that already has a status `[API]`. For nested sections, the **outer** section is the one that is marked `[SRC:https://forum.figma.com/t/unable-to-mark-ready-for-dev/54825]`.
 
 **Prototyping** `[DOC:16194160540567 excerpt]`
 
@@ -571,7 +612,9 @@ uniformGrid(G, W, H): vertical lines at x = k*G.sectionSize, horizontal lines at
   - Margin (stretch) or offset (left/right).
   - Gutter.
   - Color and opacity `[SRC:uxcel]`.
-- Multiple guides per frame are allowed and kept in list order `[API]` `[SRC:uxcel]`. Where a newly added guide goes in the list, and its default type in UI3, are unverified (V-36).
+- Multiple guides per frame are allowed and kept in list order `[API]` `[SRC:uxcel]`.
+- Clicking **+** adds a **Uniform grid** `[DOC:360040450513 excerpt]` and, since April 2025, opens its settings flyout automatically `[SRC:forum 39496]`.
+- Where a newly added guide goes in the list, and the default values when the type is switched to Columns or Rows, are unverified (V-36).
 
 **Styles** `[API]` `[DOC:360038746534 title]`
 
@@ -603,7 +646,7 @@ uniformGrid(G, W, H): vertical lines at x = k*G.sectionSize, horizontal lines at
 **Copy/paste and duplicate** `[KNOW]`
 
 - Copying a frame copies its subtree with all properties from §2.
-- Duplicating (⌘D) a top-level frame places the copy at an offset beside the original; the exact rule is V-38.
+- Duplicating (⌘D) a top-level frame places the copy beside the original. A 2021 report gives 40 px to the right, and a 2023 report says the copy goes after the **last** frame of a row, not next to the original `[SRC:https://forum.figma.com/t/set-default-frame-spacing/2306]` `[SRC:https://forum.figma.com/ask-the-community-7/how-can-i-manage-the-ordering-of-my-toplevel-frames-21673]`. A nested layer is duplicated in place `[SRC:FrontendMasters course excerpt]`. The exact rule is V-38.
 - Pasting while a frame is selected places the clipboard inside that frame (clipboard rules are cross-area). A section is never pasted into a frame (V-20).
 - Copy/paste of properties (⌥⌘C/⌥⌘V) may include layout guides `[DOC:4412765442967 title]` (V-39).
 
@@ -644,7 +687,7 @@ Observed section order: **Position, Layout, Appearance, Fill, Stroke, Effects, L
 
 | Control | Function |
 | --- | --- |
-| Frame-type / preset dropdown (panel header) | Shows "Frame", or the component and instance equivalents. Lists presets; choosing one resizes with constraints `[DOC:360041539473 excerpt]` `[KNOW]` |
+| Frame-type / preset dropdown (panel header) | Shows "Frame", or the component and instance equivalents. Lists presets; choosing one resizes with constraints `[DOC:360041539473 excerpt]` `[KNOW]`. It also lists the container types **Frame / Group / Section**; choosing another converts in place (3.5) `[SRC:forum 31994]` `[SRC:uxplanet Config 2023 tips]` |
 | Position: alignment buttons, X, Y, rotation | X/Y are relative to the container parent `[API]` `[OBS]` |
 | Position: Constraints (pin diagram + 2 dropdowns) | Shown when the frame itself is a child of a qualifying container `[OBS:constraints-note]` |
 | Layout: Freeform / auto-layout flow selector | Freeform = `layoutMode: 'NONE'` `[OBS]` |
@@ -675,7 +718,8 @@ Observed section order: **Position, Layout, Appearance, Fill, Stroke, Effects, L
 
 - Frame selection, Group selection, Ungroup.
 - Wrap in new section `[DOC:9771500257687 excerpt]`.
-- Resize to fit (V-14).
+- Convert to frame, Convert to section `[SRC:forum 31994]` `[SRC:forum 36868]`.
+- Resize to fit `[SRC:skyeng.ru tutorial]` (V-14).
 - Show/Hide, Lock/Unlock (cross-area).
 - Mark as ready for dev, for sections and top-level frames `[DOC:9771500257687 excerpt]`.
 
@@ -712,8 +756,10 @@ Observed section order: **Position, Layout, Appearance, Fill, Stroke, Effects, L
 | Ungroup / remove frame | `⇧⌘G` | `Ctrl+Shift+G` | `[API]` `[SRC:https://www.figma.com/best-practices/groups-versus-frames/]` |
 | Alternative remove-frame keys | `⇧⌫` or `⌘⌫` (reported) | `Shift+Backspace`, `Ctrl+Backspace` or `Ctrl+Shift+Backspace` (reported) | `[SRC]` only (V-12) |
 | Frame selection | `⌥⌘G` | `Ctrl+Alt+G` | `[SRC:forum.figma.com/t/unframe-selection/46384]` `[SRC:forum frame-selection-shortuct-ctrl-alt-g-not-working-54782]` |
-| Wrap in new section | `⌥⌘S` (believed) | `Ctrl+Alt+S` (believed) | `[KNOW]` (V-19) |
-| Resize to fit | `⌥⇧⌘R` | `Ctrl+Alt+Shift+R` | `[KNOW]` (V-14) |
+| Wrap in new section | `⌘S` (2+ layers selected) | `Ctrl+S` | `[SRC:forum 83232]` (community-support reply, 2024) (V-19). Earlier drafts guessed `⌥⌘S`, which is wrong |
+| Resize to fit | `⌥⇧⌘R` | `Ctrl+Alt+Shift+R` | `[SRC:uxcel]` `[SRC:forum 40657]` (V-14) |
+| Suppress automatic nesting while dragging | hold `Space` from pointer-down | hold `Space` from pointer-down | `[SRC:forum 799]` (V-05) |
+| Fit section to contents | double-click a section corner handle | same | `[SRC:forum 51531]` (V-48) |
 | Ignore constraints while resizing | hold `⌘` | hold `Ctrl` | `[DOC:360039957734 excerpt]` |
 | Show/hide layout guides | `⇧G` per help center. Third-party sources: `⌃G` | `Shift+G` per help center. Third-party sources: `Ctrl+Shift+4` | `[DOC:360040450513 excerpt]` `[SRC]` (V-31) |
 | Rename selected layer | `⌘R` | `Ctrl+R` | `[KNOW]` (cross-area) |

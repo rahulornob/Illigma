@@ -12,6 +12,8 @@
 > - **[SRC:&lt;url&gt;]** — other web sources (forum posts, third-party tutorials, an unverified Help Center mirror) seen only as search excerpts.
 >
 > **Research limits (honest disclosure).** The shared per-turn WebSearch budget for this workflow was exhausted after 14 queries by this author. Topics that therefore could **not** be confirmed by search and rest only on [API] and [KNOW]: videos in prototypes, variable modes in prototypes, the "State management for prototypes" article body, sections in prototyping, accessible prototypes, offline presentation, connections from main components, viewing connections, animated GIFs, and the exact keyboard shortcuts of presentation view. No live Figma session, video or article body was inspected.
+>
+> **Adversarial review (2026-10-08).** A second pass ran 8 further WebSearch queries (videos in prototypes, sections in prototyping, accessible prototypes, 2025–2026 prototyping release notes, the Feb-2024 "15+ prototyping improvements" post, presentation-view options/arrow keys, state management, Scroll-to offsets). Their excerpts corrected several claims (video defaults, Scroll-to offsets, sections as destinations, multiple After delay triggers, NOT/negative numbers in expressions) and added items PR-276…PR-313. Still no article body, live Figma session or video was inspected. See §10.
 
 ---
 
@@ -37,9 +39,9 @@
 | **Smart animate** | Transition that matches layers between source and destination and interpolates their properties. | `SMART_ANIMATE` or `matchLayers:true` | [API] [DOC:360039818874 excerpt] |
 | **Overflow (scrolling)** | Whether a frame scrolls in the player (none/horizontal/vertical/both). | `overflowDirection` | [API] [DOC:360039818734 excerpt] |
 | **Position when scrolling** | Per-layer "Scroll with parent" / "Fixed" / "Sticky". | REST `scrollBehavior`; Plugin `numberOfFixedChildren` | [API] [DOC:360039818734 excerpt] |
-| **State memorization / sharing** | Since 2023-05-24 Figma remembers scroll (and component) state per screen and shares it between screens with matching names. | NODE action `reset*` flags | [API] [DOC:360051747774 excerpt] |
+| **State memorization / sharing** | Since 2023-05-24 Figma remembers scroll, interactive-component and video state per screen and shares it between screens with matching names/objects. | NODE action `reset*` flags | [API] [DOC:360051747774 excerpt] [DOC:14397859494295 excerpt] |
 | **Interactive component** | Interactions authored *between variants* of a component set; every instance carries them. | reactions on variant `COMPONENT`s with `CHANGE_TO` | [API] [DOC:360061175334 excerpt] |
-| **Presentation view** | Figma's full player. In Illigma: the **in-app player window**. | runtime | [DOC:360040318013 excerpt] |
+| **Presentation view** | Figma's full player. In Illigma: the **in-app player window**. Article 360040318013 is now titled "Present designs and prototypes" (URL slug seen in 2026-10-08 search results; formerly "Play your prototypes"). | runtime | [DOC:360040318013 excerpt] |
 | **Inline preview** | Small player docked on the canvas (Shift+Space). | runtime | [DOC:360040318013 excerpt] [SRC] |
 | **Device** | Page-level device frame / viewport used by the player. | REST `prototypeDevice` | [API] [DOC:21158597546391 excerpt] |
 | **Prototype background** | Page-level color behind the prototype in the player. | `PageNode.prototypeBackgrounds` | [API] |

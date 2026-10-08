@@ -7,13 +7,15 @@
 > - **[DOC:<id> excerpt]** — official Figma Help Center article. Article bodies were **not** readable in this session (help.figma.com is DNS-blocked); only search-engine excerpts were seen, so every DOC tag carries "excerpt".
 > - **[OBS]** — the 2026-09-27 read-only live-Figma UI observation. It explicitly did **not** cover components, so it is not used as evidence for component behavior in this document.
 > - **[KNOW]** — the author's own product knowledge, not verified in this session. Anything [KNOW]-only that affects correctness is repeated in §8.
-> - **[SRC:<url>]** — other sources: Figma forum threads, Figma developer changelog (search excerpt), Figma-authored MCP skill documents (`skill://figma/...`, read in full in this session via Figma's own MCP server), third-party guides.
+> - **[SRC:<url>]** — other sources: Figma forum threads, Figma developer changelog (search excerpt), Figma-authored MCP skill documents (`skill://figma/...`, read in full in this session via Figma's own MCP server), third-party guides. `[SRC:search summary → Help Center, article not identified]` marks a search-engine summary that attributes a statement to the Figma Help Center without showing which article. It is weaker than a DOC excerpt.
 >
 > **Research limits (honesty note).** No live Figma file was inspected for this area. No video was watched. Help Center articles were seen only as search excerpts. The session's shared web-search budget was exhausted part-way through the research, so several sub-topics (exact override list for auto layout properties, nearest-variant selection, restore-component placement, "Simplify instances") rest on [KNOW] and are listed in §8 as experiments.
 >
 > **Rule reminder.** Figma is the source of truth for behavior and data model; Framer only for the look of the editor. This document describes behavior only.
 >
-> **Adversarial review (2026-10-08).** A second pass re-checked every typings member in this domain, the article catalog and the sibling parity docs. It corrected overstated tags, added CP-203…CP-243 and experiments E-37…E-47. See §10. The reviewer had **no** web-search budget left (shared per-turn limit exhausted), so no new Help Center excerpts were added. The Figma-authored skill docs cited as `skill://figma/...` were re-fetched and re-read from Figma's official repository (`raw.githubusercontent.com/figma/mcp-server-guide/main/skills/figma-use/...`).
+> **Adversarial review (2026-10-08), two passes.**
+> - *Pass 1 (interrupted by a session limit).* It re-checked every typings member in this domain, the article catalog and the sibling parity docs. It corrected overstated tags and added CP-203…CP-243. Pass 1 had **no** web-search budget. It re-read the Figma-authored skill docs cited as `skill://figma/...` from Figma's official repository (`raw.githubusercontent.com/figma/mcp-server-guide/main/skills/figma-use/...`). It referenced experiments E-37…E-47 but did not write them, and it wrote no review log.
+> - *Pass 2 (this pass).* It completed E-37…E-47 in §8 and re-diffed the typings. It ran 8 web searches; their results were search-engine summaries of excerpts, and no article bodies were read. It added CP-244…CP-262 and E-48…E-53, corrected or re-tagged existing items, and wrote §10.
 
 ---
 
