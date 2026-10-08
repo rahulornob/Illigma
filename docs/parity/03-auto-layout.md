@@ -423,3 +423,523 @@ Sources: [API][DOC:360040451373 excerpt][SRC:forum-58344]. The group row is → 
 - Opacity 0 is **not** hidden. The child still takes space [KNOW → V-21].
 - `visible` is bindable to a boolean variable. A mode change re-runs layout [API].
 - In GRID with manual placement, whether a hidden child keeps its cell (blocking it) or frees it is → V-35.
+
+### 3.14 Strokes in layout and the layout version
+
+**The setting.** The layout settings popover has a strokes control: "Inside stroke: **Included / Excluded**" ([OBS] showed "Inside stroke = Included" on an Updated frame). Older help text calls it "included in layout / excluded from layout" [DOC:360040451373 excerpt]. Data: `strokesIncludedInLayout` [API]. The help text says strokes are ignored by default. The [OBS] container showed Included, and the default for new frames is → V-24.
+
+**Updated version (CSS-aligned, shipped 2026-07-24)** [DOC:42031586813719 excerpt][SRC:blog-2026-07][SRC:forum-56357]:
+- Only **inside** strokes of the auto layout frame itself affect layout. Each side's inside stroke weight (`strokeTopWeight` … for individual strokes) is added to that side's padding when Included. This matches CSS `border-box`.
+- **Center and outside strokes are visual only.** They never affect layout.
+- A parent's stroke setting **no longer carries into its children**. Each frame's strokes follow that frame's own setting.
+- The inside stroke counts toward the padding floor (§3.7).
+- **Fill siblings divide space by content area.** A Fill sibling with thicker included strokes or larger padding ends up larger on the outside, so that the content areas are equal.
+
+**Legacy version** [KNOW → V-26]:
+- When the parent's `strokesIncludedInLayout` is true, the layout boxes of children include their center/outside stroke extents, so outside strokes push siblings.
+- The frame's own strokes are treated per its alignment.
+- Padding is compressible (§3.7).
+- Fill children share space equally by **outer** size.
+- The exact rules must be measured before implementing them (P2, needed for importing .fig files).
+
+**Layout version toggle** [OBS: "Layout = Updated"][SRC:forum-56357][SRC:blog-2026-07]:
+- Every auto layout frame and main component has a **Layout: Updated / Legacy** setting in its layout settings.
+- New frames are Updated. Existing frames stay Legacy until someone updates them.
+- **Instances cannot toggle it.** They follow their main component.
+- An Actions-menu command, "Update layout version for selection/page", updates in bulk.
+- Per [SRC:blog-2026-07], the toggle remains available until **2027-01-24**, after which legacy frames show an **Update** button instead of a switch.
+- Switching the version is one undo step. It may resize frames, for example when the padding floor applies.
+
+### 3.15 Canvas stacking and clip content
+
+- **Canvas stacking.** `itemReverseZIndex = false` is **Last on top** (the default; observed as "Last on top" [OBS]). Later children (right-most or bottom-most) paint over earlier ones. `true` is **First on top** [API][DOC:360040451373 excerpt].
+  - It matters mainly with negative gaps.
+  - It changes **only paint order**. The layers panel and the `children` order are unchanged [DOC:360040451373 excerpt].
+  - Whether hit-testing (click-to-select on overlapping children) follows the paint order is → V-20.
+  - A 2026-03 forum report says the option is missing for Grid frames [SRC:forum-grid-stacking] → V-20.
+- **Clip content.** `clipsContent` clips all descendants to the frame bounds: overflowing flow children, negative-gap overflow, absolute children and Hug-with-max overflow [API][OBS "Clip content"].
+  - The default for wrappers created by Shift+A is → V-27.
+  - Clipping does not affect layout math.
+
+### 3.16 Reordering and insertion
+
+**Canvas drag inside the same auto layout parent** [KNOW → V-22]:
+- Dragging a flow child **reorders** it. It does not set x/y, because x/y of flow children are computed [API].
+- During the drag, the siblings reflow live around a placeholder at the prospective index, and the dragged layer follows the pointer.
+- On drop, the child is moved to that index in `children`.
+- **Insertion index:**
+  - Stack without wrap: the index whose sibling midpoint along the main axis is the first one greater than the pointer coordinate.
+  - Wrap: first choose the line under the pointer (cross axis), then use the main-axis midpoint rule within that line.
+  - Grid (manual placement): the cell under the pointer. Grid (auto flow): the flow index of the cell under the pointer.
+
+**Dragging into an auto layout frame from outside:**
+- An insertion indicator (a line at the prospective index) is shown. On drop the layer is inserted at that index and Hug ancestors grow [KNOW → V-22].
+- **⌃/Ctrl held:** the layer is inserted as Ignore auto layout at the drop point [DOC:360040451373 excerpt].
+- **Large-object safeguard:** dropping an object larger than the auto layout frame does not insert it. Holding ⌘ (Ctrl on Windows) overrides this [DOC:5731482952599 excerpt].
+- **⌘/Ctrl held while dragging** keeps the object in its current frame, so it does not nest into the frame under the pointer [DOC:5731482952599 excerpt].
+
+**Other operations:**
+- **Dragging out:** moving a flow child outside the parent's bounds reparents it to the container under the pointer (page, section or frame) at the drop position. Its Fill sizing becomes Fixed [KNOW → V-22].
+- **Multi-selection drag:** the selected children move as one contiguous block at the drop index, keeping their relative order [KNOW → V-22].
+- **Alt/Option-drag duplicate:** the copy is inserted at the drop index, and the original stays in place [KNOW → V-22].
+- **Duplicate (⌘D / Ctrl+D):** the copy is inserted **immediately after** the original in flow order [KNOW → V-23].
+- **Paste:**
+  - Paste with an auto layout flow child selected: inserted after that child (→ V-23).
+  - Paste with the auto layout frame selected: appended as the last flow child [KNOW → V-23].
+- **Grouping (⌘G) or framing (⌘⌥G) selected flow children:** the new container takes the flow slot of the first selected child [KNOW → V-23].
+- **Layers panel:** dragging a row within an auto layout parent reorders the flow. Dragging it to another parent reparents it [KNOW].
+  - **Display order:** the panel presents children in reverse `children` order (topmost z at the top), as for every frame. Whether Figma flips this for auto layout frames to match the visual flow is → V-25.
+  - Canvas stacking does not change the panel order [DOC excerpt].
+- **Keyboard reorder:** with a flow child selected, the arrow keys move it one position. Use ←/→ in horizontal flows and ↑/↓ in vertical flows [SRC:uxdesign-tips][SRC:forum-23623].
+  - A third-party tip also lists the `[` and `]` keys → V-23.
+  - In 2025, arrow-key reordering was **not** available in Grid [SRC:forum-41164] → V-36.
+  - Moving past either end is a no-op [KNOW].
+- **Instances:** children of instances cannot be reordered. Reordering must be done in the main component, or after detaching [DOC:31441443713047 excerpt].
+
+### 3.17 On-canvas spacing and padding handles
+
+- **When a selected auto layout frame is hovered**, Figma shows pink overlays and handles for each **gap** (between adjacent flow children) and each **padding** side [DOC:360040451373|31289464393751 excerpt].
+- **Dragging a handle** changes the value live. The whole drag is one undo step [DOC excerpt][KNOW].
+- **Clicking a handle** shows a numeric field on canvas for typing a value [DOC excerpt].
+- **Modifiers while dragging** [SRC:kinney][SRC:uxdesign-tricks][SRC:pixso]:
+  - **Shift** snaps to big-nudge increments (default 10).
+  - **⌥/Alt** on a padding handle mirrors the change to the opposite side.
+  - **⌥/Alt + Shift** changes all four paddings equally.
+  - ⌥-click or ⇧⌥-click on the padding area selects the pair or all sides for typing.
+  - One older article describes Alt as "same padding for the horizontal or vertical pair", which is the same thing as the opposite side. The current behavior is → V-28.
+- **Wrap:** a separate handle for the counter-axis gap between lines [KNOW → V-28].
+- **Grid:** handles for row gap and column gap [KNOW → V-28].
+- **Auto gap:** dragging a gap handle while the gap is Auto either converts it to a fixed value or is unavailable → V-28.
+- **Negative values:** whether dragging can take the gap below 0 → V-28.
+- Handles are suppressed when they would be too small at the current zoom [KNOW].
+
+### 3.18 Nested auto layout and resizing propagation
+
+- Every nested auto layout frame has both **parent properties** (its own padding, gap and flow) and **child properties** (its sizing in its parent) [DOC:31441443713047 excerpt].
+  - Flows can be mixed freely (vertical in horizontal, grid in vertical, grid in grid) [DOC:31441443713047 excerpt].
+  - Deep selection uses ⌘/Ctrl-click [DOC:31441443713047 excerpt].
+- **Propagation contract:** any change that can affect a size triggers layout of the affected subtree **in the same transaction**. Such changes include text edits, child add/remove/hide, sizing changes, property changes, variable mode changes, instance swaps and font loads.
+  - **Upward (measure):** content-dependent sizes are recomputed up the ancestor chain while the ancestor's size depends on its content (Hug on that axis, wrap, or baseline).
+  - **Downward (arrange):** from the highest affected ancestor, each frame places its children. Fill children receive their sizes, and non-auto-layout frames that were resized apply **constraints** to their own children [API: `resize` applies constraints].
+- **Determinism:** one layout pass reaches a fixed point. Repeating it changes nothing (§2.8). There must be no oscillation between Hug and Fill ([SRC:old-notes] calls out convergence as a known risk).
+- **Interactive resize:** while a fixed auto layout frame is being resized, its Fill descendants update live, and its Hug ancestors are recomputed live [KNOW].
+
+### 3.19 Grid flow
+
+- **What it does:** arranges children in rows and columns, for example galleries, bento layouts and dashboards. Items do not wrap. Any item can span several rows or columns [DOC:31289469907863 excerpt]. Grid became generally available at Config 2026 [SRC:forum-54244].
+- **Creating a grid:**
+  - Choose **Grid** in the Layout section.
+  - A grid created in the UI starts with the **container and all tracks set to Hug**. A grid created via the API starts **Fixed** with **Flex** tracks [SRC:plugin-upd-120].
+  - The **grid picker** sets the counts, either by typing into the rows/columns fields (arithmetic accepted) or with an interactive cell selector [DOC:31289469907863 excerpt].
+- **Track sizing** [API]:
+  - **FIXED** = px.
+  - **HUG** = fits content (≈ `fit-content(100%)`).
+  - **FLEX** = fraction of the remaining space (≈ `fr`, `value` = factor).
+  - FLEX is **not valid** on an axis where the container Hugs. What the UI does to FLEX tracks when the container is switched to Hug is → V-34.
+  - Before Nov 2025 only Fixed and "Auto" (≈ 1fr) existed. Hug and fr values other than 1 arrived in Nov 2025 [SRC:plugin-upd-120][SRC:forum-40313].
+- **Gaps:**
+  - `gridRowGap` and `gridColumnGap` are ≥ 0 and independent of each other [API].
+  - They are bindable to variables [API][SRC:forum-grid-gap-vars].
+  - Gaps are placed between tracks only.
+- **Placement** [API]:
+  - Every child has an anchor `(row, column)` and spans `(rowSpan, colSpan) ≥ 1`. Its area must stay in bounds and **must not overlap** another child. There is exactly one child per cell, and overlap is not allowed (unlike CSS) [SRC:nearform].
+  - **Manual** (`MANUAL`): children stay in the cell where they were placed. `appendChild` without coordinates puts the child in the **first available cell** in row-major order [API].
+  - **Automatic placement** (`ROW_AUTO_FLOW`): children are placed by layer order into the next available cell, row-major, like CSS `grid-auto-flow: row`. Deleting an item makes later items shift to fill the gap [API][SRC:forum-54244]. Explicit positioning is not allowed; reordering is done by changing `children` order.
+  - **Automatic rows** (`ROWS`): rows are added as children are appended and removed when a row becomes empty. The row count cannot be set directly [API][SRC:forum-54244].
+  - With `NONE`, the row count "will never go below the number of rows necessary to hold all children" [API].
+- **Changing track counts:**
+  - Lowering the count in the grid picker **keeps** the objects of removed tracks and moves them into the nearest cells. Multi-track objects are trimmed [DOC:31289469907863 excerpt][SRC:forum-update].
+  - The API throws instead when the tracks are occupied [API].
+  - Raising the count adds FLEX tracks (API). The UI-added track type is → V-34.
+- **Deleting a track** (track context or Delete): its contents are removed. Objects spanning it are resized and moved to the closest available track [DOC:31289469907863 excerpt].
+- **Track pills** along the top and left edges of a selected grid frame [DOC:31289469907863 excerpt]:
+  - Hovering shows a label.
+  - A grabber drags the track to a new position, with a blue line as preview. Tracks that items span into move with it (spanned tracks are included automatically) [API: `reorderRows`/`reorderColumns`].
+  - With a track selected, **Enter** gives access to its size [SRC:forum-40316]. Exact behavior → V-36.
+- **Sizing of children in a cell area:**
+  - **Fill** on an axis = the area size on that axis. The area is the spanned tracks plus the inner gaps.
+  - **Fixed/Hug** children keep their own size and are aligned in the area by `gridChildHorizontalAlign` / `gridChildVerticalAlign` (MIN, CENTER, MAX or AUTO) [API].
+  - Children "that should react to grid resizing need Fill on the relevant axis" [SRC:search excerpt of help].
+  - The meaning of AUTO (MIN, or a container-level default) is → V-35.
+- **Not available in grid:** baseline alignment, wrap, Auto gap, padding (?) and canvas stacking (?) → V-34 and V-20.
+- **Nested grids:** grids can be nested inside grids [DOC:31441443713047 excerpt].
+- **Slots** cannot be GRID [API].
+- **Algorithm:** see §3.22.4.
+
+### 3.20 Components, instances, slots, variables
+
+- **Instances** inherit every auto layout property from their main component. On an instance, the user can override padding, gap, alignment, the instance's own sizing (Fixed/Hug/Fill in its parent) and min/max [KNOW → V-38].
+  - Overrides survive edits of other properties on the main component. Non-overridden properties follow the main component [KNOW → V-38].
+  - On an instance the user **cannot**: reorder children [DOC:31441443713047 excerpt], toggle the layout version [SRC:blog-2026-07], remove auto layout, or change the flow [KNOW → V-38].
+- **Boolean properties, instance swap and variant switch** change visible content and sizes. They re-run layout of the instance and its ancestors (hidden children collapse, §3.13) [KNOW].
+- **Detaching** an instance keeps all of its resolved auto layout settings on the resulting frame [KNOW].
+- **Slots** (`SLOT` nodes) are frame-like and support stack auto layout. GRID throws `cannotApplyGridToSlot` [API]. Slot limits (`limitViolations`) belong to the components spec.
+- **Component sets** can use auto layout to arrange their variants [API: `ComponentSetNode extends BaseFrameMixin`].
+- **Variables:** padding, gap, counter-axis gap, grid gaps, min/max, width, height and visible can all be bound [API].
+  - Switching the variable mode or editing the variable value re-runs layout.
+  - Binding a variable to width or height implies Fixed on that axis [KNOW → V-40].
+
+### 3.21 Undo/redo, clipboard, export
+
+- **One undo step per user action.** A property change, a drag-handle gesture, a reorder, adding or removing auto layout, a flow change or a version update is one step, **including** every child and ancestor geometry change it causes. Redo re-applies the exact same geometry [KNOW → V-39].
+- **Copy/paste** of an auto layout frame keeps all container fields, child fields, min/max and variable bindings [KNOW].
+  - **Pasting a former auto layout child into a non-auto-layout parent:** `layoutGrow`, `layoutAlign` and `layoutPositioning` stay stored but have no effect. The UI shows Fixed sizing [KNOW → V-23].
+  - **Copy/paste properties** (⌘⌥C / ⌘⌥V) may transfer auto layout properties → V-39.
+- **Export** (PNG/JPG/SVG/PDF) renders the **resolved** geometry, including negative-gap overlaps in canvas-stacking paint order and clipping [KNOW]. Auto layout itself is not represented in SVG/PDF.
+- **Import:**
+  - Map deprecated `layoutAlign` MIN/CENTER/MAX to INHERIT.
+  - Map deprecated paddings.
+  - Unknown enum values (for example newer `SPACE_*`) must be preserved, not dropped [API].
+  - Legacy-version frames must keep the LEGACY version (`11-file-format-interop.md`).
+
+### 3.22 Layout algorithm (normative pseudo-algorithm)
+
+This is the contract that Illigma implements and tests numerically. Where Figma's internals are unknown, the rule follows CSS Flexbox / Grid semantics, which Figma documents as the target of the Updated version [DOC:42031586813719 excerpt][SRC:forum-56357][SRC:forum-58389]. Each such rule carries a `V-nn` reference. All arithmetic is in IEEE-754 float64. Rounding is described in §3.23.
+
+#### 3.22.1 Common definitions
+
+```ts
+type Axis = 'x' | 'y'
+const other = (a: Axis): Axis => (a === 'x' ? 'y' : 'x')
+
+mainAxis(F)  = F.layoutMode === 'HORIZONTAL' ? 'x' : 'y'
+crossAxis(F) = other(mainAxis(F))
+
+flowChildren(F) = F.children.filter(c => c.visible && c.layoutPositioning === 'AUTO')   // V-21
+
+// Layout box of a child = unrotated width/height if rotation == 0,
+// otherwise the axis-aligned bounding box of the rotated rect (V-09).
+// UPDATED: the child's own strokes never enlarge its layout box.
+// LEGACY with parent.strokesIncludedInLayout: box grows by outside/center stroke outsets (V-26).
+
+strokeInset(F, side) =
+  F.layoutVersion === 'UPDATED'
+    ? (F.strokesIncludedInLayout && hasVisibleStroke(F) && F.strokeAlign === 'INSIDE'
+         ? weightOf(F, side) : 0)          // individual side weights if set
+    : legacyStrokeInset(F, side)           // V-26
+
+inset(F, side)    = padding(F, side) + strokeInset(F, side)
+insetSum(F, axis) = axis === 'x' ? inset(F,'left') + inset(F,'right')
+                                 : inset(F,'top')  + inset(F,'bottom')
+
+sizing(N, axis): 'FIXED' | 'HUG' | 'FILL'   // = layoutSizingHorizontal / layoutSizingVertical
+
+clampMinMax(v, mn, mx) = Math.max(mn ?? -Infinity, Math.min(v, mx ?? Infinity))  // min beats max (V-16)
+
+// The UPDATED padding floor beats max and every other rule [DOC:42031586813719 excerpt]
+finalize(N, axis, v) =
+  isAutoLayout(N) && N.layoutVersion === 'UPDATED'
+    ? Math.max(insetSum(N, axis), clampMinMax(v, N.min[axis], N.max[axis]))
+    : clampMinMax(v, N.min[axis], N.max[axis])
+
+floorOf(N, axis) = isAutoLayout(N) && N.layoutVersion === 'UPDATED' ? insetSum(N, axis) : 0
+
+isAutoGap(F) = F.primaryAxisAlignItems.startsWith('SPACE_')
+packedGap(F) = isAutoGap(F) ? 0 : F.itemSpacing       // gap used for measuring and line breaking (V-13)
+```
+
+#### 3.22.2 Intrinsic (Hug) measurement: bottom-up
+
+`measure(N, axis, definiteOther?)` returns N's outer size on `axis` when N decides its own size. Width is always resolved before height (width-first), because text height depends on width.
+
+```ts
+measure(N, axis, otherSize?) {
+  switch (sizing(N, axis)) {
+    case 'FIXED': return finalize(N, axis, N.storedSize[axis])
+    case 'FILL':  return finalize(N, axis, floorOf(N, axis))   // when a hugging parent measures it (V-06)
+    case 'HUG':
+      if (isText(N)) return finalize(N, axis, axis === 'x'
+           ? textNaturalWidth(N, /*wrapAt*/ N.maxWidth ?? Infinity)          // V-17
+           : textHeightForWidth(N, otherSize ?? N.width))                    // respects maxLines/truncation
+      if (isStack(N)) return finalize(N, axis, hugStack(N, axis, otherSize))
+      if (isGrid(N))  return finalize(N, axis, hugGrid(N, axis))
+  }
+}
+
+hugStack(F, axis, otherSize?) {
+  const items = flowChildren(F), n = items.length
+  if (n === 0) return insetSum(F, axis)                                       // V-29
+  if (axis === mainAxis(F)) {
+    if (F.layoutWrap === 'WRAP' && wrapLimit(F) < Infinity)
+      return insetSum(F, axis) + Math.max(...breakLines(F).map(l => lineMainExtent(l)))   // V-17
+    return insetSum(F, axis) + Σ items.map(c => measure(c, axis)) + packedGap(F) * (n - 1) // V-11
+  }
+  // cross axis
+  if (F.layoutWrap === 'WRAP') {
+    const L = breakLines(F)
+    return insetSum(F, axis) + Σ L.map(lineCross) + rowGap(F) * (L.length - 1)
+  }
+  if (F.counterAxisAlignItems === 'BASELINE')                                  // horizontal only
+    return insetSum(F, 'y') + max(ascentOf(c)) + max(c.height - ascentOf(c)) // V-15
+  const defining = items.filter(c => sizing(c, axis) !== 'FILL')
+  return insetSum(F, axis) + (defining.length ? Math.max(...defining.map(c => measure(c, axis))) : 0) // V-06
+}
+```
+
+#### 3.22.3 Arrange a stack (no wrap): top-down
+
+```ts
+arrangeStack(F) {                          // F.width/F.height are already final
+  const m = mainAxis(F), c = crossAxis(F)
+  const items = flowChildren(F), n = items.length
+  const innerMain  = F.size[m] - insetSum(F, m)
+  const innerCross = F.size[c] - insetSum(F, c)
+  const g = packedGap(F)
+
+  // (1) Main sizes. If m === 'y' (vertical), resolve the cross widths first (step 2a),
+  //     so that text heights are known before main sizing.
+  if (m === 'y') resolveCross(items, innerCross, F)                 // 2a
+  const flex = [], fixedSum = { v: 0 }
+  for (const ch of items) {
+    if (sizing(ch, m) === 'FILL') {
+      flex.push({ ch,
+        base: F.layoutVersion === 'UPDATED' ? floorOf(ch, m) : 0,   // UPDATED: equal *content* shares
+        min: ch.min[m], max: ch.max[m] })
+    } else {
+      ch.size[m] = measure(ch, m, ch.size[c])
+      fixedSum.v += ch.size[m]
+    }
+  }
+  const free = innerMain - fixedSum.v - Σ flex.map(f => f.base) - g * (n - 1)
+  resolveFlexible(flex, free)              // §3.22.6. Sets ch.size[m] for Fill children.
+  if (m === 'x') resolveCross(items, innerCross, F)                 // 2b: heights after widths
+
+  // (3) Main positions
+  const sum = Σ items.map(ch => ch.size[m])
+  const [start, gap] = distribute(F.primaryAxisAlignItems, innerMain, sum, n, g)
+  let p = inset(F, startSide(m)) + start
+  for (const ch of items) { ch.pos[m] = p; p += ch.size[m] + gap }
+
+  // (4) Cross positions
+  const cs = inset(F, startSide(c))
+  for (const ch of items) ch.pos[c] = cs + crossOffset(F.counterAxisAlignItems, innerCross, ch, items)
+
+  // (5) Absolute children: constraints relative to F's previous → new size (constraints spec)
+  // (6) Recurse: arrange(ch) for every child whose size changed or that is dirty
+}
+
+resolveCross(items, innerCross, F) {
+  for (const ch of items) {
+    const c = crossAxis(F)
+    ch.size[c] = sizing(ch, c) === 'FILL'
+      ? finalize(ch, c, innerCross)                // stretch, clamped by min/max (V-14)
+      : measure(ch, c, ch.size[mainAxis(F)])
+  }
+}
+
+distribute(mode, innerMain, sum, n, g): [start, gap] {
+  const rem = innerMain - sum - g * (n - 1)        // packed remainder
+  const free = innerMain - sum                     // used by the auto modes
+  switch (mode) {
+    case 'MIN':    return [0, g]
+    case 'CENTER': return [rem / 2, g]             // can be negative: overflows both sides (V-14)
+    case 'MAX':    return [rem, g]
+    case 'SPACE_BETWEEN': return (n <= 1 || free <= 0) ? [0, 0] : [0, free / (n - 1)]
+    case 'SPACE_AROUND':  return free <= 0 ? [0, 0] : [free / n / 2, free / n]          // n=1 → centered
+    case 'SPACE_EVENLY':  return free <= 0 ? [0, 0] : [free / (n + 1), free / (n + 1)]  // n=1 → centered
+  }                                                // overflow fallback for AROUND/EVENLY: V-13
+}
+
+crossOffset(align, innerCross, ch, items) {
+  const c = ch.size[crossAxisOfParent]
+  switch (align) {
+    case 'MIN':    return 0
+    case 'CENTER': return (innerCross - c) / 2
+    case 'MAX':    return innerCross - c
+    case 'BASELINE': return max(items.map(ascentOf)) - ascentOf(ch)     // V-15
+  }
+}
+// ascentOf(text) = distance from the box top to the first-line baseline (06-text-typography.md)
+// ascentOf(auto layout frame) = its offset to the first descendant text baseline. Otherwise = box height (V-15).
+```
+
+#### 3.22.4 Arrange a wrapped stack
+
+```ts
+wrapLimit(F) = sizing(F, mainAxis(F)) === 'FIXED' || sizing(F, mainAxis(F)) === 'FILL'
+  ? F.size[mainAxis(F)] - insetSum(F, mainAxis(F))
+  : (F.max[mainAxis(F)] != null ? F.max[mainAxis(F)] - insetSum(F, mainAxis(F)) : Infinity)  // V-17
+
+hypotheticalMain(ch, m) = sizing(ch, m) === 'FILL'
+  ? Math.max(ch.min[m] ?? 0, floorOf(ch, m))        // V-17
+  : measure(ch, m)
+
+breakLines(F) {
+  const m = mainAxis(F), lim = wrapLimit(F), g = packedGap(F), EPS = 1e-6   // V-17 (tolerance)
+  const lines = []; let cur = [], used = 0
+  for (const ch of flowChildren(F)) {
+    const h = hypotheticalMain(ch, m)
+    if (cur.length && used + g + h > lim + EPS) { lines.push(cur); cur = []; used = 0 }
+    used = cur.length ? used + g + h : h
+    cur.push(ch)
+  }
+  if (cur.length) lines.push(cur)
+  return lines
+}
+
+arrangeWrap(F) {
+  const m = mainAxis(F), c = crossAxis(F), L = breakLines(F)
+  const innerMain = F.size[m] - insetSum(F, m), innerCross = F.size[c] - insetSum(F, c)
+  // For each line: run steps (1)–(3) of arrangeStack, treating the line as the item list
+  // and innerMain as the line's available size. Fill shares are computed per line.
+  const lineCross = L.map(line => Math.max(...line.map(ch =>
+      sizing(ch, c) === 'FILL' ? Math.max(ch.min[c] ?? 0, floorOf(ch, c))   // V-17
+                               : measure(ch, c, ch.size[m]))))
+  const rg = rowGap(F)                       // counterAxisSpacing ?? itemSpacing
+  let start = 0, between = rg
+  const block = Σ lineCross + rg * (L.length - 1)
+  if (F.counterAxisAlignContent === 'SPACE_BETWEEN') {
+    between = L.length > 1 ? Math.max(0, (innerCross - Σ lineCross) / (L.length - 1)) : 0
+    start = 0                                // single line: start (V-17)
+  } else if (flowChildren(F).every(ch => sizing(ch, c) === 'FILL')) {
+    const extra = innerCross - block
+    if (extra > 0) lineCross.forEach((v, i) => lineCross[i] = v + extra / L.length)
+  } else {
+    start = { MIN: 0, CENTER: (innerCross - block) / 2, MAX: innerCross - block,
+              BASELINE: 0 }[F.counterAxisAlignItems]
+  }
+  let q = inset(F, startSide(c)) + start
+  L.forEach((line, i) => {
+    for (const ch of line) {
+      if (sizing(ch, c) === 'FILL') ch.size[c] = finalize(ch, c, lineCross[i])
+      ch.pos[c] = q + crossOffset(F.counterAxisAlignItems, lineCross[i], ch, line)   // per-line baseline
+    }
+    q += lineCross[i] + between
+  })
+}
+```
+
+#### 3.22.5 Grid: track sizing and placement
+
+```ts
+arrangeGrid(G) {
+  place(G)            // occupancy: MANUAL = stored anchors; ROW_AUTO_FLOW = first fit in children order;
+                      // ROWS auto tracks: append/remove rows as needed (§3.19)
+  for (const axis of ['x', 'y'] as Axis[]) {   // columns first, so row sizing can use text heights
+    const T = axis === 'x' ? G.gridColumnSizes : G.gridRowSizes
+    const gap = axis === 'x' ? G.gridColumnGap : G.gridRowGap
+    const ins = insetSum(G, axis)              // V-34: is padding applicable to GRID?
+    const size = T.map(t => t.type === 'FIXED' ? t.value : 0)
+
+    // HUG tracks: single-span items first
+    for (const ch of itemsSpanning(G, axis, 1)) {
+      const k = startIndex(ch, axis)
+      if (T[k].type === 'HUG') size[k] = Math.max(size[k], contribution(ch, axis))
+    }
+    // Multi-span items (sorted by span ascending): spread any shortfall equally over the spanned HUG tracks
+    for (const ch of itemsSortedBySpan(G, axis).filter(s => span(s, axis) > 1)) {
+      const ks = spannedIndices(ch, axis), hugKs = ks.filter(k => T[k].type === 'HUG')
+      const need = contribution(ch, axis) - (Σ ks.map(k => size[k]) + gap * (ks.length - 1))
+      if (need > 0 && hugKs.length) hugKs.forEach(k => size[k] += need / hugKs.length)   // V-35
+    }
+    if (sizing(G, axis) === 'HUG') {
+      // FLEX is invalid here [API]. If present on import, treat it as HUG (V-34).
+      G.size[axis] = finalize(G, axis, ins + Σ size + gap * (T.length - 1))
+    } else {
+      const flexK = T.flatMap((t, k) => t.type === 'FLEX' ? [k] : [])
+      const fr = Σ flexK.map(k => T[k].value ?? 1)
+      const free = G.size[axis] - ins - Σ size - gap * (T.length - 1)
+      flexK.forEach(k => size[k] = fr > 0 ? Math.max(0, free) * (T[k].value ?? 1) / fr : 0)
+      // V-35: does a FLEX track keep a content minimum (CSS 1fr = minmax(auto, 1fr))?
+    }
+    // Track offsets
+    const off = [inset(G, startSide(axis))]
+    for (let k = 1; k < T.length; k++) off[k] = off[k - 1] + size[k - 1] + gap
+    for (const ch of flowChildren(G)) {
+      const k0 = startIndex(ch, axis), k1 = k0 + span(ch, axis) - 1
+      const areaStart = off[k0], areaSize = off[k1] + size[k1] - off[k0]
+      ch.size[axis] = sizing(ch, axis) === 'FILL'
+        ? finalize(ch, axis, areaSize)
+        : measure(ch, axis, ch.size[other(axis)])
+      const al = axis === 'x' ? ch.gridChildHorizontalAlign : ch.gridChildVerticalAlign
+      ch.pos[axis] = areaStart + ({ MIN: 0, AUTO: 0 /* V-35 */,
+          CENTER: (areaSize - ch.size[axis]) / 2, MAX: areaSize - ch.size[axis] })[al]
+    }
+  }
+}
+contribution(ch, axis) = sizing(ch, axis) === 'FILL'
+  ? (isAutoLayout(ch) || isText(ch) ? hugSizeIgnoringFill(ch, axis) : (ch.min[axis] ?? 0))  // V-35
+  : measure(ch, axis)
+```
+
+#### 3.22.6 Flexible lengths (Fill distribution with min/max)
+
+This follows CSS Flexbox §9.7 with every flex-grow factor = 1 and no flex-shrink. It applies to UPDATED. For LEGACY see V-16.
+
+```ts
+resolveFlexible(items, free) {           // items: { ch, base, min, max }
+  if (!items.length) return
+  let frozen = new Set(), remaining = free
+  // Shrinking is not allowed: if free <= 0, each Fill child = finalize(base) (V-10)
+  if (free <= 0) { items.forEach(f => f.ch.size[m] = finalize(f.ch, m, f.base)); return }
+  while (true) {
+    const open = items.filter(f => !frozen.has(f))
+    const share = remaining / open.length
+    let totalViolation = 0
+    for (const f of open) {
+      const target = f.base + share
+      const clamped = clampMinMax(target, f.min, f.max)
+      f.tmp = clamped; f.viol = clamped - target; totalViolation += f.viol
+    }
+    if (totalViolation === 0) { open.forEach(f => f.ch.size[m] = finalize(f.ch, m, f.tmp)); break }
+    const freezeSet = totalViolation > 0 ? open.filter(f => f.viol > 0)   // min violations
+                                         : open.filter(f => f.viol < 0)   // max violations
+    for (const f of freezeSet) {
+      frozen.add(f); f.ch.size[m] = finalize(f.ch, m, f.tmp); remaining -= (f.tmp - f.base)
+    }
+    if (frozen.size === items.length) break
+  }
+}
+```
+
+#### 3.22.7 Scheduling and propagation
+
+```ts
+onDocumentChange(nodes) {
+  for (const n of nodes) markDirty(n)
+  // climb: a parent must re-arrange if it is an auto layout frame (its children's positions may change).
+  // Keep climbing while that parent's own size depends on its content (HUG on any axis, WRAP, BASELINE).
+  roots = topmost dirty nodes whose parent is not auto layout, or whose size is content-independent
+  for (const r of roots) { measureBottomUp(r); arrangeTopDown(r) }   // single pass, deterministic
+  // All geometry writes join the current undo transaction (V-39). Painting never triggers layout.
+}
+```
+
+#### 3.22.8 Reference numeric fixtures
+
+These are normative for Illigma (UPDATED version). Each fixture becomes a test in the checklist (§6.21) and must be re-measured in Figma (V-41). Coordinates are relative to the frame. "Rect" means a plain rectangle child.
+
+| # | Setup | Expected (Illigma contract) |
+| --- | --- | --- |
+| F1 | H, Fixed 300×100, padding 10 all, gap 10, cross CENTER. A rect 50×20 Fixed, B rect Fill-W × 30, C rect 80×40 | B.w = 300−20−50−80−20 = **130**. x: A=10, B=70, C=210. y: A=40, B=35, C=30 |
+| F2 | H, Fixed W=300, pad 0, 3 rects 50 wide, Auto **Between** | x = 0, 125, 250 |
+| F3 | Same as F2 with **Around** | x = 25, 125, 225 |
+| F4 | Same as F2 with **Evenly** | x = 37.5, 125, 212.5 |
+| F5 | Single rect 50, W=300: Between / Around / Evenly | x = 0 / 125 / 125 |
+| F6 | Between, W=100, 3 rects 50 (overflow) | gap 0. x = 0, 50, 100 |
+| F7 | H Hug×Hug, padding L/R 16, T/B 12, gap 8, rects 40×40 and 60×20, cross MIN | frame 140×64. x = 16, 64. y = 12, 12 |
+| F8 | H Hug, gap −10, 3 rects 50×50 | W = 130. x = 0, 40, 80. Last on top: C paints over B |
+| F9 | Padding floor: H Fixed W=50, padL=padR=30, no children | W = **60** |
+| F10 | F9 + inside stroke 10 Included | W = **80** |
+| F11 | F9 + maxWidth 40 | W = 60 (the floor beats max) |
+| F12 | H Fixed W=300, gap 0, two Fill rects, A.minW=200 | A=200, B=100 |
+| F13 | H Fixed W=300, two Fill rects, A.maxW=50 | A=50, B=250 |
+| F14 | H Fixed W=300, gap 0, A = Fill auto layout frame with padL=padR=20 and no content, B = Fill rect | A=170, B=130 (equal content shares of 130) |
+| F15 | H Wrap, Fixed W=200, gap 10, rowGap 20, 5 rects 60×30, Hug H | lines [3,2]. H = 80. Row 2 y = 50. x row 2 = 0, 70 |
+| F16 | F15 with Fixed H=200 and align-content SPACE_BETWEEN | row 2 y = 170 |
+| F17 | F15 with Fixed H=200, all children Fill-H (stretch), align-content AUTO | each line 90 tall. Children h = 90. Row 2 y = 110 |
+| F18 | V Hug-W, children: A rect Fixed 120 wide, B rect Fill-W | frame W = 120 (+pad). B.w = 120 (V-06 contract) |
+| F19 | H Hug: A 50, B 50 (hidden), C 50, gap 10 | W = 110. x A=0, C=60 |
+| F20 | H Hug: A 50 flow, B absolute at x=200 | W = 50 (+pad). B stays at x=200 |
+| F21 | Grid Fixed 300×200, 3 FLEX cols, 2 FLEX rows, gaps 10, pad 0 | col w = 93.3333…, row h = 95. Cell (0,1) x = 103.3333… |
+| F22 | Grid Fixed W=400, cols FLEX(1), FLEX(2), FIXED(100), gap 0 | 100, 200, 100 |
+| F23 | Grid Hug W, cols FIXED 100, HUG (span-1 children 40 and 70), gap 10, pad 20 | HUG col = 70. W = 220 |
+| F24 | F23 + child spanning both cols, Fill-W | child w = 180 |
+| F25 | H Fixed W=100, 3 Fill rects, gap 0 | each 33.333… (no rounding: V-30) |
+
+### 3.23 Numeric precision and rounding
+
+- Illigma computes in float64 and stores results **unrounded** [KNOW → V-30]. Figma's file values are floats, and the inspector displays at most 2 decimals [KNOW].
+- If Figma turns out to round computed child sizes or positions (to whole pixels or to 1/100), the contract changes to match.
+- Auto layout output is not snapped to the pixel grid. "Snap to pixel grid" only affects user transforms [KNOW → V-30].
+- The tolerance for wrap line breaking is 1e-6 px (Illigma choice), to avoid float noise sending an exactly-fitting item to the next line.
