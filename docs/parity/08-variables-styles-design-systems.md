@@ -12,6 +12,8 @@
 > - **[SRC:<url>]** — another web source (forum, GitHub issue, third-party blog), usually seen only as a search excerpt.
 >
 > **Research limits (honest disclosure):** No live Figma session was used for this document. No Help Center article body was read in full (help.figma.com is not fetchable from this environment); 10 web searches returned excerpts before the shared web-search budget for this run was exhausted, so many UI-level details are [KNOW] and are queued for verification in §8.
+>
+> **Adversarial review (2026-10-08, §10):** The review could run **no new web searches**, because the shared search budget was already used up. It re-checked every claim against the offline typings. It read two cited GitHub issues in full by direct fetch (figma/plugin-typings #375 and #381; their tags are upgraded from "excerpt"). It also read the W3C DTCG format/color spec sources from `raw.githubusercontent.com/design-tokens/community-group/main/technical-reports/` (DTCG facts are tagged `[SRC:DTCG …]`). `developers.figma.com`, `forum.figma.com` and `help.figma.com` could not be reached (DNS). Items added in the review are DS-247 to DS-293 and V-77 to V-91.
 
 ---
 
