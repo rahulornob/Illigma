@@ -1060,6 +1060,54 @@ Every experiment: use a fresh Figma Design file (UI3, desktop app, current versi
 | E-KB-1 | Figma shortcut panel (⌃⇧? / Ctrl+Shift+?) | Read Text section | Authoritative key list incl. alignment, line height direction, Shift+Tab |
 | E-BI-1 | Hebrew+English mixed; Japanese paragraph | Arrow navigation; 100 px wrapping | Caret order; break positions |
 | E-LP-1 | Circle → text on path | Create with Draw tool; drag start handle; flip | Node type, `textPathStartData`, available properties |
+| E-RA-1 | Two text layers with mixed sizes; "**ab**cd" | Change size with layers selected; range-select and set fill; collapsed caret + set red then type / then move caret; select-all + type; multi-layer family change (Inter Bold + Roboto Light → Open Sans) | Segments after each; undo entries created by caret-only property changes |
+| E-FN-4 | Font picker | Type a query, arrow through 5 families, hover, Esc; reopen | Preview behavior, undo entries, recent-fonts list |
+| E-MF-2 | Inter text containing 日本, 😀, ⌘, Hebrew; a font installed while Figma desktop is open | Inspect rendering; check picker | Fallback faces used (no missing-font flag); whether new font appears without relaunch |
+| E-AL-4 | Text inside horizontal & vertical auto layout | Cycle HUG/FIXED/FILL per axis; set "align to baseline" with 12/24/40 px children | `textAutoResize` after each; baseline y values; control availability |
+| E-GL-1 | Golden fixture file (≥ 50 text layers covering §2) | Export plugin dumps (`getStyledTextSegments` all fields, `absoluteRenderBounds`, width/height) and 1×/2× PNGs | Reference data for TX golden-layout and raster-parity items |
+| E-SP-1 | Text with "teh"; several layers containing "foo" | Right-click misspelling; ⌘F find/replace "foo"→"bar" on styled text | Suggestions UI; scope; resulting styles |
+
+
+### 8.1 Checklist items blocked on verification
+
+These items rest only on `[KNOW]` and/or `[SRC]` evidence. Their expected behavior is a hypothesis until the listed experiment is recorded; items with `[API]`/`[DOC]` evidence still need the normal acceptance test but are not blocked.
+
+| Checklist group | Blocked items | Experiment(s) |
+| --- | --- | --- |
+| §6.1 | TX-003, TX-004, TX-005, TX-006, TX-008, TX-009, TX-011 | E-CR-1…E-CR-5 |
+| §6.2 | TX-012, TX-013, TX-014, TX-015, TX-016, TX-017, TX-018, TX-019 | E-ED-1, E-ED-2 |
+| §6.3 | TX-020, TX-021, TX-022, TX-024, TX-025, TX-026, TX-027, TX-028 | E-NV-1 |
+| §6.4 | TX-030, TX-031, TX-032, TX-033, TX-034, TX-035 | E-IN-1…E-IN-3 |
+| §6.5 | TX-038, TX-044, TX-045 | E-RA-1 |
+| §6.6 | TX-051, TX-052, TX-054, TX-055, TX-056 | E-RS-1…E-RS-4 |
+| §6.7 | TX-066, TX-067, TX-068, TX-069, TX-070 | E-TR-1…E-TR-3 |
+| §6.8 | TX-072, TX-074, TX-075 | E-AL-1, E-AL-2, E-KB-1 |
+| §6.9 | TX-076, TX-077, TX-078, TX-079, TX-081, TX-082, TX-083, TX-085 | E-FN-1, E-FN-2, E-FN-4 |
+| §6.10 | TX-087, TX-089 | E-FN-3 |
+| §6.11 | TX-091, TX-092, TX-093, TX-094, TX-095, TX-096, TX-098 | E-LH-1…E-LH-3 |
+| §6.12 | TX-100, TX-101, TX-102 | E-LS-1…E-LS-3 |
+| §6.13 | TX-104, TX-107 | E-PS-1, E-PS-2, E-PI-1 |
+| §6.14 | TX-109, TX-115 | E-DC-1, E-KB-1 |
+| §6.15 | TX-117 | E-CS-1 |
+| §6.16 | TX-125, TX-128, TX-131, TX-132, TX-133, TX-135, TX-136, TX-137, TX-138 | E-LI-1 |
+| §6.17 | TX-141 | E-HP-1 |
+| §6.18 | TX-143, TX-144, TX-145 | E-VT-1, E-AL-4 |
+| §6.21 | TX-161 | E-VF-1 |
+| §6.22 | TX-167, TX-168, TX-169, TX-170, TX-172 | E-LK-1 |
+| §6.23 | TX-176, TX-182, TX-184, TX-185, TX-186 | E-MF-1, E-MF-2 |
+| §6.24 | TX-189, TX-190, TX-192, TX-193, TX-196 | E-TS-1 |
+| §6.25 | TX-199, TX-200, TX-201 | E-VA-1 |
+| §6.26 | TX-204, TX-205, TX-206 | E-AL-3, E-AL-4 |
+| §6.27 | TX-209, TX-210 | E-SC-1 |
+| §6.28 | TX-213, TX-214, TX-215 | E-CP-1 |
+| §6.29 | TX-216, TX-217, TX-218 | E-UN-1 |
+| §6.30 | TX-220, TX-221, TX-222, TX-223, TX-224 | E-CB-1 |
+| §6.31 | TX-225, TX-226, TX-227, TX-228, TX-229, TX-230, TX-231, TX-232 | E-EX-1, E-RN-1, E-GL-1 |
+| §6.32 | TX-233, TX-235, TX-236, TX-237 | E-ED-3, E-BI-1 |
+| §6.33 | TX-241 | E-LP-1 (perf target is an Illigma budget, no Figma check) |
+| §6.34 | TX-242, TX-243 | E-SP-1 |
+
+Total blocked: 133 of the checklist items.
 
 ---
 

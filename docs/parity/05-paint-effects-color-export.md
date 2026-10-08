@@ -1053,7 +1053,7 @@ Figma Plugin API typings v1.141.0 — `refs/_figma_plugin-typings/package/plugin
 | `PatternPaint` | 4821 |
 | `ShaderPaint` | 4855 |
 | `Paint` union | 4883 |
-| `ShaderPropertyValue`, `ShaderPropertyDefinition`, `Shader` | 4889, ~4935, 4969 |
+| `ShaderPropertyValue`, `ShaderPropertyDefinition`, `Shader` | 4889, 4933, 4969 |
 | `ExportSettingsConstraints`, `ExportSettingsImage` | 5065, 5072 |
 | `ExportSettingsSVGBase` / `SVG` / `SVG_STRING` / `PDF` / `REST` | 5120 / 5145 / 5155 / 5164 / 5178 |
 | `ExportSettingsMP4` / `GIF` / `WEBM` (scale presets) | 5219 / 5253 / 5287 |
@@ -1063,8 +1063,8 @@ Figma Plugin API typings v1.141.0 — `refs/_figma_plugin-typings/package/plugin
 | `EffectKeyframeFieldName` (incl. SPLAY) | 6118 |
 | `ConnectorStrokeCap` | 6290 |
 | `VariableBindableNodeField` / paint / color stop / effect fields | 6910 / 6947 / 6949 / 6950 |
-| `BlendMixin` (`isMask`, `maskType`, `effects`, `effectStyleId`) | 7539–7598 |
-| `DeprecatedBackgroundMixin` | 7609 |
+| `BlendMixin` (`isMask`, `maskType`, `effects`, `effectStyleId`) | 7539–7600 |
+| `DeprecatedBackgroundMixin` | 7612 |
 | `StrokeCap`, `StrokeJoin` | 7622, 7631 |
 | `strokesIncludedInLayout` | 7811 |
 | `MinimalStrokesMixin` (strokeAlign remark: doubled weight + mask) | 8648–8712 |
