@@ -559,7 +559,7 @@ Sources: [API][DOC:360040451373 excerpt][SRC:forum-58344]. The group row is → 
 - **Sizing of children in a cell area:**
   - **Fill** on an axis = the area size on that axis. The area is the spanned tracks plus the inner gaps.
   - **Fixed/Hug** children keep their own size and are aligned in the area by `gridChildHorizontalAlign` / `gridChildVerticalAlign` (MIN, CENTER, MAX or AUTO) [API].
-  - Children "that should react to grid resizing need Fill on the relevant axis" [SRC:search excerpt of help].
+  - Children "that should react to grid resizing need Fill on the relevant axis" [DOC:31289469907863 excerpt, paraphrased by the search tool].
   - The meaning of AUTO (MIN, or a container-level default) is → V-35.
 - **Not available in grid:** baseline alignment, wrap, Auto gap, padding (?) and canvas stacking (?) → V-34 and V-20.
 - **Nested grids:** grids can be nested inside grids [DOC:31441443713047 excerpt].
@@ -667,8 +667,10 @@ hugStack(F, axis, otherSize?) {
   // cross axis
   if (F.layoutWrap === 'WRAP') {
     const L = breakLines(F)
-    return insetSum(F, axis) + Σ L.map(lineCross) + rowGap(F) * (L.length - 1)
+    return insetSum(F, axis) + Σ L.map(lineCrossSize) + rowGap(F) * (L.length - 1)
   }
+  // lineMainExtent(l) = Σ item main sizes + packedGap·(|l|−1); lineCrossSize(l) = max hypothetical
+  // cross size of the items in l (Fill-cross items count as max(min, floor)), see §3.22.4
   if (F.counterAxisAlignItems === 'BASELINE')                                  // horizontal only
     return insetSum(F, 'y') + max(ascentOf(c)) + max(c.height - ascentOf(c)) // V-15
   const defining = items.filter(c => sizing(c, axis) !== 'FILL')
@@ -701,7 +703,7 @@ arrangeStack(F) {                          // F.width/F.height are already final
     }
   }
   const free = innerMain - fixedSum.v - Σ flex.map(f => f.base) - g * (n - 1)
-  resolveFlexible(flex, free)              // §3.22.6. Sets ch.size[m] for Fill children.
+  resolveFlexible(flex, free, m)           // §3.22.6. Sets ch.size[m] for Fill children.
   if (m === 'x') resolveCross(items, innerCross, F)                 // 2b: heights after widths
 
   // (3) Main positions
@@ -712,7 +714,7 @@ arrangeStack(F) {                          // F.width/F.height are already final
 
   // (4) Cross positions
   const cs = inset(F, startSide(c))
-  for (const ch of items) ch.pos[c] = cs + crossOffset(F.counterAxisAlignItems, innerCross, ch, items)
+  for (const ch of items) ch.pos[c] = cs + crossOffset(F.counterAxisAlignItems, innerCross, ch, items, c)
 
   // (5) Absolute children: constraints relative to F's previous → new size (constraints spec)
   // (6) Recurse: arrange(ch) for every child whose size changed or that is dirty
@@ -740,12 +742,12 @@ distribute(mode, innerMain, sum, n, g): [start, gap] {
   }                                                // overflow fallback for AROUND/EVENLY: V-13
 }
 
-crossOffset(align, innerCross, ch, items) {
-  const c = ch.size[crossAxisOfParent]
+crossOffset(align, innerCross, ch, items, c /* cross axis */) {
+  const s = ch.size[c]
   switch (align) {
     case 'MIN':    return 0
-    case 'CENTER': return (innerCross - c) / 2
-    case 'MAX':    return innerCross - c
+    case 'CENTER': return (innerCross - s) / 2
+    case 'MAX':    return innerCross - s
     case 'BASELINE': return max(items.map(ascentOf)) - ascentOf(ch)     // V-15
   }
 }
@@ -802,7 +804,7 @@ arrangeWrap(F) {
   L.forEach((line, i) => {
     for (const ch of line) {
       if (sizing(ch, c) === 'FILL') ch.size[c] = finalize(ch, c, lineCross[i])
-      ch.pos[c] = q + crossOffset(F.counterAxisAlignItems, lineCross[i], ch, line)   // per-line baseline
+      ch.pos[c] = q + crossOffset(F.counterAxisAlignItems, lineCross[i], ch, line, c)   // per-line baseline
     }
     q += lineCross[i] + between
   })
@@ -867,7 +869,7 @@ contribution(ch, axis) = sizing(ch, axis) === 'FILL'
 This follows CSS Flexbox §9.7 with every flex-grow factor = 1 and no flex-shrink. It applies to UPDATED. For LEGACY see V-16.
 
 ```ts
-resolveFlexible(items, free) {           // items: { ch, base, min, max }
+resolveFlexible(items, free, m) {        // items: { ch, base, min, max }; m = main axis
   if (!items.length) return
   let frozen = new Set(), remaining = free
   // Shrinking is not allowed: if free <= 0, each Fill child = finalize(base) (V-10)
@@ -1015,7 +1017,7 @@ The [OBS] recorded these Layout-section controls on a Figma UI3 frame and on an 
 | Select children / parent (general) | ↵ / ⇧↵ | Enter / Shift+Enter | [KNOW] (`10-panels-shortcuts-workflow.md`) |
 | Deep select inside nested auto layout | ⌘-click | Ctrl-click | [DOC:31441443713047 excerpt] |
 | Align selection to parent (general) | ⌥W/A/S/D/H/V | Alt+W/A/S/D/H/V | [SRC:skillademia] → V-14 |
-| Show shortcut list | ⌘⇧? | Ctrl+Shift+? | [SRC:search excerpt] |
+| Show shortcut list | ⌘⇧? | Ctrl+Shift+? | [SRC:shortcut-guides] |
 
 **Conflict to resolve in V-19:** ⌃ (macOS) is documented for "drag in as Ignore auto layout", and ⌘ for "don't nest / override safeguard". On Windows both are documented as Ctrl. Record the actual Windows behavior.
 
@@ -1060,7 +1062,7 @@ Every item is **Not started**. Each _Test_ is run in Figma first, to confirm the
 - [ ] **AL-028** Remove auto layout keeps geometry — ⌥⇧A / Alt+Shift+A (or Freeform) sets layoutMode NONE. Every child keeps its exact current position and size. The frame keeps its size (becomes Fixed). Children that were Fill/Hug relative to it become Fixed. Absolute children become ordinary. _Data:_ `layoutMode`, child geometry _Test:_ auto layout frame with Fill, Hug and absolute children → remove → all absolute coordinates unchanged (diff = 0). _M4·P0·[API][SRC:kinney]_
 - [ ] **AL-029** Remove on multi-selection — Removing auto layout with several auto layout frames selected converts all of them in one undo step. _Data:_ — _Test:_ select 5 auto layout frames → ⌥⇧A → all Freeform; one ⌘Z restores all. _M4·P1·[SRC:forum-remove-all]_
 - [ ] **AL-030** Re-adding is not a restore — Remove then re-add does not restore the original children positions. _Data:_ — _Test:_ plugin sequence `layoutMode='VERTICAL'; layoutMode='NONE'` leaves children at their laid-out positions. _M4·P1·[API]_
-- [ ] **AL-031** Suggest auto layout — ⌃⇧A (mac) / Ctrl+Alt+Shift+A (win), the context menu "More layout options" and the Actions menu run a local heuristic. It creates nested auto layout frames throughout the selected frame/component while preserving placement, as one undo step. _Data:_ new frames _Test:_ card fixture (image, title, meta row, buttons) → compare the resulting hierarchy with Figma's output; positions must not move > 1px. _M4·P2·[DOC:5731482952599 excerpt]_
+- [ ] **AL-031** Suggest auto layout — ⌃⇧A (mac) / Ctrl+Alt+Shift+A (win), the context menu "More layout options" and the Actions menu run a local heuristic. It creates nested auto layout frames throughout the selected frame/component while preserving placement, as one undo step. _Data:_ new frames _Test:_ card fixture (image, title, meta row, buttons) → compare the resulting hierarchy with Figma's output; positions must not move > 1px (V-37). _M4·P2·[DOC:5731482952599 excerpt]_
 - [ ] **AL-032** Shift+A with empty selection — No-op; no frame is created. _Data:_ — _Test:_ deselect all → Shift+A → document unchanged. _M4·P2·[KNOW]_
 
 ### 6.3 Flow (direction)
@@ -1123,7 +1125,7 @@ Every item is **Not started**. Each _Test_ is run in Figma first, to confirm the
 - [ ] **AL-076** Option availability matrix — W/H dropdowns offer exactly the options of the §3.5 matrix for each node kind × context; unavailable options are not selectable. _Data:_ `layoutSizing*` _Test:_ iterate the matrix in Figma (auto layout frame, text, rect, group, instance × top-level / stack child / grid child / absolute) → identical option sets. _M4·P0·[API][DOC:360040451373 excerpt]_
 - [ ] **AL-077** Typing a size sets Fixed — Entering a number in W or H sets Fixed on that axis only. _Data:_ — _Test:_ Hug×Hug frame, type W=200 → W Fixed 200, H still Hug. _M4·P0·[DOC:360040451373 excerpt]_
 - [ ] **AL-078** Hug stack size — Hug main = insets + Σ child sizes + gap·(n−1); Hug cross = insets + max defining child cross size. _Data:_ — _Test:_ F7 → 140×64. _M4·P0·[API]_
-- [ ] **AL-079** Fill main distribution — Fill children share the free main space equally (UPDATED: equal content areas). _Data:_ `layoutGrow=1` _Test:_ F1 (B=130); F14 (A=170, B=130). _M4·P0·[API][SRC:blog-2026-07]_
+- [ ] **AL-079** Fill main distribution — Fill children share the free main space equally (UPDATED: equal content areas). _Data:_ `layoutGrow=1` _Test:_ F1 (B=130); F14 (A=170, B=130) (V-32). _M4·P0·[API][SRC:blog-2026-07]_
 - [ ] **AL-080** Legacy Fill distribution — In LEGACY, Fill children share equal outer sizes, as recorded in V-26. _Data:_ — _Test:_ F14 on a Legacy frame → record (expected 150/150). _M8·P2·[KNOW]_
 - [ ] **AL-081** Fill cross (stretch) — A Fill-cross child takes the inner cross size (clamped by its min/max and floor). _Data:_ `layoutAlign='STRETCH'` _Test:_ V frame W=200, pad 10, child Fill-W → w=180. _M4·P0·[API]_
 - [ ] **AL-082** Fill on Hug parent converts the parent — Setting a child to Fill on an axis where the parent Hugs switches the parent to Fixed (current size) on that axis. _Data:_ parent `layoutSizing*` _Test:_ Hug×Hug horizontal frame, child → Fill-W → parent W becomes Fixed. _M4·P0·[DOC:360040451373 excerpt]_
@@ -1172,7 +1174,7 @@ Every item is **Not started**. Each _Test_ is run in Figma first, to confirm the
 
 - [ ] **AL-117** Wrap availability — Wrap is available for Horizontal and Vertical flows, not for Grid. _Data:_ `layoutWrap` _Test:_ toggle Wrap in each flow; Grid shows no wrap. _M4·P0·[API][SRC:forum-58389]_
 - [ ] **AL-118** Horizontal wrap line breaking — Items move to a new row when `used + gap + size > innerWidth`; exact fits stay; a line always holds ≥1 item. _Data:_ — _Test:_ F15 → rows [3,2], H=80. _M4·P0·[API][KNOW→V-17]_
-- [ ] **AL-119** Vertical wrap — Items move to a new column when the column reaches the available height; order is kept (not masonry). _Data:_ `VERTICAL`+`WRAP` _Test:_ transpose F15 → columns [3,2], W=80. _M4·P0·[SRC:forum-58389][DOC:360040451373 excerpt]_
+- [ ] **AL-119** Vertical wrap — Items move to a new column when the column reaches the available height; order is kept (not masonry). _Data:_ `VERTICAL`+`WRAP` _Test:_ transpose F15 → columns [3,2], W=80 (V-37). _M4·P0·[SRC:forum-58389][DOC:360040451373 excerpt]_
 - [ ] **AL-120** Row gap — `counterAxisSpacing` separates lines; null follows `itemSpacing`; ≥0. _Data:_ `counterAxisSpacing` _Test:_ F15 second row y=50. _M4·P0·[API]_
 - [ ] **AL-121** Align content AUTO (packed) — When not all children are Fill-cross, lines are sized to their tallest item and the block of lines is aligned by `counterAxisAlignItems`. _Data:_ `counterAxisAlignContent='AUTO'` _Test:_ F15 with Fixed H=200, counter CENTER → block height 80 starts at y=60. _M4·P0·[API]_
 - [ ] **AL-122** Align content AUTO (stretch) — When all children are Fill-cross, lines stretch equally to fill the frame. _Data:_ — _Test:_ F17 → children h=90, row 2 y=110. _M4·P1·[API]_
@@ -1214,10 +1216,10 @@ Every item is **Not started**. Each _Test_ is run in Figma first, to confirm the
 - [ ] **AL-149** UPDATED: inside stroke adds to insets — With Included, the frame's inside stroke weight (per side for individual strokes) adds to that side's padding. _Data:_ `strokeAlign='INSIDE'`, `strokeWeight`/`stroke*Weight` _Test:_ Hug frame, padding 10, inside stroke 4 Included, child 50×50 → frame 78×78; child at (14,14). _M4·P0·[DOC:42031586813719 excerpt][API]_
 - [ ] **AL-150** UPDATED: center/outside strokes ignored — Center and outside strokes never affect layout, Included or not. _Data:_ `strokeAlign` _Test:_ same frame with an outside stroke 4 Included → 70×70. _M4·P0·[DOC:42031586813719 excerpt]_
 - [ ] **AL-151** UPDATED: child strokes don't affect siblings — A child's outside stroke does not push siblings regardless of the parent's setting. _Data:_ — _Test:_ child with outside stroke 10 in an Included parent → sibling x unchanged. _M4·P0·[SRC:blog-2026-07]_
-- [ ] **AL-152** UPDATED: Fill shares by content area with strokes — Fill siblings with different included inside strokes get equal content areas. _Data:_ — _Test:_ W=300, two Fill auto layout frames, A inside stroke 10 Included → A = 160, B = 140. _M4·P1·[SRC:blog-2026-07]_
+- [ ] **AL-152** UPDATED: Fill shares by content area with strokes — Fill siblings with different included inside strokes get equal content areas. _Data:_ — _Test:_ W=300, two Fill auto layout frames, A inside stroke 10 Included → A = 160, B = 140 (V-32). _M4·P1·[SRC:blog-2026-07]_
 - [ ] **AL-153** Strokes default for new frames — The default of `strokesIncludedInLayout` for frames created via Shift+A / the Frame tool / converting matches Figma. _Data:_ — _Test:_ create each way → read the value (V-24). _M4·P1·[DOC:360040451373 excerpt][OBS]_
 - [ ] **AL-154** LEGACY stroke rules — Legacy frames lay out strokes per the rules measured in V-26 (child outside strokes counted when the parent is Included). _Data:_ `layoutVersion='LEGACY'` _Test:_ legacy fixture set from V-26. _M8·P2·[KNOW]_
-- [ ] **AL-155** Layout version toggle — Settings show Layout: Updated/Legacy for frames and main components (not instances); switching is one undo step and may resize frames. _Data:_ `layoutVersion` _Test:_ legacy frame with padding exceeding size → Update → frame grows per floor. _M8·P1·[OBS][SRC:forum-56357]_
+- [ ] **AL-155** Layout version toggle — Settings show Layout: Updated/Legacy for frames and main components (not instances); switching is one undo step and may resize frames. _Data:_ `layoutVersion` _Test:_ legacy frame with padding exceeding size → Update → frame grows per floor (V-31). _M8·P1·[OBS][SRC:forum-56357]_
 - [ ] **AL-156** Bulk version update — The Actions command "Update layout version for selection/page" updates all legacy frames in scope in one undo step. _Data:_ — _Test:_ page with 10 legacy frames → run → all Updated. _M8·P2·[SRC:blog-2026-07]_
 - [ ] **AL-157** Instances follow main version — Instances use their main component's layout version and expose no toggle. _Data:_ — _Test:_ switch the main to Updated → instances re-lay out accordingly. _M5·P1·[SRC:blog-2026-07]_
 
@@ -1285,7 +1287,7 @@ Every item is **Not started**. Each _Test_ is run in Figma first, to confirm the
 - [ ] **AL-205** Row & column gaps — Independent, ≥0, placed only between tracks, bindable to variables. _Data:_ `gridRowGap`, `gridColumnGap` _Test:_ F21; bind the column gap to a variable → switch mode → layout updates. _M4·P0·[API]_
 - [ ] **AL-206** One child per cell area — Children occupy non-overlapping areas; dropping onto an occupied cell does not overlap (swap or reject as Figma does, V-36). _Data:_ anchors/spans _Test:_ drag a child onto an occupied cell → record. _M4·P0·[API][SRC:nearform]_
 - [ ] **AL-207** Child spans — A child can span multiple rows/columns; its area includes inner gaps; span edits that would overlap or exceed the bounds are refused. _Data:_ `gridRowSpan`, `gridColumnSpan` _Test:_ F24 → w=180; extend a span into an occupied cell → refused. _M4·P0·[API][DOC:31289469907863 excerpt]_
-- [ ] **AL-208** Child Fill in grid — A Fill child fills its area on that axis (clamped by min/max). _Data:_ — _Test:_ F24. _M4·P0·[API][SRC:search-excerpt]_
+- [ ] **AL-208** Child Fill in grid — A Fill child fills its area on that axis (clamped by min/max). _Data:_ — _Test:_ F24. _M4·P0·[API][DOC:31289469907863 excerpt]_
 - [ ] **AL-209** Child alignment in area — Fixed/Hug children are aligned in their area by `gridChildHorizontalAlign/VerticalAlign`; AUTO behaves as recorded in V-35. _Data:_ — _Test:_ 40×40 child in a 100×100 cell: MIN (0,0), CENTER (30,30), MAX (60,60). _M4·P0·[API]_
 - [ ] **AL-210** First-available placement — Appending a child without coordinates places it into the first free cell in row-major order. _Data:_ — _Test:_ 3×3 grid with (0,0) and (0,1) filled → the new child goes to (0,2). _M4·P0·[API]_
 - [ ] **AL-211** Auto rows — With `gridAutoTracks=ROWS`, rows are added as children overflow and removed when empty; the row count cannot be edited directly. _Data:_ `gridAutoTracks` _Test:_ 3 columns, append 7 children → 3 rows; delete the 7th child (row 3 becomes empty) → 2 rows. _M4·P0·[API][SRC:forum-54244]_
@@ -1336,3 +1338,147 @@ Every item is **Not started**. Each _Test_ is run in Figma first, to confirm the
 - [ ] **AL-247** Fixtures F21–F24 (grid) — As tabulated. _Data:_ — _Test:_ as F1. _M4·P0·[API][KNOW→V-41]_
 - [ ] **AL-248** Fixture F25 & precision — 3 Fill children in W=100 → each 33.333…; stored values unrounded unless V-30 shows Figma rounds. _Data:_ — _Test:_ read child widths via plugin → record precision. _M4·P1·[KNOW→V-30]_
 - [ ] **AL-249** Randomized differential suite — 200 randomized stack/wrap/grid fixtures generated from a seed are laid out in Illigma and in Figma (via plugin script) and agree to ±0.01px. _Data:_ — _Test:_ automated comparison harness (M0 test harness). _M4·P1·[KNOW]_
+
+---
+
+## 7. Cross-area dependencies
+
+| Depends on / affects | What auto layout needs from it (or gives to it) | Area / spec |
+| --- | --- | --- |
+| Document model, transactions, undo/redo (M0) | Every layout pass runs inside the triggering transaction; geometry writes must be undoable atomically; derived geometry persisted (§2.8) | Foundation |
+| Renderer (M0) | Paint order override for canvas stacking (`itemReverseZIndex`), clipping (`clipsContent`), no layout during paint | Foundation |
+| File format & interop (M0/M8) | Persist all §2 fields + `layoutVersion`; REST/.fig import mapping (deprecated `layoutAlign`, paddings, unknown enums, `gridRowsSizing` strings) | `11-file-format-interop.md` |
+| Canvas, selection, transforms, drag & drop (M1) | Resize handles (Hug/Fill → Fixed), double-click edge, reparenting drops, ⌘/⌃ drag modifiers, deep select, Enter/Shift+Enter, nudge = reorder for flow children, rotation bounding boxes | Core editing spec |
+| Inspector / layers panel / shortcut registry (M0/M1) | Layout section, W/H dropdowns, alignment box keyboard focus (W/A/S/D/X/B), layers panel order & reorder, numeric fields with math & comma lists | `10-panels-shortcuts-workflow.md` |
+| Constraints & layout guides (M4) | Constraints for absolute children and for children of non-AL frames resized by Fill; min/max disabling constraint options | Constraints / layout guides spec |
+| Strokes & paints (M2) | `strokeAlign`, individual stroke weights for inside-stroke insets; export of resolved geometry | Vectors & paint spec |
+| Text & typography (M3) | `textAutoResize` ⇄ Hug/Fill/Fixed, width-constrained height measurement, first-line baseline/ascent, leading trim, truncation/maxLines, font loading triggers relayout | `06-text-typography.md` |
+| Components, instances, slots, variants (M5) | Override model for AL props, per-instance sizing, boolean-property visibility collapse, swap/variant reflow, slot nodes (no GRID), detach | Components spec |
+| Variables & modes (M6) | Bindable fields (`itemSpacing`, paddings, `counterAxisSpacing`, min/max, width/height, `gridRowGap/ColumnGap`, `visible`); mode switch triggers relayout | `08-variables-styles-design-systems.md` |
+| Prototyping (M7) | `overflowDirection` scrolling of AL frames with clipped overflow; smart-animate between layouts; variable changes at runtime re-layout | Prototyping spec |
+| Export (M2/M8) | Raster/SVG/PDF from resolved geometry incl. stacking order | Export spec |
+| Test harness (M0) | Differential fixture runner (Figma plugin script ↔ Illigma) for §3.22.8 and the randomized suite | Foundation |
+| Performance hardening (M8) | Incremental dirty-subtree layout; interactive reflow during drags | Interop & hardening |
+
+---
+
+## 8. Needs live Figma verification
+
+Each experiment: **Setup → Action → Record.** Run in Figma Design (desktop or browser, UI3), on a new file, at 100% zoom, both on a **new (Updated)** frame and — where marked ★ — on a **Legacy** frame (from a file created before 2026‑07‑24 or toggled to Legacy). Record numbers by reading values with a plugin console (`figma.currentPage.selection[0]`) as well as the inspector. Save screenshots of the inspector state.
+
+1. **V-01 Containers.** Setup: section, group, rectangle, text, frame, component, instance, component set. Action: select each, inspect Layout section; press Shift+A. Record: whether flow controls exist; what Shift+A produces (wrap vs convert).
+2. **V-02 Shift+A inference & defaults.** Setup: (a) 3 rects in a row spaced 16; (b) column spaced 10/20 unequal; (c) 2×3 lattice; (d) single text; (e) freeform frame 300×200 with children inset 20/30/20/30; (f) rects created right-to-left in time but arranged left-to-right. Action: Shift+A on each (selection of children for a–d,f; the frame for e). Record: flow, gap, each padding, W/H sizing modes, alignment, child order, wrapper name, clipsContent, strokesIncludedInLayout, z-slot of wrapper; also run "Add auto layout" from the context menu and Object menu; verify ⌥⇧A/Alt+Shift+A removes.
+3. **V-03 Remove / Freeform round-trip.** Setup: AL frame with padding 24, gap 8, Fill child, Hug child, absolute child. Action: choose Freeform; then choose Vertical again; separately press ⌥⇧A. Record: every child's absolute rect before/after (expect unchanged), child sizing modes after, child constraints after, whether padding/gap are restored on re-enable, X/Y field state for flow children; drag a Fill child out of the frame → its sizing.
+4. **V-04 Shift+A in context.** Setup: vertical list A–E. Action: select B,C → Shift+A; select the list → Shift+A; select a group → Shift+A. Record: hierarchy, indices, sizes.
+5. **V-05 Direction switch.** Setup: vertical frame Fixed 300 wide, children: Fill-W/Hug-H text, Fixed rect, Hug AL child. Action: switch to Horizontal and back. Record: each child's `layoutSizingHorizontal/Vertical`, frame sizing, positions.
+6. **V-06 Counter-axis Hug with Fill children.** Setup: vertical Hug-W frame; children A rect 120 wide Fixed, B rect. Action: set B Fill-W; then set A Fill-W; then set parent Hug-W again. Record: parent W sizing after each step; B width; whether children are demoted to Fixed. Repeat on primary axis.
+7. **V-07 Group children.** Setup: group inside a vertical AL frame. Action: open W/H dropdown; try Fill; resize parent. Record: options; resulting group/child geometry.
+8. **V-08 Resize conversions.** Setup: Hug×Hug AL frame; Fill child inside fixed parent; text child. Action: drag right edge; drag bottom edge; double-click right edge handle of a Fixed AL frame and of fixed text. Record: sizing mode per axis after each.
+9. **V-09 Rotated children.** Setup: 100×20 rect rotated 90° and 30° in a Hug row. Action: observe; try Fill-W. Record: contributed width, Fill availability, resulting size.
+10. **V-10 Negative free space with Fill.** Setup: Fixed W=100 row: Fixed 80, Fixed 80, Fill rect; then Fill AL frame with padding 10/10. Record: Fill widths/positions.
+11. **V-11 Extreme negative gap.** Setup: Hug row of two 50 rects. Action: gap −40, −50, −80, −120. Record: frame W and child x each time; any clamping of gap value.
+12. **V-12 Padding input limits.** Action: type −5, 0.5, 100000 into padding fields; drag handle past 0. Record: stored values.
+13. **V-13 Auto gap details.** Setup: Fixed W=300 row of 3×50. Action: gap 24 → Auto → fixed (value restored?); Around/Evenly with 3×150 (overflow); Auto with Hug-W primary; Auto with one Fill child; open settings and record enabled state of the Between/Around/Evenly picker for: fixed gap, Auto gap, Hug primary, vertical+wrap (re-observe [OBS]); press X in the alignment box.
+14. **V-14 Alignment details.** Action: with Auto gap, count alignment-box targets and click each; packed CENTER overflow (W=100, 80+80); Fill-H child with maxH 50 under CENTER; ⌥A/⌥D/⌥W with AL frame selected and with flow child selected. Record positions and property changes.
+15. **V-15 Baseline.** Setup: horizontal frame: text 12px (1 line), text 32px (2 lines), 24×24 icon frame, nested AL with text, all baseline-aligned; reorder icon first/last. Record: each child's y and the first-line baseline y (compute from font metrics), frame Hug H; whether baseline is per line in wrap mode.
+16. **V-16 Min/max semantics.** Action: min 150 & max 100 (order both ways); type W below min / above max on Fixed; drag below min on canvas; F12/F13 on Updated ★ and Legacy; constraint dropdown options of an absolute child with minW; Hug row exceeding maxW with clip on/off. Record all values.
+17. **V-17 Wrap details.** Setup: F15 and variants. Action: exact-fit line (Σ+gaps = inner W exactly, also with decimals); Hug-W wrap without max; Hug-W with maxW; toggle Wrap on Hug-W frame (does W become Fixed?); row-gap field Auto → read `counterAxisAlignContent`; single line with SPACE_BETWEEN content; Fill children with min in wrap; Fill-cross children in mixed lines (line cross size); negative item gap with wrap; vertical wrap transposed fixture. Record breaks, positions, sizing modes.
+18. **V-18 Text Fill.** Setup: Fixed W=300 row: avatar 40, gap 12, text Fill-W (long). Action: resize frame; set text Fill-H in a vertical frame. Record text W/H, `textAutoResize`, line count.
+19. **V-19 Absolute details & modifiers.** Action: toggle Ignore auto layout on (record position, constraints, X/Y editability), toggle off for a child at index 0 drawn far right (record new index), change padding (absolute child moves?); on macOS: ⌃-drag, ⌘-drag into AL frame; on Windows: Ctrl-drag; large object drop with/without ⌘. Record resulting parent, `layoutPositioning`, position.
+20. **V-20 Stacking & hit-testing.** Setup: F8. Action: click overlap under Last/First on top; add an absolute child overlapping; open settings on a grid frame. Record selected node, paint order, availability for grid.
+21. **V-21 Hidden & transparent children.** Setup: F19. Action: hide B; set B opacity 0; hide via boolean component property. Record W and positions.
+22. **V-22 Drag reorder & reparent.** Action: drag A to positions at 49%/51% of sibling widths; drag in from outside; drag out to canvas; ⌥-drag; multi-select drag; within wrap lines. Record live reflow behavior (video), final indices, sizing of moved children.
+23. **V-23 Keyboard & clipboard insertion.** Action: arrow keys and `[`/`]` on a flow child (H and V frames, and grid); ⌘D; paste with child selected / with frame selected; ⌘G and ⌘⌥G on two flow children; paste a former Fill child into freeform frame. Record indices and sizing.
+24. **V-24 Strokes default.** Action: create AL frames via Shift+A, via Frame tool + Vertical, via Suggest auto layout. Record `strokesIncludedInLayout` and the settings label.
+25. **V-25 Layers panel order.** Setup: vertical A (top), B, C (bottom); horizontal A (left)…; First on top variant. Record panel order top→bottom vs `children` order.
+26. **V-26 ★ Legacy rules.** Setup: Legacy frames: padding 30/30 with W=50 and a child; child with outside stroke 10 in Included/Excluded parent; parent inside/center/outside strokes Included; F14. Record all geometry; derive Legacy formulas.
+27. **V-27 Clip default.** Action: Shift+A wrapper, Frame-tool frame + auto layout, Suggest auto layout output. Record `clipsContent`.
+28. **V-28 Handles.** Action: drag gap/padding handles with Shift, ⌥, ⌥⇧; ⌥-click/⇧⌥-click; drag gap below 0; drag gap handle while Auto; wrap row-gap handle; grid gap handles; zoom 25%. Record values/increments and visibility.
+29. **V-29 Empty Hug frame.** Action: delete all children of a Hug×Hug AL frame with padding 10 (Updated ★ and Legacy). Record frame size.
+30. **V-30 Precision & rounding.** Setup: F25; F21; CENTER of 15 in 100. Record stored widths/positions via plugin (full float), inspector display; with "Snap to pixel grid" on/off.
+31. **V-31 Layout version toggle.** Action: toggle Updated↔Legacy on a frame, a main component, an instance; run Actions "Update layout version for selection/page"; undo. Record availability, resize effects, undo granularity.
+32. **V-32 ★ Updated Fill shares.** Setup: F14; two Fill AL frames, one with inside stroke 10 Included; vs Legacy. Record widths.
+33. **V-33 Grid creation & conversion.** Action: choose Grid on a frame with 5 children (and on an empty frame); switch grid→vertical; read `gridAutoTracks`, `gridItemsPositioning`, track types, counts, container sizing. Record defaults and placement.
+34. **V-34 Grid sizing edge cases.** Action: set container Hug when tracks are FLEX; add a column via picker (record new track type); padding fields on grid (present? honored?); read REST `gridColumnsSizing` string for F22 via REST API; read `primaryAxisSizingMode`/`counterAxisSizingMode` for a grid frame and grid children Fill. Record all.
+35. **V-35 Grid child semantics.** Action: AUTO alignment of a 40×40 child in a 100×100 cell (and any container-level alignment control); hidden child + append (cell reuse?); multi-span item larger than two HUG tracks (distribution); FLEX tracks with content larger than share; Fill child in HUG track (contribution); span handles on canvas. Record geometry.
+36. **V-36 Grid UI interactions.** Action: drag child onto empty and occupied cells (manual); select a track + Enter; track size type UI; arrow keys on grid child; min/max on grid container; delete track with spanning child. Record behavior.
+37. **V-37 Suggest auto layout & vertical wrap.** Action: run ⌃⇧A on a card and a mobile screen fixture; check vertical flow shows Wrap; transpose F15. Record hierarchy and geometry.
+38. **V-38 Instances & component sets.** Action: on an instance try: change gap/padding/alignment/flow/remove AL/reorder/layout version; change main gap and padding after instance overrides; Reset overrides; detach; Shift+A on a component set. Record allowed actions and propagation.
+39. **V-39 Undo & property clipboard.** Action: for each action type in §3.21 perform, ⌘Z, ⇧⌘Z; ⌘⌥C/⌘⌥V from AL frame to freeform frame. Record undo step count and restored geometry, properties transferred.
+40. **V-40 Variables.** Action: bind gap to a variable (Auto still allowed?); negative variable value on gap; bind width (sizing becomes?); bind padding and switch modes. Record.
+41. **V-41 Numeric fixtures.** Action: build F1–F25 in Figma (Updated ★ and Legacy). Record all child rects (plugin script dump, full precision) and store as golden JSON in the Illigma test harness.
+
+---
+
+## 9. Sources
+
+### 9.1 Official Figma Help Center articles (catalog retrieved 2026‑09‑27; **only search excerpts were seen in this session**)
+
+| ID | Title (catalog) | URL |
+| --- | --- | --- |
+| 360040451373 | Guide to auto layout (search results also show it as "Explore auto layout properties") | https://help.figma.com/hc/en-us/articles/360040451373-Guide-to-auto-layout |
+| 5731482952599 | Toggle on auto layout in designs (search title: "Add auto layout to a design") | https://help.figma.com/hc/en-us/articles/5731482952599-Toggle-on-auto-layout-in-designs |
+| 31289464393751 | Use the horizontal and vertical flows in auto layout | https://help.figma.com/hc/en-us/articles/31289464393751-Use-the-horizontal-and-vertical-flows-in-auto-layout |
+| 31289469907863 | Use the grid auto layout flow | https://help.figma.com/hc/en-us/articles/31289469907863-Use-the-grid-auto-layout-flow |
+| 31441443713047 | Combine vertical, horizontal, and grid auto layout flows | https://help.figma.com/hc/en-us/articles/31441443713047-Combine-vertical-horizontal-and-grid-auto-layout-flows |
+| 42031586813719 | Use auto layout with CSS Flexbox in mind | https://help.figma.com/hc/en-us/articles/42031586813719-Use-auto-layout-with-CSS-Flexbox-in-mind |
+| 360039957734 | Apply constraints to define how layers resize (related; not read) | https://help.figma.com/hc/en-us/articles/360039957734 |
+| 27378154668951 | Adjust text dimensions and resizing (related; not read) | https://help.figma.com/hc/en-us/articles/27378154668951 |
+
+### 9.2 Typings (read directly in this session)
+
+`@figma/plugin-typings` 1.141.0 — `refs/_figma_plugin-typings/package/plugin-api.d.ts`:
+- `VariableBindableNodeField` L6910–6937 (incl. `itemSpacing`, paddings, min/max, `counterAxisSpacing`, `gridRowGap`, `gridColumnGap`, `visible`, `width`, `height`).
+- `x`/`y` computed for AL children L7240–7253; `minWidth/maxWidth/minHeight/maxHeight` L7263–7278; `relativeTransform` AL note L7320–7322.
+- `LayoutMixin` L7337; `layoutSizingHorizontal` L7357–7434 (HUG/FILL validity, examples); `layoutSizingVertical` L7436–7442; `resize`/`resizeWithoutConstraints` L7444–7471.
+- `AspectRatioLockMixin.targetAspectRatio` L7487–7526 (Fill + locked ratio example; "defaults to Hug x Hug").
+- `AutoLayoutMixin` L7636–8143: `layoutMode` L7686 (GRID not for slots L7648; NONE does not restore positions L7642–7644), paddings L7687–7708, `primaryAxisSizingMode` L7723, `counterAxisSizingMode` L7770, `strokesIncludedInLayout` L7811, `layoutWrap` L7821, `primaryAxisAlignItems` L7908 (SPACE_EVENLY/AROUND semantics L7824–7907), `counterAxisAlignItems` L7991 (BASELINE horizontal only), `counterAxisAlignContent` L7993–8002, `itemSpacing` L8054, `counterAxisSpacing` L8055–8102, `itemReverseZIndex` L8103–8142.
+- `GridTrackSize` L8147–8160; `GridTrackReorderOptions/Entry` L8165–8204; `GridLayoutMixin` L8206–8460 (`gridRowCount` L8233, `gridColumnCount` L8241, `gridRowGap` L8247, `gridColumnGap` L8253, `gridRowSizes` L8284, `gridColumnSizes` L8292, `appendChildAt` L8329, `gridAutoTracks` L8363, `gridItemsPositioning` L8400, `reorderRows/Columns` L8445/L8459).
+- `AutoLayoutChildrenMixin` L8464–8523 (`layoutAlign` L8478, `layoutGrow` L8488, `layoutPositioning` L8522); `GridChildrenMixin` L8527–8628.
+- `InferredAutoLayoutResult` L8632; `BaseFrameMixin` (`clipsContent` L9414, `inferredAutoLayout` L9426); `TextNode.textAutoResize` L10977, `textTruncation` L10985, `maxLines` L10993; `SlotNode` L11259; `ChildrenMixin.appendChild/insertChild` AL notes L6990–7020.
+
+`@figma/rest-api-spec` 0.44.0 — `refs/_figma_rest-api-spec/package/dist/api_types.ts`: bound variables L75–130; `HasLayoutTrait` layout fields L215–356 (`layoutSizing*`, `grid*` incl. `gridRowsSizing/gridColumnsSizing` CSS strings L311–319); `HasFramePropertiesTrait` L358–483 (`itemSpacing` "Can be negative" L447–452; `primaryAxisAlignItems` enum lacks `SPACE_EVENLY/AROUND` L416).
+
+### 9.3 Live observation
+
+- [OBS] `old/docs/figma/observations/2026-09-27-live-figma.md` — UI3 Layout section (Freeform; Vertical; Wrap control; W/H; nine-position alignment; gap; padding; Clip content) and layout settings (Inside stroke = Included; Canvas stacking = Last on top; Layout = Updated; baseline disabled; Auto spacing "Between" disabled).
+
+### 9.4 Other sources (search excerpts only; keys used in tags)
+
+| Key | Source |
+| --- | --- |
+| forum-56357 | Figma Forum product update "Design closer to CSS with the updated auto layout option" — https://forum.figma.com/product-updates-3/design-closer-to-css-with-the-updated-auto-layout-option-56357 |
+| blog-2026-07 | Search-tool summary combining Figma forum posts (https://forum.figma.com/share-your-feedback-26/figma-autolayout-changes-57291, https://forum.figma.com/report-a-problem-6/adding-border-now-adds-pixel-56608) and an unnamed third-party blog: release 2026‑07‑24, toggle until 2027‑01‑24, instances can't toggle, Actions "Update layout version for selection/page", inside-only strokes, fill shares by content area. Individual sentence provenance not pinned. |
+| forum-57146 | Figma Forum "Responsive spacing across design and CSS" (Around/Evenly) — https://forum.figma.com/product-updates-3/responsive-spacing-across-design-and-css-57146 |
+| kusiima | https://www.kusiima.com/blog/figma-spacing-options-auto-layout-css (third-party, release timing) |
+| forum-58389 | Figma Forum "Vertical wrap available in auto layout" (2026‑09‑25) — https://forum.figma.com/product-updates-3/vertical-wrap-available-in-auto-layout-58389 |
+| forum-54244 | Figma Forum "Do more with grid" (Config 2026) — https://forum.figma.com/product-updates-3/do-more-with-grid-54244 |
+| plugin-upd-120 | Figma Plugin API changelog "Version 1, Update 120" (2025‑11) — https://developers.figma.com/docs/plugins/updates/2025/11/06/version-1-update-120 |
+| forum-40316 | "[Config 2025] Grid Auto Layout Flow — let's hear what you think!" — https://forum.figma.com/share-your-feedback-26/config-2025-grid-auto-layout-flow-let-s-hear-what-you-think-40316 |
+| forum-40313 | "Auto layout grid column hug to content" — https://forum.figma.com/suggest-a-feature-11/auto-layout-grid-column-hug-to-content-40313 |
+| forum-grid-gap-vars / forum-update | Figma forum update notes (grid gaps accept variables; picker shifts content on track removal), seen via search summary of grid threads above |
+| forum-40352 | "No min/max width options for a frame with new grid auto layout" — https://forum.figma.com/share-your-feedback-26/no-min-max-width-options-for-a-frame-with-new-grid-auto-layout-40352 |
+| forum-grid-stacking | 2026‑03 forum report "canvas stacking option missing for Auto Layout Grid" (seen via search summary) |
+| forum-41164 | "Keyboard shortcuts for moving/shuffling items in grid layout" — https://forum.figma.com/suggest-a-feature-11/keyboard-shortcuts-for-moving-shuffling-items-in-grid-layout-41164 |
+| forum-57215 | "Bug Report: Auto Layout Fill + min-width fails to distribute remaining space" — https://forum.figma.com/report-a-problem-6/bug-report-auto-layout-fill-min-width-fails-to-distribute-remaining-space-57215 |
+| forum-20043 | "Left and right constraint disabled when min max width are set" — https://forum.figma.com/ask-the-community-7/left-and-right-constraint-disabled-when-min-max-width-are-set-20043 |
+| forum-19030 | "Fill container option changes automatically into fixed width" — https://forum.figma.com/ask-the-community-7/fill-container-option-changes-automaticalli-into-fixed-width-why-19030 |
+| forum-23826 | "Autolayout mistake while changing from vertical and horizontal" — https://forum.figma.com/suggest-a-feature-11/autolayout-mistake-while-changing-from-verticle-and-horizental-and-vice-versa-23826 |
+| forum-58344 | "Why is there no fill container option when selecting child elements" — https://forum.figma.com/t/why-is-there-no-fill-container-option-when-selecting-child-elements/58344 |
+| forum-28674 | "Inconsistent text baseline alignment in auto layout" — https://forum.figma.com/ask-the-community-7/inconsistent-text-baseline-alignment-in-auto-layout-28674 |
+| forum-23623 | "Auto layout shortcuts" — https://forum.figma.com/suggest-a-feature-11/auto-layout-shortcuts-23623 |
+| forum-remove-all | "Remove all auto layout" — https://forum.figma.com/t/remove-all-auto-layout/72009 |
+| kinney | Steve Kinney, Figma course "Auto Layout" — https://stevekinney.com/courses/figma/auto-layout |
+| uxdesign-tricks | "10 Auto Layout Tricks in Figma Every Designer Should Know" — https://uxdesign.cc/10-auto-layout-tricks-in-figma-every-designer-should-know-158cf1f87ef |
+| uxdesign-tips | "10 Auto-Layout Tips in Figma" — https://uxdesign.cc/10-auto-layout-tips-in-figma-23f530c8098a |
+| pixso | https://pixso.net/tips/figma-auto-layout/ |
+| shortcut-guides | Third-party shortcut lists (e.g. https://www.skillademia.com/shortcuts/figma-shortcuts/, https://supercharge.design/articles/ultimate-guide-to-auto-layout-in-figma) |
+| skillademia | https://www.skillademia.com/shortcuts/figma-shortcuts/ |
+| nearform | "Figma's new Grid auto-layout: What it does (and doesn't yet do)" — https://nearform.com/digital-community/figmas-new-grid-auto-layout-what-it-does-and-doesnt-yet-do/ |
+| old-notes | Previous Illigma prototype research note `old/docs/auto-layout-2026.md` and `old/docs/figma/feature-guide.md` (2026‑09‑27; they cite 42031586813719, forum 54244/57146/58389). Used as context only; claims re-tagged where independently corroborated. |
+
+### 9.5 Research method & limits
+
+- Typings were read directly (grep/sed). Help articles and forum posts were **not** fetchable (DNS-blocked); all their content here comes from WebSearch result excerpts (≈20 targeted queries) and is tagged accordingly.
+- The shared WebSearch budget was exhausted before searches on: Shift+A defaults (padding/gap of wrappers), hidden-child behavior, rounding, counter-axis Auto gap, and negative gap limits. These remain [KNOW] and are listed in §8.
+- No live Figma interaction, video, or full article body was consulted for this draft.

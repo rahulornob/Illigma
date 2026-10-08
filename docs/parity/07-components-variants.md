@@ -12,6 +12,8 @@
 > **Research limits (honesty note).** No live Figma file was inspected for this area. No video was watched. Help Center articles were seen only as search excerpts. The session's shared web-search budget was exhausted part-way through the research, so several sub-topics (exact override list for auto layout properties, nearest-variant selection, restore-component placement, "Simplify instances") rest on [KNOW] and are listed in §8 as experiments.
 >
 > **Rule reminder.** Figma is the source of truth for behavior and data model; Framer only for the look of the editor. This document describes behavior only.
+>
+> **Adversarial review (2026-10-08).** A second pass re-checked every typings member in this domain, the article catalog and the sibling parity docs. It corrected overstated tags, added CP-203…CP-243 and experiments E-37…E-47. See §10. The reviewer had **no** web-search budget left (shared per-turn limit exhausted), so no new Help Center excerpts were added. The Figma-authored skill docs cited as `skill://figma/...` were re-fetched and re-read from Figma's official repository (`raw.githubusercontent.com/figma/mcp-server-guide/main/skills/figma-use/...`).
 
 ---
 
@@ -71,6 +73,7 @@ Create component (single, multiple), main vs instance, instance creation (Alt-dr
 - **Create multiple components vs Combine as variants.** The first makes N independent components; the second wraps components into one component set. [SRC:figma-signup.helpjuice.com mirror excerpt] [API L1835]
 - **Component set vs a frame containing components.** Only a `COMPONENT_SET` yields variant properties; a frame of components is just organization. [KNOW]
 - **"Master"** is legacy wording for "main component". [KNOW]
+- **Component property types are closed.** `ComponentPropertyType` has exactly five members (`BOOLEAN`, `TEXT`, `INSTANCE_SWAP`, `VARIANT`, `SLOT`). `NUMBER`, `IMAGE`, `COLOR`, `POINT`, `GRADIENT` and the other extra types in the typings belong to `ShaderPropertyDefinition` (shaders), not to components. Illigma must not offer number/color/image *component* properties. [API L11078] [API L4941-4955]
 
 ---
 
@@ -86,7 +89,9 @@ All names below are Figma's (Plugin API v1.141.0 unless marked REST). Illigma's 
 | `COMPONENT_SET` (`ComponentSetNode`) | `BaseFrameMixin` (no prototyping/reactions), `PublishableMixin`, `ComponentPropertiesMixin`; `defaultVariant` (read-only), deprecated `variantGroupProperties`; `clone()` duplicates children as **new** components with no instances | Cannot be empty ("empty component sets are not supported in Figma"). | [API L11117-11137] [API L1849] |
 | `INSTANCE` (`InstanceNode`) | `DefaultFrameMixin`, `VariantMixin`; `mainComponent` / `getMainComponentAsync()`, `swapComponent()`, `setProperties()`, `componentProperties`, `detachInstance()`, `scaleFactor`, `exposedInstances`, `isExposedInstance`, `overrides`, `removeOverrides()` (`resetOverrides()` deprecated) | No `PublishableMixin` ⇒ instances have no description of their own. | [API L11186-11258] |
 | `SLOT` (`SlotNode`) | `DefaultFrameMixin`; `resetSlot()`, `limitViolations` (read-only); `clone()` returns a plain `FrameNode` | `layoutMode = 'GRID'` throws `cannotApplyGridToSlot`. | [API L11259-11283] [API L7648] |
-| REST `INSTANCE` | `componentId`, `isExposedInstance?`, `exposedInstances?` (IDs), `componentProperties?`, `overrides: Overrides[]` | REST v0.44.0 `ComponentPropertyType` lacks `'SLOT'` (plugin typings have it). | [REST L1110-1142] [REST L2410] |
+| REST `INSTANCE` | `componentId`, `isExposedInstance?`, `exposedInstances?` (IDs), `componentProperties?`, `overrides: Overrides[]` (`overriddenFields: string[]`, untyped) | REST v0.44.0 `ComponentPropertyType` lacks `'SLOT'` (plugin typings have it). REST v0.44.0 also has **no `SLOT` node type at all**, so it is unknown how slots appear in REST JSON (FRAME? omitted?). See CP-239. | [REST L1110-1142] [REST L2410] [REST L2480] |
+
+- **An instance always points to a `COMPONENT`, never to a `COMPONENT_SET`.** For sets, `mainComponent` is one variant. `mainComponent: ComponentNode | null` and `swapComponent(componentNode: ComponentNode)` only accept components. [API L11196-11212]
 
 ### 2.2 Component property definitions (on non-variant `COMPONENT` or `COMPONENT_SET`) — Document
 
@@ -107,7 +112,7 @@ ComponentPropertyDefinitions = {
 [API L11078-11115] [API L6955]
 
 - **Name suffix.** `BOOLEAN`, `TEXT`, `INSTANCE_SWAP` names carry a unique `#<id>` suffix; `VARIANT` names are plain. The suffix lets several properties share a display name. [API L9661] SLOT names are also suffixed in practice (example `"Content#7:1"`). [SRC:skill://figma/figma-use/references/component-patterns.md]
-- **Operations.** `addComponentProperty(name, type, defaultValue, options?)` returns the suffixed name; `editComponentProperty` supports `name` (all types), `defaultValue` (BOOLEAN/TEXT/INSTANCE_SWAP only), `preferredValues` (INSTANCE_SWAP/SLOT), `description` and `slotSettings` (SLOT); `deleteComponentProperty` supports BOOLEAN/TEXT/INSTANCE_SWAP/SLOT, **not** VARIANT. [API L9671-9706]
+- **Operations.** `addComponentProperty(name, type, defaultValue, options?)` returns the suffixed name. Its `defaultValue` may be a `VariableAlias`, so a definition can be variable-bound when it is created. `editComponentProperty` supports `name` (all types), `defaultValue` (BOOLEAN/TEXT/INSTANCE_SWAP only), `preferredValues` (INSTANCE_SWAP/SLOT), `description` and `slotSettings` (SLOT); `deleteComponentProperty` supports BOOLEAN/TEXT/INSTANCE_SWAP/SLOT, **not** VARIANT. [API L9671-9706]
 
 ### 2.3 Slot settings — Document
 
@@ -137,6 +142,13 @@ InstanceNode.isExposedInstance / exposedInstances
 
 - `setProperties({...})` takes VARIANT names plain and other names suffixed; values may be `VariableAlias`; unspecified properties keep their values; on a name collision the VARIANT property wins; SLOT properties throw `cannotSetSlotProperty`. [API L11213-11216]
 - `NodeChangeProperty` (the vocabulary for `overriddenFields`) includes, among others: `name`, `visible`, `locked`, `opacity`, `blendMode`, `fills`, `strokes`, `strokeWeight`, `strokeAlign`, `strokeCap`, `strokeJoin`, `dashPattern`, `effects`, `cornerRadius` (and per-corner), `characters`, `fontName`, `fontSize`, `lineHeight`, `letterSpacing`, `textCase`, `textDecoration`, `textAutoResize`, `exportSettings`, `layoutGrids`, `fillStyleId`/`strokeStyleId`/`textStyleId`/`effectStyleId`/`gridStyleId`, `layoutMode`, `itemSpacing`, padding fields, `primaryAxisAlignItems`, `counterAxisAlignItems`, `layoutGrow`, `layoutAlign`, `reactions`, `componentProperties`, `width`, `height`, `x`, `y`, `relativeTransform`. **Presence in this union does not prove the field is overridable on an instance sublayer** — it is the generic change vocabulary. [API L3751-3884]
+- *Review addendum.* The union also contains the following fields, which are candidates for the E-07 matrix:
+  - Text: `textAlignHorizontal`, `textAlignVertical`, `paragraphSpacing`, `paragraphIndent`, `listSpacing`, `textTruncation`, `maxLines`, `leadingTrim`, `hyperlink`, `openTypeFeatures`, `styledTextSegments`.
+  - Layout: `layoutWrap`, `counterAxisSpacing`, `counterAxisAlignContent`, `layoutPositioning`, `itemReverseZIndex`, `gridAutoTracks`, `gridItemsPositioning`, `minWidth`/`maxWidth`/`minHeight`/`maxHeight`.
+  - Shape and paint: `clipsContent`, `isMask`, `maskType`, `booleanOperation`, `vectorNetwork`, `cornerSmoothing`, `constrainProportions`.
+  - Motion: `animations`, `animationStyles`.
+
+  The union does **not** contain `mainComponent`, `isExposedInstance`, `scaleFactor`, `layoutSizingHorizontal` or `layoutSizingVertical`. So the field name that reports a nested instance swap in `overriddenFields` is unknown, and Illigma must not assume it is `'mainComponent'` (CP-060). [API L3751-3884]
 
 ### 2.5 Property references on sublayers — Document
 
@@ -146,6 +158,7 @@ SceneNode.componentPropertyReferences: { visible?: string, characters?: string, 
 - Only component sublayers and instance sublayers may have references; otherwise `null`. [API L6624-6635]
 - Field → property type: `visible` ↔ BOOLEAN (any sublayer), `characters` ↔ TEXT (text node), `mainComponent` ↔ INSTANCE_SWAP (instance node). [SRC:skill://figma/figma-use/references/component-patterns.md]
 - SLOT binding uses key `slotContentId` in practice (`slotFrame.componentPropertyReferences = { slotContentId: key }`) even though the typings' key union lists only the three keys above — **discrepancy to verify**. Setting may throw `cannotApplySlotPropertyToNonFrameNode`, `cannotApplySlotPropertyToFrameWithGrid`, `cannotApplySlotPropertyToFrame`. [API L6626] [SRC:skill://figma/figma-use/references/component-patterns.md]
+- The same skill's code comment says the bound frame "must be a direct child (not nested inside another slot)". It is ambiguous whether slot frames must be **direct children of the component** or may sit at any depth. Verify in CP-236 / E-44. [SRC:skill component-patterns.md, re-read 2026-10-08]
 
 ### 2.6 Publishing / documentation metadata — Document
 
@@ -189,6 +202,8 @@ SceneNode.componentPropertyReferences: { visible?: string, characters?: string, 
 6. **Undo:** creating a component is one undo step; undo restores the original layer(s). [SRC:https://forum.figma.com/t/how-can-i-un-component-a-component/4356/8 excerpt] [KNOW]
 7. **No "un-componentize":** Figma has no direct command to turn a main component back into a frame; the documented workaround is create instance → detach → delete main. [SRC:forum, 2024 community-support reply excerpt] (verify in UI3, §8 E-03)
 8. **Script/API creation:** `createComponent()` creates an empty 100×100 component on the current page. [API L1090-1102]
+9. **Sources that contain components or instances** *(review addendum)*. The typings restrict only the *node itself*: it may not be a component or set, and may not be inside a component, set or instance. What happens when the source frame **contains** a main component (refused? nested main converted to an instance?) is unverified. If the source contains instances, they become nested instances, and their overrides become *inherited* overrides for instances of the new component. [API L1112] [KNOW] (CP-203, CP-204, §8 E-47)
+10. **"Create component set" straight from plain layers** is claimed by third-party shortcut lists (⌥⇧⌘K) but is not confirmed in any source seen here. Treat it as unverified (CP-206, §8 E-36). [SRC:third-party] [KNOW]
 
 ### 3.2 Main components and propagation
 
@@ -241,7 +256,7 @@ onMainChanged(main, change):
 | Nested instances | swap (`mainComponent`), their component property values, their own overrides |
 | Export | export settings |
 | Layout guides | layout grids / guides |
-| Auto layout† | gap, padding, alignment, direction, wrap, child sizing (hug/fill/fixed) — believed overridable; verify each |
+| Auto layout† | gap, padding, alignment, min/max, child sizing (hug/fill/fixed): believed overridable. **Review correction:** the earlier draft also listed direction and wrap here. The auto-layout spec (03, AL-224/AL-226) holds that changing the flow/direction, removing auto layout, toggling the layout version and reordering children are **blocked** on instances. Both claims rest on [KNOW] except the reorder rule. Until E-07 is run, treat direction/flow and auto-layout removal as **not overridable** (CP-217). |
 | Corner radius† | per-node radius |
 | Prototype† | interactions (`reactions`) on instance/sublayers |
 | Variables† | explicit variable modes on instance/sublayers |
@@ -263,6 +278,8 @@ resolvedValue(inst, sublayerPath, field):
 - Editing text bound to a TEXT property on the canvas updates the **property value**, not a separate characters override; direct `characters` writes on property-managed text "may be overridden by the component property system". [SRC:skill://figma/figma-use/references/component-patterns.md] [KNOW]
 - `overrides` lists only direct overrides and only the changed fields. [API L11243-11248]
 - Whether setting a field back to exactly the main's value clears the override or keeps it as an override is unverified. [KNOW] (§8 E-09)
+- **Override granularity is a whole field** *(review addendum, hypothesis)*. List-valued fields (`fills`, `strokes`, `effects`, `layoutGrids`, `exportSettings`) are believed to be overridden as one value. If an instance changes one paint of a two-paint fill, the entire `fills` list is overridden, and later main edits to the *other* paint no longer reach that instance. This matches the field-level `overriddenFields` vocabulary but is not stated anywhere seen. [API L3751 (field-level vocabulary)] [KNOW] (CP-208, §8 E-40)
+- **Top-level fields of the main.** Not every root-level field of a main reaches its instances. Placement does not propagate (§3.2.4). It is unverified whether hiding (`visible`) or locking (`locked`) the main itself propagates (CP-207, §8 E-39). [KNOW]
 
 ### 3.5 Reset overrides
 
@@ -277,11 +294,14 @@ resolvedValue(inst, sublayerPath, field):
 
 1. The instance menu (dropdown on the instance name in the right panel) lists swappable components. "Related components" — same file, page and frame, and slash-name siblings (`UI/Button/Hover`) — are grouped. [DOC:360039150413 excerpt]
 2. Swapping keeps the instance's placement in its parent (position, constraints, auto layout child settings). [KNOW]
-3. **Override preservation:** "Figma will try to preserve any overrides when you select a different variant, or swap between instances in the Instance menu." The layer names of the current and new instance must match; for text, criteria are looser — a text override is kept when the text layer's name matches and its hierarchy is similar. [DOC:360039150413 excerpt (as quoted by community)] Community reports: naming matters more than structure; nested-instance swaps inside components sometimes lose text overrides. [SRC:https://forum.figma.com/ask-the-community-7/is-layer-hierarchy-still-taken-into-account-when-preserving-overrides-14757] [SRC:https://forum.figma.com/suggest-a-feature-11/preserve-overrides-in-instances-swapped-inside-component-11459]
+3. **Override preservation:** "Figma will try to preserve any overrides when you select a different variant, or swap between instances in the Instance menu." The layer names of the current and new instance must match; for text, criteria are looser — a text override is kept when the text layer's name matches and its hierarchy is similar. [SRC:forum 14757, quoting DOC:360039150413] *(Review: this tag was downgraded from "DOC excerpt". The wording was seen only as a community quotation of the article, not as an excerpt of the article itself.)* Community reports: naming matters more than structure; nested-instance swaps inside components sometimes lose text overrides. [SRC:https://forum.figma.com/ask-the-community-7/is-layer-hierarchy-still-taken-into-account-when-preserving-overrides-14757] [SRC:https://forum.figma.com/suggest-a-feature-11/preserve-overrides-in-instances-swapped-inside-component-11459]
 4. **API distinction:** `swapComponent(c)` preserves overrides with the UI heuristics; assigning `mainComponent = c` sets the main directly and **clears all overrides** (on nested instances it performs nested instance swapping). [API L11195-11212]
 5. **Drag-swap from Assets:** hold ⌥ (Mac) / Alt (Win) while dropping a component onto an instance to replace it; release the mouse first, otherwise it is only added. In this path the help text says "Figma only preserves text overrides". [DOC:360039150173 excerpt] Adding ⌘/Ctrl targets a nested instance. [SRC:https://uxdesign.cc/10-components-tips-in-figma-12b80389574 excerpt]
 6. Swapping a nested instance inside an instance is itself an override (`mainComponent` on that sublayer); reset reverts it. [API L11196] [KNOW]
 7. Size after swap: hypothesis — the instance adopts the new main's size unless its size was overridden (auto layout hug/fill rules apply). (§8 E-12)
+8. *(Review addendum)* **Name after swap.** Hypothesis: an instance that was never renamed takes the new main's name (the set name for variants); a renamed instance keeps its name. [KNOW] (CP-214, §8 E-05)
+9. *(Review addendum)* **Variant values across sets.** When swapping between two component sets that share VARIANT property names/values (e.g. `Size=Large` in both), the hypothesis is that Figma picks the target variant that matches those values rather than the target's default variant. [KNOW] (CP-219, §8 E-12)
+10. *(Review addendum)* The rule in the pseudo-code below — a non-text override survives a *variant* switch only if the overridden field had the same value in both variants — is **[KNOW] only**. No source excerpt in this document states it.
 
 **Swap override-preservation algorithm (Illigma contract; heuristics per DOC, details to verify):**
 ```
@@ -355,6 +375,17 @@ parseVariantName(name):
 - **Set is a frame:** fill, stroke, radius, layout (incl. auto layout) apply to the set; variants can be arranged freely or by auto layout. Script-combined sets stack variants at (0,0) and must be laid out. [API L11117] [SRC:skill component-patterns.md]
 - **Clone of a set** duplicates all variants as new components with no instances. [API L11121-11125]
 - **Properties on variants:** non-variant properties are defined on the set; reading/writing definitions on a variant throws. [SRC:skill gotchas.md]
+- *(Review addendum)* **Existing properties are merged on combine.** Figma's own skill says: "After combining, the component set inherits all properties from its children." So BOOLEAN/TEXT/INSTANCE_SWAP properties defined on standalone components move to set level when combined. Unverified: how same-named properties from different components merge (one property or several), and whether property references are preserved. [SRC:skill component-patterns.md, re-read 2026-10-08] [KNOW] (CP-222, §8 E-41)
+- *(Review addendum)* **Sparse matrices: sources disagree.** The help excerpt says a full matrix is not required. Figma's skill says "Every unique combination must exist as a child component — missing ones show as blank gaps in the variant picker." The two can both be true (sparse sets are allowed, but the picker shows gaps). Record the picker UI in E-22. [DOC:360056440594 excerpt] [SRC:skill component-patterns.md]
+- *(Review addendum)* **Naming edge cases are unspecified.** No source seen covers:
+  - names or values that contain `=` or `,`;
+  - whitespace around separators;
+  - case (`Size` vs `size`);
+  - empty values (`Size=`);
+  - a variant layer name that omits an existing property or adds an unknown one.
+
+  Illigma must reproduce Figma exactly (CP-225, CP-226, §8 E-37). [KNOW]
+- *(Review addendum)* **Default set styling.** Hypothesis: a set created with "Combine as variants" in the UI gets real node styling (a dashed purple stroke, a small corner radius and padding around the variants) rather than editor chrome. Verify that these are stored stroke/radius values and record them (CP-224, §8 E-41). [KNOW]
 
 **Selecting a variant on an instance.** Each VARIANT property is a dropdown (or toggle for `true/false`-style values, §8 E-21). If the exact combination does not exist, Illigma must reproduce Figma's choice; hypothesis:
 ```
@@ -384,6 +415,13 @@ selectVariant(inst, prop, value):
 10. Property values (instance) and defaults (definition) can be bound to variables (`boundVariables.value` / `.defaultValue`); in the UI, BOOLEAN binds boolean variables and TEXT binds string variables. [API L6954-6955, L2240-2252] [KNOW for UI pairing]
 11. Multi-selecting several instances of the same component shows shared property controls; differing values show as mixed; nested-instance properties may be hidden in multi-selection (long-standing community complaint). [SRC:https://forum.figma.com/suggest-a-feature-11/nested-property-hidden-with-multiple-selection-27022] [KNOW]
 12. Property order in the panel is author-controlled (drag to reorder). [KNOW] (§8 E-23)
+13. *(Review addendum)* **Unlinking.** A property reference can be removed from a layer without deleting the property. The layer then shows its main value, and the property may be left unreferenced. Removing it from the layer is a write of `componentPropertyReferences`; the exact UI control is [KNOW]. [API L6624-6635] (CP-229)
+14. *(Review addendum)* **Variable-bound VARIANT values.**
+    - `setProperties` accepts a `VariableAlias` for *any* property, and `componentProperties[...].boundVariables.value` is typed generically. So the API does not exclude binding a VARIANT value on an instance to a variable.
+    - Whether the UI allows it, and which variable types it accepts (string? boolean?), is unverified.
+    - If it is supported, switching the variable mode would switch the variant.
+
+    [API L11213-11216] [API L2243-2254] [KNOW] (CP-231, §8 E-43)
 
 ### 3.12 BOOLEAN properties
 
@@ -435,6 +473,13 @@ Status: announced at Schema 2025 (Nov 2025) [DOC:35794667554839 excerpt]; open b
 - `resetSlot()` resets the slot to the original component slot content. [API L11270-11273] (The MCP skill says "default empty state"; the typings wording governs — §8 E-28.)
 - Properties of instances placed inside a slot are not passed through to the outer instance (community report). [SRC:https://forum.figma.com/report-a-problem-6/figma-slots-do-not-pass-on-component-properties-51891]
 - Copying a slot yields a plain FRAME. [API L11264-11268]
+- *(Review addendum)* **Open slot questions (all [KNOW], §8 E-44):**
+  - Converting a frame that already has children: do those children become the default content? (CP-234)
+  - Deleting a SLOT property: `deleteComponentProperty` supports SLOT [API L9702]. What happens to the bound slot node and to custom content in instance slots? (CP-235)
+  - Slot depth: may a slot sit anywhere inside the component, or only as a direct child? (CP-236)
+  - In instances, are the slot frame's own fill, padding and gap overridable? (CP-237)
+  - Is a slot inside a *nested* instance editable from the outer instance? (CP-238)
+  - What exactly counts as "preferred" for `HAS_NON_PREFERRED`? (CP-232)
 
 **Slot property settings** (edit via "Edit slot property"): name, description, min/max layer counts, preferred instances, only allow preferred instances, display empty slots by default, set items to fill container by default. No layer limit by default. [DOC:38231200344599 excerpt] [API L11086-11092] Limits **nudge rather than block**: edits that violate them succeed and the slot reports `limitViolations`. [API L11275] [SRC:developers.figma.com changelog excerpt] [SRC:https://eg.linkedin.com/in/asharaby post excerpt "triggering warnings instead of blocking"]
 
@@ -487,6 +532,7 @@ onInsertIntoSlot(slot, layer, settings):
 - Navigation actions can reset interactive components on arrival (`resetInteractiveComponents`). [API L5751]
 - Prototype connections authored on a main propagate to instances. [DOC:4404380377367 title only] [KNOW]
 - Known edge cases (community, 2021–2026): hover variant without the click wiring breaks click navigation; nested interactive components reportedly lose mouse-enter/leave/while-hovering inside other mains; variant interactions ignored when the same trigger has another interaction. [SRC:https://forum.figma.com/t/while-hovering-on-click-interactions-dont-work-well-together/1570] [SRC:https://forum.figma.com/suggest-a-feature-11/interactive-components-not-working-when-nested-inside-a-main-component-12437] These must be validated before being replicated (§8 E-31).
+- *(Review addendum)* The sibling prototyping spec (09-prototyping) states that `CHANGE_TO` switches the **closest ancestor instance** of the hotspot, and that "Change to" is offered only inside variants (PR-021, PR-027). Illigma must keep one runtime contract across both documents. Unverified: whether runtime variant changes keep the instance's design-time overrides and property values with the same heuristics as §3.6 (CP-240, §8 E-31). [KNOW]
 
 ### 3.22 Copy/paste, duplicate, undo/redo, export, persistence
 
@@ -494,6 +540,8 @@ onInsertIntoSlot(slot, layer, settings):
 - Every component operation (create, combine, add variant, property CRUD, swap, set property, reset, detach, push, restore, slot edit) is one undo step and redo re-applies it exactly, including override maps and IDs. [KNOW]
 - Export of an instance renders its resolved appearance; export settings on instances are overridable. [DOC:360039150733 excerpt] [KNOW]
 - Save/open must round-trip everything in §2.9 "Document".
+- *(Review addendum)* **Duplicating containers.** The plugin `clone()` docs for `FrameNode`, `GroupNode`, `TransformGroupNode` and `PageNode` all say that nested components are cloned **as instances of the original main**. `PageNode.clone` also remaps prototype connections to the copied nodes. UI duplicate is expected to match; verify. [API L10570, L10764, L10785, L10809] (CP-210)
+- *(Review addendum)* **Deleting a page** that holds main components leaves instances elsewhere pointing at soft-deleted mains, which can be restored. This matches 10-panels-shortcuts-workflow §page deletion. [API L6324] [KNOW] (CP-211)
 
 ### 3.23 Local publishing semantics (local-first mapping of Figma libraries)
 
@@ -510,6 +558,15 @@ Update       = when a newer snapshot exists, consumer shows "updates available";
                accepting re-resolves instances, preserving overrides per §3.2 rules
 Offline      = consumer always renders from its cache; missing library file never breaks rendering
 ```
+
+*(Review addendum)* Related catalog articles that were **not** researched (title only):
+- 360039234193 Review and accept library updates
+- 360025508373 Publish a library
+- 360039236853 Unpublish a library
+- 360041051154 Guide to libraries in Figma
+- 1500008731201 Add or remove a library from a design file
+
+Unpublish/missing-library handling (CP-241) and granular update review (CP-242) are therefore [KNOW]. They must be aligned with 08-variables-styles-design-systems, which owns library semantics.
 
 ### 3.24 Layers panel and selection
 
@@ -618,7 +675,7 @@ All items: status **Not started**.
 - [ ] **CP-007** Creation restrictions — command unavailable when the selection is a component or component set, or is inside a component, component set or instance. _Data:_ `createComponentFromNode` error "Cannot create component from node" _Test:_ Try on: main, set, variant, layer inside main, layer inside instance; Illigma must disable the command in all five cases. _M5·P0·[API L1112]_
 - [ ] **CP-008** Undo/redo create component — one undo step restores the original layer(s) exactly (types, names, IDs, positions); redo re-creates the same component ID. _Data:_ undo stack _Test:_ Create component from frame and from multi-selection; ⌘Z, ⌘⇧Z; diff document before/after. _M5·P0·[SRC:forum 4356 excerpt][KNOW]_
 - [ ] **CP-009** Default component name — name follows the source layer; when wrapping several layers the default name matches Figma's (e.g., "Component 1" — verify). _Data:_ `name` _Test:_ Create components from multi-selection twice; record names in Figma (§8 E-02). _M5·P2·[KNOW]_
-- [ ] **CP-010** New component appears in Assets ▸ Local components immediately, grouped by page/frame and slash-name segments. _Data:_ local component index _Test:_ Create "Icons/Arrow/Left" on page "Lib"; Assets shows it under Lib ▸ Icons ▸ Arrow. _M5·P1·[DOC:360039150413 excerpt][DOC:360038663994 title]_
+- [ ] **CP-010** New component appears in Assets ▸ Local components immediately, grouped by page/frame and slash-name segments. _Data:_ local component index _Test:_ Create "Icons/Arrow/Left" on page "Lib"; Assets shows it under Lib ▸ Icons ▸ Arrow. _M5·P1·[KNOW] (review: downgraded — DOC:360039150413 excerpt concerns swap-menu grouping, not Assets; DOC:360038663994 seen as title only; see 10-panels A-02)_
 - [ ] **CP-011** Creating a component from a child of an auto layout frame keeps its flow index and its layout-child settings (fill/hug/fixed, absolute positioning). _Data:_ `layoutSizingHorizontal`, `layoutPositioning`, child index _Test:_ Convert 2nd child (Fill width) of a vertical stack; component remains 2nd and Fill. _M5·P1·[KNOW]_
 - [ ] **CP-012** No un-componentize command — Illigma offers no "convert main to frame" unless Figma does; documented path is instance → detach → delete main. _Data:_ — _Test:_ Check Figma UI3 context menu on a main (§8 E-03). _M5·P2·[SRC:forum 2024 excerpt]_
 
@@ -631,7 +688,7 @@ All items: status **Not started**.
 - [ ] **CP-017** Reordering/reparenting sublayers in the main is mirrored in instances; overrides follow the sublayer identity, not its index or name. _Data:_ composite sublayer IDs _Test:_ Override fill of child "A"; move A to top and rename to "B" in main; override still on that layer. _M5·P0·[KNOW]_
 - [ ] **CP-018** Main placement does not propagate — moving, rotating or reparenting the main never changes instances' position/rotation/parent. _Data:_ `x`, `y`, `rotation`, `parent` _Test:_ Rotate main 15°; instances unchanged. _M5·P0·[KNOW]_
 - [ ] **CP-019** Main resize propagation — instances without a size override follow the main's new width/height; instances with a size override keep theirs; in both cases children reflow per constraints/auto layout. _Data:_ `width`, `height` overrides _Test:_ 2 instances, resize one; resize main from 100→160 wide; record both in Figma (§8 E-11). _M5·P0·[KNOW]_
-- [ ] **CP-020** Structural edits inside instances are blocked — cannot add, delete, reorder, move or reparent sublayers of an instance (outside slots); drag/drop and paste into an instance target its parent instead or are refused. _Data:_ — _Test:_ Try to drag a rect into an instance, drag a sublayer out, delete a sublayer, ⌘] on a sublayer; Figma refuses all (record exact feedback). _M5·P0·[DOC:360039150733 excerpt][API L1861]_
+- [ ] **CP-020** Structural edits inside instances are blocked — cannot add, delete, reorder, move or reparent sublayers of an instance (outside slots); drag/drop and paste into an instance target its parent instead or are refused. _Data:_ — _Test:_ Try to drag a rect into an instance, drag a sublayer out, delete a sublayer, ⌘] on a sublayer; Figma refuses all (record exact feedback). _M5·P0·[DOC:360039150733 excerpt][API L1861][KNOW for the redirect-to-parent part]_
 - [ ] **CP-021** Propagation is derived, not a user edit — no extra undo entry and no "changed" notification for instance sublayers updated by main changes. _Data:_ undo stack, change events _Test:_ Edit main once; one undo reverts main and all instances. _M5·P0·[API L594][KNOW]_
 - [ ] **CP-022** Main components never nest — a main component cannot be placed inside another main component, component set (except as variant) or instance; drop/paste is refused or converted per Figma. _Data:_ parent rules _Test:_ Drag main A into main B in Figma; record result (§8 E-06); Illigma matches. _M5·P1·[API L1112][KNOW]_
 - [ ] **CP-023** Instance cycles are impossible — inserting, swapping or setting an INSTANCE_SWAP value that would make a component contain itself (directly or transitively) is blocked. _Data:_ dependency graph _Test:_ A contains instance of B; try to insert instance of A into B; refused. _M5·P0·[KNOW]_
@@ -667,7 +724,7 @@ All items: status **Not started**.
 
 ### 6.5 Reset overrides
 
-- [ ] **CP-047** Reset all changes (top-level instance) — clears all direct overrides of the instance including nested sublayers, nested swaps and component property values (property values return to defaults). _Data:_ `removeOverrides()` _Test:_ Apply 6 kinds of overrides incl. nested swap and BOOLEAN false; reset all; `overrides` empty and render equals fresh instance (§8 E-10). _M5·P0·[DOC:360038665934 excerpt][API L11250-11257]_
+- [ ] **CP-047** Reset all changes (top-level instance) — clears all direct overrides of the instance including nested sublayers, nested swaps and component property values (property values return to defaults). _Data:_ `removeOverrides()` _Test:_ Apply 6 kinds of overrides incl. nested swap and BOOLEAN false; reset all; `overrides` empty and render equals fresh instance (§8 E-10). _M5·P0·[DOC:360038665934 excerpt][API L11250-11257][KNOW — whether property values count as "direct overrides" is unverified]_
 - [ ] **CP-048** Reset all changes on a selected nested layer resets only that layer's overrides. _Data:_ per-sublayer overrides _Test:_ Override 2 sublayers; select one, reset all changes; the other keeps its override. _M5·P0·[DOC:360038665934 excerpt]_
 - [ ] **CP-049** Reset a single property — "Reset ▸ Reset [property]" lists exactly the overridden property groups of the selected layer and resets just that one. _Data:_ overriddenFields grouping _Test:_ Override fill and text on a text layer; menu shows both; reset fill only. Record Figma's grouping labels (§8 E-10). _M5·P0·[DOC:360038665934 excerpt]_
 - [ ] **CP-050** Inherited overrides are not resettable from the outer instance (they are its baseline). _Data:_ inherited overrides _Test:_ Override inside main on nested instance; outer instance reset leaves it. _M5·P1·[API L11243][KNOW]_
@@ -677,13 +734,13 @@ All items: status **Not started**.
 ### 6.6 Swap instance
 
 - [ ] **CP-053** Instance menu swap — clicking the instance name opens a searchable picker of components (local + enabled libraries) with related components (same file/page/frame, slash-name siblings) grouped first. _Data:_ — _Test:_ Components "UI/Button/Hover", "UI/Button/Default" in same frame; picker groups them. _M5·P0·[DOC:360039150413 excerpt]_
-- [ ] **CP-054** Swap preserves overrides by matching layer names (and hierarchy) between old and new component; text overrides kept when the text layer name matches and hierarchy is similar. _Data:_ `swapComponent` _Test:_ Two icons-in-button components with same layer names but different structure; override text + fill; swap; record which survive in Figma and match (§8 E-12). _M5·P0·[DOC:360039150413 excerpt][API L11206-11212]_
+- [ ] **CP-054** Swap preserves overrides by matching layer names (and hierarchy) between old and new component; text overrides kept when the text layer name matches and hierarchy is similar. _Data:_ `swapComponent` _Test:_ Two icons-in-button components with same layer names but different structure; override text + fill; swap; record which survive in Figma and match (§8 E-12). _M5·P0·[SRC:forum 14757 quoting DOC:360039150413][API L11206-11212]_
 - [ ] **CP-055** Swap with non-matching names drops the unmatched overrides (no error). _Data:_ — _Test:_ Rename target's text layer; swap; text override gone. _M5·P0·[DOC:360039150413 excerpt][SRC:forum 14757]_
 - [ ] **CP-056** Swap keeps the instance's own placement (parent, index, x/y, constraints, auto-layout child settings, rotation). _Data:_ `x`, `y`, `layoutSizing*`, index _Test:_ Swap instance in auto layout (Fill width); stays Fill and same index. _M5·P0·[KNOW]_
 - [ ] **CP-057** Size after swap matches Figma (adopt new main size vs keep overridden size; hug/fill rules). _Data:_ `width`, `height` _Test:_ §8 E-12. _M5·P0·[KNOW]_
 - [ ] **CP-058** Drag-swap from Assets — hold ⌥/Alt when dropping onto an instance to replace it; releasing the modifier first only adds; only text overrides are preserved in this path (per help). _Data:_ — _Test:_ Override text+fill, drag-swap; text kept, fill dropped (§8 E-12). _M5·P1·[DOC:360039150173 excerpt]_
 - [ ] **CP-059** Drag-swap onto a nested instance with ⌥⌘ (Alt+Ctrl). _Data:_ nested `mainComponent` override _Test:_ Drop icon component onto nested icon inside a button instance with ⌥⌘. _M5·P2·[SRC:uxdesign.cc excerpt]_
-- [ ] **CP-060** Nested swap is an override — swapping a nested instance inside an instance records a `mainComponent` override on that sublayer; reset reverts to the main's nested component. _Data:_ `overriddenFields: ['mainComponent']` (verify field name) _Test:_ Swap nested icon; check overrides; reset. _M5·P0·[API L11196][KNOW]_
+- [ ] **CP-060** Nested swap is an override — swapping a nested instance inside an instance records a `mainComponent` override on that sublayer; reset reverts to the main's nested component. _Data:_ nested-swap entry in `overriddenFields` (field name unknown — `mainComponent` is **not** a member of `NodeChangeProperty` v1.141.0) _Test:_ Swap nested icon; check overrides; reset. _M5·P0·[API L11196][KNOW]_
 - [ ] **CP-061** Multi-selection swap — selecting several instances (same or different mains) and choosing a component swaps all. _Data:_ — _Test:_ Select 3 instances, swap; all 3 changed in one undo step. _M5·P1·[KNOW]_
 - [ ] **CP-062** Direct main reassignment (API/scripting) clears all overrides, unlike swap. _Data:_ `mainComponent =` vs `swapComponent()` _Test:_ Scripted comparison on overridden instance. _M5·P2·[API L11195-11212]_
 
@@ -703,8 +760,8 @@ All items: status **Not started**.
 - [ ] **CP-071** Go to main component selects the main, switching pages if needed, and frames it in the viewport. _Data:_ selection, current page _Test:_ Instance on page 2, main on page 1; command; page 1 active, main selected and visible. _M5·P0·[DOC:360038665934 excerpt]_
 - [ ] **CP-072** Return to instance — after Go to main, a temporary control returns to the original page, selection and viewport. _Data:_ transient return target _Test:_ Go to main, edit, click Return to instance. _M5·P1·[DOC:360038665934 excerpt]_
 - [ ] **CP-073** Go to main for a nested instance targets the nested instance's own main; for a remote (library) main it opens the library document at the main (local-first: open the library file if available, otherwise show why not). _Data:_ `remote`, library ref _Test:_ Nested icon in button instance → icon main selected. _M5·P1·[DOC:360038665934 excerpt][KNOW]_
-- [ ] **CP-074** Push changes to main component — applies the selected instance's direct overrides to its local main; the instance then has no overrides; other instances update except where they override the same fields. _Data:_ main fields, `overrides` _Test:_ Instances I1 (fill override red), I2 (fill override green), I3 none; push from I1; main red, I2 green, I3 red, I1 no overrides. _M5·P0·[DOC:360038665934 excerpt][SRC:forum 13480 excerpt]_
-- [ ] **CP-075** Push is disabled when the main is remote (library) or deleted. _Data:_ `remote` _Test:_ Library instance: command disabled. _M5·P0·[DOC:360038665934 excerpt]_
+- [ ] **CP-074** Push changes to main component — applies the selected instance's direct overrides to its local main; the instance then has no overrides; other instances update except where they override the same fields. _Data:_ main fields, `overrides` _Test:_ Instances I1 (fill override red), I2 (fill override green), I3 none; push from I1; main red, I2 green, I3 red, I1 no overrides. _M5·P0·[DOC:360038665934 excerpt][SRC:forum 13480 excerpt][KNOW for "I1 ends with no overrides"]_
+- [ ] **CP-075** Push is disabled when the main is remote (library) or deleted. _Data:_ `remote` _Test:_ Library instance: command disabled. _M5·P0·[DOC:360038665934 excerpt][KNOW for the deleted-main case]_
 - [ ] **CP-076** Push of nested overrides (nested swaps, nested property values, nested sublayer overrides) matches Figma. _Data:_ nested overrides _Test:_ §8 E-34. _M5·P1·[KNOW]_
 - [ ] **CP-077** Push is a single undo step reverting both main and instance. _Data:_ undo _Test:_ Push, ⌘Z; main and instance back. _M5·P0·[KNOW]_
 - [ ] **CP-078** Deleting a main keeps all instances rendering the last definition (soft-deleted main retained in document while referenced, incl. after save/reopen). _Data:_ soft-deleted component, `mainComponent.parent === null` _Test:_ Delete main; instances unchanged; save, reopen; still unchanged. _M5·P0·[API L6324][KNOW]_
@@ -717,7 +774,7 @@ All items: status **Not started**.
 - [ ] **CP-082** Nested instances keep their own link — editing the inner main updates the outer main and all outer instances (transitive propagation). _Data:_ dependency graph _Test:_ Icon → Button → Card; change Icon color; all Card instances update. _M5·P0·[KNOW]_
 - [ ] **CP-083** Overrides authored on a nested instance inside an outer main are inherited by every outer instance and are not in their `overrides`. _Data:_ inherited overrides _Test:_ In Card main, set nested Button label "Buy"; Card instances show "Buy"; their overrides empty. _M5·P0·[API L11243]_
 - [ ] **CP-084** Deep-selecting a nested instance inside an instance shows its own instance panel (properties, swap, reset) and edits are stored as overrides of the outer instance. _Data:_ outer `overrides` with nested sublayer ids _Test:_ ⌘-click nested Button in Card instance; set BOOLEAN; check Card instance overrides. _M5·P0·[KNOW]_
-- [ ] **CP-085** Expose nested instances — author selects nested instances in the main/set; in outer instances their component properties appear in the top-level property panel under the nested instance's name. _Data:_ `isExposedInstance`, `exposedInstances` _Test:_ Expose Button in Card; Card instance panel shows "Button" group with its Label/Icon properties; editing changes nested Button. _M5·P0·[API L11234-11241][SRC:uxplanet excerpt][DOC:8883757553943 title]_
+- [ ] **CP-085** Expose nested instances — author selects nested instances in the main/set; in outer instances their component properties appear in the top-level property panel under the nested instance's name. _Data:_ `isExposedInstance`, `exposedInstances` _Test:_ Expose Button in Card; Card instance panel shows "Button" group with its Label/Icon properties; editing changes nested Button. _M5·P0·[API L11234-11241][SRC:uxplanet excerpt] (DOC:8883757553943 title only — not evidence)_
 - [ ] **CP-086** `isExposedInstance` editable only on primary nested instances (direct descendants of a COMPONENT/COMPONENT_SET, not inside another instance); inherited by deeper copies. _Data:_ `isExposedInstance` _Test:_ Try to expose an instance nested two levels deep; control unavailable. _M5·P1·[API L11238-11241]_
 - [ ] **CP-087** Exposed instances in a set — exposure is per variant layer; instance panel shows exposed groups for the current variant only (verify). _Data:_ per-variant exposure _Test:_ Expose in variant A only; switch instance A→B; group disappears (§8 E-15). _M5·P1·[KNOW]_
 - [ ] **CP-088** Exposure after swapping the exposed nested instance matches Figma (community reports loss). _Data:_ `exposedInstances` _Test:_ §8 E-15. _M5·P2·[SRC:forum 54180]_
@@ -743,7 +800,7 @@ All items: status **Not started**.
 - [ ] **CP-105** Rename a variant value — renames on all variants having it; instances using it keep their variant. _Data:_ `variantOptions` _Test:_ Rename "Primary"→"Brand". _M5·P0·[KNOW]_
 - [ ] **CP-106** Delete a variant property — removed from all variant names; resulting duplicate combinations become conflicts. _Data:_ — _Test:_ Delete "State" where two variants differ only by State; both show conflict. _M5·P1·[KNOW]_
 - [ ] **CP-107** Conflict detection — variants with identical value combinations show "The properties and values of this variant are conflicting…" on the affected variants, regardless of visual difference; resolves as soon as values differ. _Data:_ derived conflict state _Test:_ Duplicate variant names; warning appears on both; rename one; warning gone. _M5·P0·[DOC:360056440594 excerpt][SRC:forum 51633]_
-- [ ] **CP-108** Sparse matrices allowed — not every combination must exist; no warning for missing combinations. _Data:_ — _Test:_ 2 props × 2 values with 3 variants; no warning. _M5·P0·[DOC:360056440594 excerpt]_
+- [ ] **CP-108** Sparse matrices allowed — not every combination must exist; no warning for missing combinations. _Data:_ — _Test:_ 2 props × 2 values with 3 variants; no warning; record how the missing combination appears in the instance picker (Figma skill: "blank gaps") (§8 E-22). _M5·P0·[DOC:360056440594 excerpt][SRC:skill component-patterns.md]_
 - [ ] **CP-109** Default variant is the top-left-most variant spatially (tie-break per Figma) and updates when variants move. _Data:_ `defaultVariant` _Test:_ Move variants; check which one Assets inserts (§8 E-18). _M5·P0·[API L11127-11129]_
 - [ ] **CP-110** Component set behaves as a frame — fills, strokes, radius, clip, auto layout (incl. wrap) can arrange variants; resizing the set doesn't scale variants. _Data:_ `BaseFrameMixin` _Test:_ Apply vertical auto layout gap 20 to a set; variants reflow. _M5·P1·[API L11117][KNOW]_
 - [ ] **CP-111** Cloning/duplicating a whole set (outside it) creates a new set with new components and no instances. _Data:_ `ComponentSetNode.clone` _Test:_ ⌘D the set; new set IDs; instances still point to original (UI behavior to verify vs instance-of-set). _M5·P1·[API L11121-11125][KNOW]_
@@ -753,7 +810,7 @@ All items: status **Not started**.
 
 - [ ] **CP-113** Variant dropdown per VARIANT property on instances lists `variantOptions` in property order; selecting a value with an existing exact combination swaps to that variant. _Data:_ `componentProperties[prop].value` _Test:_ Size × State set; change Size; instance becomes matching variant. _M5·P0·[API L11176-11216][KNOW]_
 - [ ] **CP-114** Missing combination fallback — selecting a value whose exact combination doesn't exist picks the variant Figma picks (hypothesis: max matching other values; tie-break by layer order). _Data:_ resolver _Test:_ §8 E-22. _M5·P0·[KNOW]_
-- [ ] **CP-115** Variant switch preserves overrides when layer names match and the overridden property originally matched between the two variants; text preserved by name with looser hierarchy check. _Data:_ swap heuristic _Test:_ Default/Hover variants with same "Label" layer; override label text + label color (same in both mains) + bg fill (differs between mains); switch; text and label color kept, bg override dropped. _M5·P0·[DOC:360039150413 excerpt]_
+- [ ] **CP-115** Variant switch preserves overrides when layer names match and the overridden property originally matched between the two variants; text preserved by name with looser hierarchy check. _Data:_ swap heuristic _Test:_ Default/Hover variants with same "Label" layer; override label text + label color (same in both mains) + bg fill (differs between mains); switch; text and label color kept, bg override dropped. _M5·P0·[SRC:forum 14757 quoting DOC:360039150413][KNOW for the "originally matched" rule — §8 E-12]_
 - [ ] **CP-116** Variant switch preserves BOOLEAN/TEXT/INSTANCE_SWAP/SLOT property values (property identity is set-level). _Data:_ `componentProperties` _Test:_ Set Label="Pay", Show icon=false; switch Size; values persist. _M5·P0·[KNOW]_
 - [ ] **CP-117** True/false-like variant values render as a toggle in the instance panel (verify value set: true/false, yes/no, on/off). _Data:_ `variantOptions` _Test:_ §8 E-21. _M5·P1·[KNOW]_
 - [ ] **CP-118** Variant switch keeps instance placement and applies size rules as in CP-057. _Data:_ — _Test:_ Switch Size=sm→lg in auto layout row; row reflows. _M5·P0·[KNOW]_
@@ -836,13 +893,13 @@ All items: status **Not started**.
 
 - [ ] **CP-172** Resizing an instance reflows children per the main's constraints (left/right/center/scale/left-right) and auto layout settings. _Data:_ `constraints` (main) _Test:_ Main 100 wide, child Right-constrained at x=80; resize instance to 200; child at x=180. _M5·P0·[KNOW]_
 - [ ] **CP-173** Instance-level placement properties (x, y, rotation, its constraints in its parent, layout-child sizing, absolute positioning) are the instance's own, never overrides. _Data:_ — _Test:_ Change them; `overrides` stays empty. _M5·P0·[KNOW]_
-- [ ] **CP-174** Scale tool (K) on an instance stores `scaleFactor` and scales strokes/text/effects/radii proportionally; regular resize keeps `scaleFactor = 1`. _Data:_ `scaleFactor` _Test:_ K-scale instance 2×; scaleFactor 2; text size visually doubled. _M5·P1·[API L11226-11233]_
+- [ ] **CP-174** Scale tool (K) on an instance stores `scaleFactor` and scales strokes/text/effects/radii proportionally; regular resize keeps `scaleFactor = 1`. _Data:_ `scaleFactor` _Test:_ K-scale instance 2×; scaleFactor 2; text size visually doubled. _M5·P1·[API L11226-11233][KNOW for proportional scaling of strokes/effects/radii]_
 - [ ] **CP-175** Min/max width/height defined on the main apply to instances; overridability on instances per Figma. _Data:_ `minWidth`, `maxWidth` _Test:_ Main minWidth 80; resize instance to 50 → clamps (§8 E-07). _M5·P2·[KNOW]_
 
 ### 6.20 Auto layout interplay
 
 - [ ] **CP-176** Hug instances re-layout on any content change (text value, BOOLEAN, swap, slot insert). _Data:_ auto layout _Test:_ Change Label "OK"→"Continue"; hug button widens by text delta. _M5·P0·[KNOW]_
-- [ ] **CP-177** Auto layout properties of the instance and its sublayers (gap, padding, alignment, direction, wrap, child sizing) are overridable exactly where Figma allows. _Data:_ `itemSpacing`, `padding*`, `primaryAxisAlignItems`, `layoutMode`, `layoutWrap`, `layoutSizing*` _Test:_ §8 E-07. _M5·P1·[KNOW]_
+- [ ] **CP-177** Auto layout properties of the instance and its sublayers (gap, padding, alignment, direction, wrap, child sizing) are overridable exactly where Figma allows. _Data:_ `itemSpacing`, `padding*`, `primaryAxisAlignItems`, `layoutMode`, `layoutWrap`, `layoutSizing*` _Test:_ §8 E-07; see CP-217 for the review correction on direction/flow. _M5·P1·[KNOW]_
 - [ ] **CP-178** Instance as auto layout child keeps its own Fill/Hug/Fixed and absolute-position settings across swaps and variant switches. _Data:_ `layoutSizingHorizontal`, `layoutPositioning` _Test:_ Fill instance in row; switch variant; still Fill. _M5·P0·[KNOW]_
 - [ ] **CP-179** Component sets accept auto layout (incl. wrap/grid) for variant arrangement without affecting variant identity. _Data:_ set `layoutMode` _Test:_ Wrap layout on set with 8 variants. _M5·P2·[API L11117][KNOW]_
 
@@ -854,8 +911,8 @@ All items: status **Not started**.
 
 ### 6.22 Interactive components (prototyping cross-ref)
 
-- [ ] **CP-183** Variant interactions — interactions on a variant may use "Change to" another variant of the same set; in presentation, instances switch variants at runtime. _Data:_ `Reaction.actions[].navigation = 'CHANGE_TO'`, `destinationId` _Test:_ Toggle on/off set with On click → Change to; prototype toggles. _M7·P0·[API L5807][DOC:360061175334 title][KNOW]_
-- [ ] **CP-184** Interactions authored on main components propagate to instances; instance-level interaction edits are overrides (verify). _Data:_ `reactions` _Test:_ §8 E-31. _M7·P1·[DOC:4404380377367 title][KNOW]_
+- [ ] **CP-183** Variant interactions — interactions on a variant may use "Change to" another variant of the same set; in presentation, instances switch variants at runtime. _Data:_ `Reaction.actions[].navigation = 'CHANGE_TO'`, `destinationId` _Test:_ Toggle on/off set with On click → Change to; prototype toggles. _M7·P0·[API L5807][KNOW] (DOC:360061175334 title only; 09-prototyping PR-021 cites an excerpt)_
+- [ ] **CP-184** Interactions authored on main components propagate to instances; instance-level interaction edits are overrides (verify). _Data:_ `reactions` _Test:_ §8 E-31. _M7·P1·[KNOW] (DOC:4404380377367 title only — not evidence)_
 - [ ] **CP-185** Navigation can reset interactive component state (`resetInteractiveComponents`). _Data:_ `Action.resetInteractiveComponents` _Test:_ Toggle variant, navigate away and back with reset on/off. _M7·P1·[API L5751]_
 - [ ] **CP-186** Nested interactive components inside other components respond to their triggers (incl. hover/press) per current Figma behavior. _Data:_ — _Test:_ §8 E-31. _M7·P1·[SRC:forum 12437]_
 - [ ] **CP-187** Trigger conflicts (hover variant vs click navigation on same layer) resolve as in Figma. _Data:_ — _Test:_ §8 E-31. _M7·P2·[SRC:forum 1570]_
@@ -865,8 +922,8 @@ All items: status **Not started**.
 - [ ] **CP-188** Publish status per component/set — UNPUBLISHED / CURRENT / CHANGED derived by diff against the last published snapshot. _Data:_ `getPublishStatusAsync()` _Test:_ Publish; edit main; status CHANGED; publish; CURRENT. _M6·P1·[API L6262, L9351-9355]_
 - [ ] **CP-189** Remote components are read-only in consumer documents; instances render from the cached definition even when the library file is unavailable. _Data:_ `remote: true`, cached definition _Test:_ Insert library instance; move library file away; consumer renders unchanged; main not editable. _M6·P0·[API L9343-9346][DOC:360038665934 excerpt]_
 - [ ] **CP-190** Library edits reach consumers only after publish + accept update; overrides preserved per propagation rules. _Data:_ snapshot version _Test:_ Edit library main, don't publish → consumer unchanged; publish → "updates available"; accept → updated, overrides kept. _M6·P0·[DOC:360038665934 excerpt][KNOW]_
-- [ ] **CP-191** Stable component key across edits/renames/moves; consumer instances stay linked by key. _Data:_ `key` _Test:_ Rename/move main within library; publish; consumer stays linked. _M6·P1·[API L9347-9350][DOC:4404848314647 title]_
-- [ ] **CP-192** Hide from publishing — components/sets can be hidden (incl. `.`/`_` name prefix convention per Figma) and are not offered to consumers. _Data:_ hidden flag _Test:_ Name "_Base"; not listed in consumer Assets (§8 E-35). _M6·P1·[DOC:360039238193 title][KNOW]_
+- [ ] **CP-191** Stable component key across edits/renames/moves; consumer instances stay linked by key. _Data:_ `key` _Test:_ Rename/move main within library; publish; consumer stays linked. _M6·P1·[API L9347-9350][KNOW for link survival on move] (DOC:4404848314647 title only)_
+- [ ] **CP-192** Hide from publishing — components/sets can be hidden (incl. `.`/`_` name prefix convention per Figma) and are not offered to consumers. _Data:_ hidden flag _Test:_ Name "_Base"; not listed in consumer Assets (§8 E-35). _M6·P1·[KNOW] (DOC:360039238193 title only)_
 - [ ] **CP-193** Push overrides and editing mains are unavailable for remote components; Go to main opens the library document. _Data:_ `remote` _Test:_ Commands disabled/redirect. _M6·P0·[DOC:360038665934 excerpt]_
 
 ### 6.24 Clipboard, undo, persistence, export, layers
@@ -878,7 +935,7 @@ All items: status **Not started**.
 - [ ] **CP-198** Layers panel shows distinct icons for component, component set, instance and slot; instance children can't be dragged out/reordered; drop targets inside instances only within slots. _Data:_ node types _Test:_ Try drag operations in Layers panel. _M5·P0·[DOC:360039150733 excerpt][KNOW]_
 - [ ] **CP-199** Selection — click selects top-level instance; double-click/⌘-click deep-selects; Enter selects first child, Shift+Enter selects parent, consistent with Figma. _Data:_ — _Test:_ Compare selection sequence on nested Card/Button/Icon. _M5·P0·[KNOW]_
 - [ ] **CP-200** Composite sublayer identity — instance sublayers have deterministic IDs derived from instance id + main sublayer id path so overrides are stable across sessions. _Data:_ `I<inst>;<sub>` _Test:_ Save/reopen; override keys unchanged (§8 E-01). _M5·P0·[KNOW]_
-- [ ] **CP-201** .fig import maps components, sets, instances, overrides, properties and slots to Illigma's model without detaching. _Data:_ import mapper _Test:_ Import Figma test file; compare property definitions and overrides via REST JSON. _M8·P1·[REST L1110-1142][KNOW]_
+- [ ] **CP-201** .fig import maps components, sets, instances, overrides, properties and slots to Illigma's model without detaching. _Data:_ import mapper _Test:_ Import Figma test file; compare property definitions and overrides via REST JSON (slots: see CP-239). _M8·P1·[REST L1110-1142][KNOW]_
 - [ ] **CP-202** Performance — editing a main with 5,000 instances (incl. nested) re-resolves without blocking input beyond the budget defined by the performance area; hidden instance children can be skipped in traversal. _Data:_ resolver cache, `skipInvisibleInstanceChildren` analogue _Test:_ Stress fixture timing. _M8·P1·[API L81-109][KNOW]_
 
 ---
@@ -980,7 +1037,7 @@ Each experiment: **Setup → Action → Record**. Run in Figma Design (UI3, curr
 | 360056440594 | Create and use variants | naming/slash rules, set contents, conflicts |
 | 5579474826519 | Explore component properties | property creation, boolean, instance swap, preferred values |
 | 8883757553943 | Edit instances with component properties | title only |
-| 38231200344599 | Create and use slots to build flexible components | slot creation, settings, constraints, ⌘⇧S |
+| 38231200344599 | Use slots to build flexible components in Figma (title corrected in review per catalog) | slot creation, settings, constraints, ⌘⇧S |
 | 38741465279895 | The difference between slots, instance swaps, and variants | concepts |
 | 38607529833751 | Migrate a library to using slots | audit steps |
 | 35794667554839 | What's new from Schema 2025 | slots announcement |

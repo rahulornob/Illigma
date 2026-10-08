@@ -211,7 +211,7 @@ PDF exports only at 1× [DOC:13402894554519 excerpt]. REST `ExportSetting` = `{s
 | REST image-fill URLs | expire ≤ 14 days | [API] |
 | REST versions page size | default 30, max 50 | [API] |
 | GIF loop count | 0–1000 (0 = forever) | [API] |
-| Browser-tab memory ceiling (Figma) | ≈ 2 GB per tab ("general understanding", device-dependent) | [SRC:forum.figma.com clarification-on-figmas-memory-usage-13811 excerpt] |
+| Browser-tab memory ceiling (Figma) | ≈ 2 GB per tab ("general understanding", device-dependent) | [SRC:forum.figma.com memory threads, e.g. clarification-on-figmas-memory-usage-13811 — excerpt] |
 | Version history window (Figma Starter/drafts) | 30 days | [DOC:360038006754 excerpt] |
 | Named version title | non-empty string required | [API] |
 
@@ -246,7 +246,7 @@ IlligmaFile (logical layout)
 
 ### 3.2 Save model, autosave, crash recovery, concurrency
 
-**Figma reference behavior.** Edits are saved continuously; there is no Save command in the workflow [KNOW]. Offline edits are cached locally and applied when service returns; reopening a file closed while offline triggers the sync; the cache is local to that browser/computer; quitting/closing/signing out with unsynced edits shows a prompt allowing the user to discard them, while "log out"/"leave" keeps them for later [DOC:360040328553 excerpt]. Causes of lost offline edits include cleared browser data, private sessions, full storage quota [SRC:forum.figma.com this-document-contains-unsaved-changes-why-27915 excerpt].
+**Figma reference behavior.** Edits are saved continuously; there is no Save command in the workflow [KNOW]. Offline edits are cached locally and applied when service returns; reopening a file closed while offline triggers the sync; the cache is local to that browser/computer; quitting/closing/signing out with unsynced edits shows a prompt allowing the user to discard them, while "log out"/"leave" keeps them for later [DOC:360040328553 excerpt]. Causes of lost offline edits include cleared browser data, private sessions, full storage quota [SRC:forum.figma.com unsaved-changes threads, e.g. this-document-contains-unsaved-changes-why-27915 — excerpt, per-thread attribution uncertain].
 
 **Illigma mapping (parity of experience: "work is never lost, no Save needed").** [ILL]
 
@@ -312,7 +312,7 @@ storage: snapshots stored as deltas against previous snapshot + periodic full ke
 
 ### 3.5 Large-file handling
 
-**Figma reference.** Per-tab memory ceiling around 2 GB; files over ~75 % of available memory may fail to open/edit; drivers: large component/variant libraries, many hidden layers, large/high-resolution images; remedies: split files, remove hidden layers, reduce assets, open an earlier version [SRC:forum.figma.com clarification-on-figmas-memory-usage-13811 excerpt]. Figma's plugin model supports **dynamic page loading** (`"documentAccess": "dynamic-page"`, `PageNode.loadAsync`, `loadAllPagesAsync` "may be slow for large documents") [API], and `skipInvisibleInstanceChildren` notes that invisible instance children make traversal slow in "large documents with tens of thousands of nodes" [API]. Very large `.fig` imports may fail [DOC:360040027794 excerpt].
+**Figma reference.** Per-tab memory ceiling around 2 GB; files over ~75 % of available memory may fail to open/edit; drivers: large component/variant libraries, many hidden layers, large/high-resolution images; remedies: split files, remove hidden layers, reduce assets, open an earlier version [SRC:forum.figma.com memory threads, e.g. clarification-on-figmas-memory-usage-13811 — excerpt]. Figma's plugin model supports **dynamic page loading** (`"documentAccess": "dynamic-page"`, `PageNode.loadAsync`, `loadAllPagesAsync` "may be slow for large documents") [API], and `skipInvisibleInstanceChildren` notes that invisible instance children make traversal slow in "large documents with tens of thousands of nodes" [API]. Very large `.fig` imports may fail [DOC:360040027794 excerpt].
 
 **Illigma requirements.** [ILL]
 - Open shows the first/last-viewed page interactively **before** other pages are decoded; other pages load lazily in the background or on navigation.
@@ -554,7 +554,7 @@ importFig(bytes):
 | --- | --- | --- |
 | Collection | One JSON document per **collection × mode** (or per mode on "Import mode") | Mode name in file name [SRC excerpt][KNOW] |
 | Variable name `a/b/c` | Nested groups `a` → `b` → token `c` | Slash = group separator [KNOW] |
-| `COLOR` | `$type:"color"`, `$value:{colorSpace:"srgb"|"display-p3", components:[r,g,b], alpha, hex?}` | Color space follows `documentColorProfile` [ILL] |
+| `COLOR` | `$type:"color"`, `$value:{colorSpace:"srgb" or "display-p3", components:[r,g,b], alpha, hex?}` | Color space follows `documentColorProfile` [ILL] |
 | `FLOAT` | `number`, or `dimension` (`px`) when scopes are dimensional (`WIDTH_HEIGHT`, `GAP`, `CORNER_RADIUS`, `FONT_SIZE`, `LINE_HEIGHT`, `LETTER_SPACING`, `PARAGRAPH_*`, `STROKE_FLOAT`, `EFFECT_FLOAT`) | Figma's rule to verify [KNOW] |
 | `STRING` | `fontFamily` when scope `FONT_FAMILY`; otherwise Figma-specific (`$extensions`) | Verify [KNOW] |
 | `BOOLEAN` | No DTCG type → `$extensions` | Verify [KNOW] |
@@ -626,7 +626,7 @@ All parsers (native, SVG, raster, `.fig`, REST JSON, DTCG, clipboard) treat inpu
 
 ---
 
-## 4. Inspector & on-canvas controls (functional only)
+## 4. Inspector & on-canvas controls
 
 Visual styling comes from the Framer-derived design system; this lists **which controls exist and what they do**.
 
@@ -686,6 +686,8 @@ All entries tagged [KNOW]/[SRC] are listed in §8 V-26 for confirmation against 
 ---
 
 ## 6. Parity checklist
+
+**Summary:** 246 items — M0 26 · M1 16 · M2 67 · M3 15 · M4 3 · M5 4 · M6 26 · M7 8 · M8 81 (P0 97 · P1 90 · P2 59). Round-trip items for features owned by other milestones (text, layout, components, variables, prototypes) are scheduled in the milestone that introduces the feature: the format must grow with the model, and every feature is incomplete until its round-trip item passes.
 
 Conventions: "round-trip" = create/import → save → quit → reopen → compare a full canonical model dump (must be equal) **and** render hashes of every page (must be equal). "Figma fixture" = a file prepared in live Figma and exported via REST/plugin JSON + PNG renders for comparison. Items tagged only [ILL] define local-first behavior with no Figma counterpart; their tests are Illigma acceptance tests.
 
@@ -774,7 +776,7 @@ Conventions: "round-trip" = create/import → save → quit → reopen → compa
 - [ ] **IO-069** Version list behavior — Newest first; grouped by day; current version on top; lazy loading keeps the panel responsive with > 5,000 entries. _Data:_ `Version[]` _Test:_ fixture with 5,000 versions → panel opens < 300 ms, scrolls at 60 fps. _M8·P2·[API][ILL]_
 - [ ] **IO-070** Retention policy — Named versions are never pruned automatically; autosaves follow a user-configurable thinning policy (default: keep all for 30 days, then one per day); no plan-based limits. _Data:_ retention settings _Test:_ fake clock 90 days of edits → named all present; autosaves thinned per policy. _M8·P2·[ILL][DOC:360038006754 excerpt]_
 - [ ] **IO-071** History storage efficiency — Snapshots are stored as deltas with periodic keyframes; 1,000 checkpoints of a 50 MB document with small edits add < 50 MB. _Data:_ `history/` _Test:_ generate fixture → measure file size growth. _M8·P2·[ILL]_
-- [ ] **IO-072** Open an earlier version when current fails — If the current state cannot be decoded, the user can open the newest decodable version (Figma offers opening an earlier version from the file browser). _Data:_ history snapshots _Test:_ corrupt the current document part → open offers "Open last good version" → succeeds. _M8·P1·[SRC:forum.figma.com/t/my-figma-file-is-not-loading/44391 excerpt][ILL]_
+- [ ] **IO-072** Open an earlier version when current fails — If the current state cannot be decoded, the user can open the newest decodable version (Figma offers opening an earlier version from the file browser). _Data:_ history snapshots _Test:_ corrupt the current document part → open offers "Open last good version" → succeeds. _M8·P1·[SRC:forum.figma.com memory/large-file threads, e.g. t/my-figma-file-is-not-loading/44391 — excerpt, per-thread attribution uncertain][ILL]_
 
 ### 6.6 Schema migration
 
@@ -785,7 +787,7 @@ Conventions: "round-trip" = create/import → save → quit → reopen → compa
 
 ### 6.7 Large-file handling
 
-- [ ] **IO-077** Memory budget indicator — A memory meter warns at 75 % of the configured budget and offers remedies (find large images, find hidden layers, split page to new file). _Data:_ runtime memory accounting _Test:_ load images until 75 % → warning appears once with the three actions; each action works. _M8·P1·[SRC:forum.figma.com clarification-on-figmas-memory-usage-13811 excerpt][ILL]_
+- [ ] **IO-077** Memory budget indicator — A memory meter warns at 75 % of the configured budget and offers remedies (find large images, find hidden layers, split page to new file). _Data:_ runtime memory accounting _Test:_ load images until 75 % → warning appears once with the three actions; each action works. _M8·P1·[SRC:forum.figma.com memory threads, e.g. clarification-on-figmas-memory-usage-13811 — excerpt][ILL]_
 - [ ] **IO-078** On-demand page decode — Pages not yet decoded show a progress state on navigation; the UI stays responsive (no input stall > 100 ms). _Data:_ lazy `pages/<id>` _Test:_ 20-page fixture: jump to unloaded page while typing in a text layer on page 1 → no dropped keystrokes. _M8·P1·[API][ILL]_
 - [ ] **IO-079** Lazy image decode at needed resolution — Images decode at the mip level needed for the current zoom; a document with 500 distinct 4096² images opens within the memory budget. _Data:_ asset mip cache (derived) _Test:_ open the 500-image fixture at 10 % zoom → resident image memory ≤ budget; zoom into one image → full-res decoded. _M8·P1·[ILL]_
 - [ ] **IO-080** Invisible-instance-children cost — Search, select-matching and export traversals can skip invisible instance children, matching the performance intent of Figma's `skipInvisibleInstanceChildren`. _Data:_ traversal option _Test:_ fixture with 50k invisible instance children → "find text" completes ≥ 5× faster with skipping, same visible results. _M8·P2·[API]_
@@ -867,3 +869,259 @@ Conventions: "round-trip" = create/import → save → quit → reopen → compa
 - [ ] **IO-144** Copy as PNG — ⇧⌘C places PNG image data (not a file) of the selection on the clipboard at Figma's default scale (verify, expected 2×?). _Data:_ clipboard `image/png` _Test:_ copy as PNG, paste in an image editor → pixel size equals Figma's. _M2·P1·[SRC:forum.figma.com paste-files-after-copy-as-png-svg-macos-15378 excerpt][KNOW]_
 - [ ] **IO-145** Export runs in background — Exports show progress, can be cancelled, don't block editing, and report per-file failures. _Data:_ — _Test:_ export 200 frames → editing remains responsive; cancel → no partial files left. _M2·P1·[ILL]_
 - [ ] **IO-146** Export has no document side effects — Exporting neither dirties the document nor creates undo steps. _Data:_ — _Test:_ export after save → revision unchanged; Undo stack unchanged. _M2·P0·[KNOW]_
+
+### 6.12 SVG export
+
+- [ ] **IO-147** SVG defaults — New SVG export settings default to Outline text **on**, Include "id" attribute **off**, Simplify stroke **on**. _Data:_ `svgOutlineText:true, svgIdAttribute:false, svgSimplifyStroke:true` _Test:_ add SVG row → flags as listed; export equals Figma's default-settings export structurally. _M2·P0·[API]_
+- [ ] **IO-148** Outline text — On: text is emitted as glyph outline paths (no `<text>`), visually identical to canvas; Off: `<text>`/`<tspan>` with font family, size, weight, letter spacing and line positions so text stays selectable. _Data:_ `svgOutlineText` _Test:_ export a 2-line text layer both ways → On contains no `<text>`; Off contains `<text>`; compare markup patterns with Figma (§8 V-18). _M2·P0·[API]_
+- [ ] **IO-149** id attributes — When on, each element gets an `id` derived from its layer name (sanitized, unique within the file; duplicate handling like Figma); when off, only elements that need references (masks, gradients, filters, clip paths, patterns) get ids. _Data:_ `svgIdAttribute` _Test:_ two layers named "Icon" → ids unique and equal Figma's scheme; off → only reference ids. _M2·P1·[API][KNOW]_
+- [ ] **IO-150** Reference ids always present — Masks, gradients and other referenced definitions always have ids regardless of the id setting. _Data:_ — _Test:_ gradient + mask export with ids off → `url(#…)` references resolve. _M2·P0·[API]_
+- [ ] **IO-151** Inside/outside strokes — With Simplify stroke on, inside/outside strokes are approximated with center strokes on offset geometry where possible; off, a precise mask/clip technique is used; both render within ΔE00 ≤ 1 of the canvas. _Data:_ `svgSimplifyStroke`, `strokeAlign` _Test:_ rect & star with inside/outside strokes → both modes vs canvas render; markup approach comparable to Figma. _M2·P0·[API]_
+- [ ] **IO-152** Embedded images — Image fills are embedded inline (base64 data URIs) with the correct crop/tile/fit transform; no external references. _Data:_ `ImagePaint` _Test:_ export frame with FILL/FIT/CROP/TILE images → renders in Chrome/Safari/Firefox equal canvas within ΔE00 ≤ 1. _M2·P0·[KNOW]_
+- [ ] **IO-153** Effects in SVG — Drop/inner shadows and layer blur emit SVG filters equivalent to Figma's; background blur and other non-SVG effects are handled exactly like Figma (excerpt: "background blurs must be applied directly to the layer"). _Data:_ `Effect` _Test:_ export each effect in both apps → markup approach and render equal (§8 V-18). _M2·P1·[DOC:13402894554519 excerpt][KNOW]_
+- [ ] **IO-154** Blend modes in SVG — Layer and paint blend modes export as CSS `mix-blend-mode` (or Figma's equivalent); pass-through groups produce no isolation. _Data:_ `blendMode` _Test:_ each of the 19 blend modes → browser render equals canvas within tolerance; markup equals Figma's approach. _M2·P1·[API][KNOW]_
+- [ ] **IO-155** Non-native paints/effects — Angular/diamond gradients, pattern/video/shader paints, noise/texture/glass effects export exactly as Figma does (rasterized, approximated or omitted — verify each). _Data:_ `Paint`, `Effect` _Test:_ fixture per feature → same strategy as Figma. _M2·P2·[KNOW]_
+- [ ] **IO-156** Wide-gamut SVG colors — In Display-P3 documents, exported colors carry a correct sRGB fallback (`fill="#…"` converted with clipping) plus the P3 value (`color(display-p3 r g b)`); deliberate deviation if Figma's fallback is confirmed unconverted. _Data:_ `documentColorProfile`, `colorProfile` _Test:_ P3 (1,0,0) → fallback `#FF0000`-clipped equivalent and `color(display-p3 1 0 0)`; record Figma output (§8 V-23). _M2·P1·[SRC:forum.figma.com svg-export-incorrect-color-profile-39416 excerpt][ILL]_
+- [ ] **IO-157** Copy as SVG — Copy as SVG puts the same markup the SVG export would produce with default settings on the clipboard as text. _Data:_ clipboard `text/plain`/`image/svg+xml` _Test:_ diff clipboard text vs exported file → identical. _M2·P0·[DOC:360040030374 excerpt]_
+- [ ] **IO-158** No hyperlinks in SVG — Text hyperlinks are not emitted as `<a>` in SVG (Figma parity). _Data:_ text `hyperlink` _Test:_ export linked text → no `<a>`; compare Figma. _M2·P2·[SRC:forum.figma.com exporting-to-svg-and-preserving-hyperlinks-36293 excerpt]_
+- [ ] **IO-159** Node-id attributes (advanced) — Optional `data-node-id` attributes like the REST `svg_include_node_id` option. _Data:_ REST `svg_include_node_id` _Test:_ enable → every element carries its node id. _M8·P2·[API]_
+- [ ] **IO-160** SVG validity — Output is well-formed, namespace-correct SVG 1.1/2 that renders equally in Chrome, Safari and Firefox (ΔE00 ≤ 1 vs canvas for the fixture set). _Data:_ — _Test:_ XML validator + 3-browser render comparison in CI. _M2·P0·[ILL]_
+
+### 6.13 PDF export
+
+- [ ] **IO-161** PDF at 1× only — PDF export ignores/disables scale constraints (always 1×). _Data:_ `ExportSettingsPDF` (no constraint) _Test:_ try 2× PDF → control unavailable/1× output; compare Figma. _M2·P0·[DOC:13402894554519 excerpt][API]_
+- [ ] **IO-162** Vector fidelity & images — Shapes, strokes and gradients are vector; images are embedded at the PDF image-quality setting (default Medium). _Data:_ image quality _Test:_ inspect PDF objects: paths for shapes; image XObjects JPEG-compressed per quality; compare Figma's PDF structure. _M2·P0·[DOC:13402894554519 excerpt]_
+- [ ] **IO-163** PDF text — Visual output matches Figma; Illigma emits selectable/searchable text with embedded subsetted fonts when the font's `fsType` permits, else outlines with an invisible text layer for search (superset of Figma, whose text handling is reported as outlined). _Data:_ `fsType`, text runs _Test:_ export paragraph → copy-paste text from PDF viewer yields the characters; render diff vs Figma PDF ≤ tolerance (§8 V-19). _M3·P1·[SRC:forum.figma.com/t/pdf-export-text-not-selectable/286 excerpt][ILL][KNOW]_
+- [ ] **IO-164** PDF links — Text hyperlinks become clickable URI annotations; prototype connections create no interactivity. _Data:_ text `hyperlink`, `reactions` _Test:_ PDF with linked text and a prototype hotspot → link works; hotspot inert; matches Figma. _M7·P2·[SRC:forum.figma.com links-between-pages-in-pdf-export-23760 excerpt]_
+- [ ] **IO-165** Multi-page PDF — "Export frames to PDF" creates one PDF with one page per top-level frame, ordered by canvas position (left→right, then top→bottom); scope (whole page vs selection) matches Figma. _Data:_ top-level frames on page _Test:_ 6 frames in a 3×2 grid selected in random order → page order row-major; compare scope with Figma (§8 V-19). _M2·P1·[SRC:layerpath.com excerpt][SRC:forum.figma.com 49835 excerpt]_
+- [ ] **IO-166** PDF color profile — PDF output is converted to and tagged with the export color profile (ICC-based color space / OutputIntent). _Data:_ `colorProfile` _Test:_ P3 doc → PDF with P3 ICC; sRGB option → sRGB ICC. _M2·P2·[API][KNOW]_
+- [ ] **IO-167** Effects in PDF — Shadows, blurs and blend modes render like the canvas (vector where possible, rasterized at ≥ 2× device resolution otherwise) and match Figma's approach. _Data:_ `Effect`, `blendMode` _Test:_ effect fixture → render diff vs canvas ≤ tolerance at 200 % zoom in a PDF viewer. _M2·P1·[KNOW]_
+- [ ] **IO-168** PDF page geometry — Each page's MediaBox equals the exported node bounds at 1 px = 1 pt (verify against Figma). _Data:_ — _Test:_ 1440×1024 frame → MediaBox `[0 0 1440 1024]`; compare Figma. _M2·P1·[KNOW]_
+
+### 6.14 Animated export
+
+- [ ] **IO-169** Animated export scope — MP4/GIF/WebM export is only allowed for a top-level frame with animated content; nested frames, keyframed child layers, or frames without animation fail with an explanatory error. _Data:_ `ExportSettingsMP4/GIF/WEBM` _Test:_ try each invalid case → error; valid frame → file whose duration equals the timeline. _M7·P2·[API]_
+- [ ] **IO-170** Animated export options — fps (MP4/WebM 12/24/30/60, default 30; GIF 8/12/15/24/30, default 15), quality (LOW/MEDIUM/HIGH, default HIGH), GIF loop count 0–1000 (0 = forever). _Data:_ `fps`, `quality`, `loopCount` _Test:_ export each option → container metadata matches; loopCount 1001 rejected. _M7·P2·[API]_
+- [ ] **IO-171** Animated export size — Scale limited to 0.5/0.75/1/1.5/2/3/4 or fixed width/height. _Data:_ `VideoExportConstraint` _Test:_ 1.25× rejected; `WIDTH 640` → width 640, proportional height. _M7·P2·[API]_
+
+### 6.15 System clipboard
+
+- [ ] **IO-172** Copy flavors — ⌘C writes the private Illigma payload, an HTML flavor with an SVG rendering, `image/svg+xml` where supported, and `text/plain`; no PNG unless Copy as PNG. _Data:_ clipboard flavors (§3.10) _Test:_ inspect clipboard after copy on macOS and Windows → listed flavors present. _M1·P0·[ILL]_
+- [ ] **IO-173** Full-fidelity paste between Illigma documents — Pasting into another Illigma document reproduces nodes with all properties, images, and needed style/variable/component definitions, following Figma's cross-file rules for linked vs copied assets (verify rules). _Data:_ private payload _Test:_ copy a frame with instances, styles, variables, images from doc A to doc B → render equal; linkage equals Figma's equivalent experiment (§8 V-21). _M5·P0·[KNOW][ILL]_
+- [ ] **IO-174** Paste priority — On ⌘V the first available of: Illigma payload → Figma payload (if enabled) → copied files → image data → SVG markup → plain text is used. _Data:_ — _Test:_ clipboard containing both PNG and plain text → image layer created; only text → text layer. _M1·P0·[KNOW][ILL]_
+- [ ] **IO-175** Paste image data — Raster image data on the clipboard becomes an image layer through the raster pipeline (4096 cap, dedupe). _Data:_ `ImagePaint` _Test:_ copy a screenshot, paste → image layer of the screenshot's size (capped); compare Figma. _M2·P0·[KNOW][DOC:360040028034 excerpt]_
+- [ ] **IO-176** Paste plain text — Plain text with no text layer in edit mode creates a new text layer with default text properties; while editing text it inserts at the caret (rich formatting discarded per Figma). _Data:_ `TextNode` _Test:_ paste "Hello\nWorld" on canvas → 2-line text layer; inside edit → inserted; compare Figma. _M3·P0·[KNOW]_
+- [ ] **IO-177** Paste copied files — Files copied in the OS file manager paste as imports (media/SVG); unsupported ones are reported. _Data:_ — _Test:_ copy 2 PNGs + 1 SVG + 1 .txt in Finder, paste → 3 layers + notice. _M2·P1·[KNOW]_
+- [ ] **IO-178** Plain text of copied layers — Copying text layers puts their characters on `text/plain` in layer order; behavior for non-text selections matches Figma. _Data:_ `characters` _Test:_ copy two text layers, paste in a text editor → both strings in Figma's order/separator. _M3·P0·[KNOW]_
+- [ ] **IO-179** Copy as text / Copy as code — Copy as text copies text content; Copy as code copies the node's CSS equivalent to Figma's inspect CSS. _Data:_ `getCSSAsync` _Test:_ compare copied CSS for 10 fixture nodes with Figma's `getCSSAsync` output. _M8·P2·[API][KNOW]_
+- [ ] **IO-180** Large payloads — Clipboard payloads with large assets reference assets by hash + source path when above 20 MB total, and still paste correctly on the same machine; cross-machine paste degrades with a clear message. _Data:_ private payload asset section _Test:_ copy frame with 300 MB of images → paste in second doc succeeds; paste after deleting source file → placeholders + message. _M8·P1·[ILL]_
+- [ ] **IO-181** Payload versioning — Clipboard payloads carry a version; pasting a newer payload into an older build keeps known content and reports dropped features. _Data:_ payload `version` _Test:_ synthetic future payload → paste succeeds with notice. _M8·P1·[ILL]_
+- [ ] **IO-182** Illigma → Figma via SVG — Content copied from Illigma pastes into Figma as vectors via the SVG flavor; text pasted as `<text>` (not outlined) so that Figma creates editable text if it supports it (verify). _Data:_ SVG flavor _Test:_ copy a card with text from Illigma, paste in Figma → visual match; record whether text is editable (§8 V-10). _M8·P1·[DOC:360040030374 excerpt][KNOW]_
+- [ ] **IO-183** Paste from other design tools — SVG clipboard content from Illustrator/Sketch/Inkscape imports through SVG import; raster/PDF-only clipboard content falls back to image import, as in Figma. _Data:_ — _Test:_ copy a vector logo from Illustrator with "Include SVG code" → vectors; without → image. _M8·P2·[DOC:360040030374 excerpt][SRC:forum.figma.com allow-pasting-from-illustrator-as-vector-14524 excerpt]_
+- [ ] **IO-184** Paste is one undo step and selects result — Any paste is one undo step; afterwards the pasted top-level nodes are selected. _Data:_ — _Test:_ paste → selection = pasted nodes; Undo → document identical to before. _M1·P0·[KNOW]_
+
+### 6.16 Figma interop (clipboard & plugin bridge)
+
+- [ ] **IO-185** Detect Figma clipboard — Illigma recognizes Figma's HTML clipboard (`(figmeta)`/`(figma)` markers / `data-metadata`/`data-buffer` attributes) without decoding the binary, and offers the configured import path or an explanation. _Data:_ clipboard `text/html` _Test:_ copy from Figma, paste in Illigma with no token → hint dialog; with token → REST path. _M8·P1·[SRC:simonwillison.net/2024/Sep/19/the-webs-clipboard excerpt][SRC:registry.npmjs.org/fig-kiwi]_
+- [ ] **IO-186** Paste from Figma via REST-by-reference — With a user token, the figmeta file key + node ids are fetched via the REST API and converted (REST fidelity), positioned like a normal paste. _Data:_ `GET /v1/files/:key/nodes?ids=&geometry=paths` _Test:_ copy a frame in Figma, paste in Illigma → layer tree equals REST JSON conversion; images present. _M8·P2·[SRC:cdn.jsdelivr.net agent-native excerpt][API]_
+- [ ] **IO-187** Kiwi clipboard decode (gated) — Direct decoding of Figma's clipboard binary exists only behind an experimental flag **after** recorded legal approval; default builds contain no bundled Figma schema. _Data:_ feature flag, build manifest _Test:_ release build audit → no Figma schema file, flag off. _M8·P2·[SRC:grida.co/docs/wg/feat-fig excerpt][ILL]_
+- [ ] **IO-188** Bridge plugin: Illigma → Figma — A Figma plugin (official Plugin API only) imports an Illigma interchange JSON creating frames, shapes, vectors, text (after `loadFontAsync`), images (`createImage`), variables, styles, components and instances; it reports unsupported features. _Data:_ Plugin API create* methods _Test:_ 30-node fixture → Figma result passes a structural diff ≥ 95 % fields equal; report lists the rest. _M8·P2·[API][ILL]_
+- [ ] **IO-189** Bridge plugin: Figma → Illigma — The plugin exports selection/page via `exportAsync({format:'JSON_REST_V1'})`, image bytes via `getImageByHash().getBytesAsync()`, and local variables/styles, into a file Illigma imports without any token. _Data:_ `JSON_REST_V1`, `Image.getBytesAsync` _Test:_ export fixture page → import in Illigma → render ΔE00 within REST-fidelity tolerance. _M8·P2·[API]_
+- [ ] **IO-190** Never write Figma private formats — No code path writes Figma's clipboard markers or `.fig` binaries. _Data:_ — _Test:_ static check + clipboard inspection after every copy command → no `(figma)`/`fig-kiwi` output. _M8·P0·[ILL][DOC:8403626871063 excerpt]_
+
+### 6.17 `.fig` import (feasibility-gated)
+
+- [ ] **IO-191** Container detection — Accepts ZIP-wrapped `.fig` (with `canvas.fig`) and raw `fig-kiwi` data; rejects `fig-jam.`, `fig-deck` and other preludes (and `.jam/.deck/.buzz/.site/.make`) with a message naming the file kind. _Data:_ 8-byte prelude, u32 version _Test:_ fixtures of each kind → Design accepted, others rejected with correct names. _M8·P2·[SRC:grida.co/docs/wg/feat-fig excerpt][DOC:8403626871063 excerpt]_
+- [ ] **IO-192** Self-describing decode — Decoding uses the schema embedded in the file; both deflate and zstd data chunks are supported. _Data:_ schema chunk, data chunk _Test:_ old (deflate) and new (zstd) fixtures decode. _M8·P2·[SRC:github.com/sunyui/figma-parser excerpt]_
+- [ ] **IO-193** Import semantics like Figma re-import — The result is a new independent document; components become new main components; instances link to them; no version history or comments. _Data:_ — _Test:_ import fixture with library instances → instances point to local new mains; history empty. _M8·P2·[DOC:8403626871063 excerpt]_
+- [ ] **IO-194** Group reconstruction — Frame records that encode groups (`resizeToFit: true`) become `GROUP` nodes; real frames stay frames. _Data:_ `resizeToFit`, `frameMaskDisabled` _Test:_ fixture with 5 groups and 5 frames → correct types. _M8·P2·[SRC:grida.co/docs/wg/feat-fig excerpt]_
+- [ ] **IO-195** Image attachment — Images from the archive's `images/` folder attach by hash; missing images become placeholders, not failures. _Data:_ `imageHash` _Test:_ remove one image from fixture ZIP → import succeeds with 1 placeholder reported. _M8·P2·[SRC:github.com/sunyui/figma-parser excerpt][ILL]_
+- [ ] **IO-196** Import report & opaque preservation — Unknown node types/fields are preserved opaquely; an import report lists converted / approximated / dropped counts per feature. _Data:_ `foreign` records _Test:_ fixture with FigJam stickies on a design page → preserved + reported. _M8·P2·[ILL][SRC:github.com/sketch-hq/fig2sketch README]_
+- [ ] **IO-197** Visual fidelity — Imported fixtures render within ΔE00 ≤ 1 mean vs Figma REST-rendered PNGs of the same nodes. _Data:_ — _Test:_ 20-file fixture corpus comparison. _M8·P2·[API][ILL]_
+- [ ] **IO-198** Large/failed imports — Large `.fig` imports stream with progress and cancel; failures or cancellation leave no partial document. _Data:_ — _Test:_ 500 MB fixture import → progress; cancel → nothing created. _M8·P2·[DOC:360040027794 excerpt][ILL]_
+- [ ] **IO-199** Legal gate — The `.fig` importer is disabled by default and can be enabled only in builds where legal sign-off is recorded; UI states that `.fig` is proprietary and may change. _Data:_ build flag _Test:_ release build → menu item absent/disabled; flagged build → shows disclaimer. _M8·P0·[DOC:8403626871063 excerpt][KNOW][ILL]_
+
+### 6.18 Figma REST API import (optional)
+
+- [ ] **IO-200** Token handling — A personal access token (or OAuth) is stored only in the OS keychain, can be removed, and never appears in documents, logs, crash reports or exports. _Data:_ keychain item _Test:_ grep all app outputs after an import → token absent; remove token → API features disabled. _M8·P2·[API][ILL]_
+- [ ] **IO-201** File URL parsing — Accepts file keys and figma.com URLs (`/file/`, `/design/`, branch URLs, `node-id` with `-`→`:` conversion). _Data:_ file key, node ids _Test:_ 6 URL variants → correct key/ids. _M8·P2·[API][KNOW]_
+- [ ] **IO-202** REST mapping — Uses `geometry=paths`; maps `REGULAR_POLYGON`→`POLYGON`, `CANVAS`→page, `STRETCH`→`CROP`, `FILL` style type→`PAINT`; decodes `characterStyleOverrides`/`styleOverrideTable`, list types and indentation. _Data:_ §2.7 _Test:_ fixture file → model fields equal plugin-API dump of the same Figma file (where representable). _M8·P2·[API]_
+- [ ] **IO-203** Image fills download — Image-fill URLs are fetched immediately (they expire ≤ 14 days) and stored as assets; failures become placeholders with retry. _Data:_ `GET /v1/files/:key/images` _Test:_ import → all images present offline afterwards. _M8·P2·[API]_
+- [ ] **IO-204** Variables without Enterprise — If `variables/local` returns 403, bound variables are imported as resolved raw values with dangling ids and a warning; with access, collections/modes/variables import fully. _Data:_ `boundVariables`, `LocalVariableCollection` _Test:_ non-Enterprise token → warning + raw values; Enterprise fixture → variables present. _M8·P2·[API]_
+- [ ] **IO-205** Version & subset import — A specific version (`version=`) and a subset of pages/nodes (`ids=`, `depth=`) can be imported. _Data:_ query params _Test:_ import version N of fixture → equals that version's content. _M8·P2·[API]_
+- [ ] **IO-206** Errors, rate limits, atomicity — 403/404 show specific messages; 429 triggers back-off (honoring `Retry-After` if present); the import builds a new document atomically (all-or-nothing). _Data:_ HTTP status handling _Test:_ mock server returning 429 twice then 200 → success; mid-import network loss → no document created. _M8·P2·[API][KNOW]_
+- [ ] **IO-207** Lossiness report — The import report lists features REST cannot carry: vector-network topology, `GLASS`, video/shader paints, slots, Motion, `EASING`/`TIMING` variables, custom animation styles. _Data:_ §2.7 _Test:_ fixture using each feature → each listed. _M8·P2·[API]_
+
+### 6.19 Other imports
+
+- [ ] **IO-208** Sketch import — `.sketch` files import as a new document (pages → pages, artboards → frames, symbols → components/instances, shared styles → styles) matching Figma's Sketch import results. _Data:_ Sketch open format _Test:_ fixture `.sketch` imported in Figma and Illigma → structural diff. _M8·P2·[DOC:360040514273 title][DOC:360040027794 excerpt][KNOW]_
+
+### 6.20 Design tokens (DTCG)
+
+- [ ] **IO-209** Export tokens — Exporting a collection writes DTCG JSON per mode (`.tokens.json`, MIME `application/design-tokens+json`) with deterministic ordering; file naming matches Figma's export. _Data:_ `VariableCollection.modes`, DTCG `$type/$value` _Test:_ export 2-mode collection → 2 files; diff against Figma's native export of the same collection (§8 V-29). _M6·P1·[SRC:github.com/design-tokens/community-group file-format.md][SRC:forum.figma.com 47831 excerpt]_
+- [ ] **IO-210** Color tokens — COLOR variables export as `{colorSpace, components, alpha, hex}` with `colorSpace` following the document profile. _Data:_ `RGBA`, `documentColorProfile` _Test:_ sRGB doc #3366FF 50 % → `{"colorSpace":"srgb","components":[0.2,0.4,1],"alpha":0.5,"hex":"#3366ff"}` (hex format per Figma). _M6·P1·[SRC:github.com/civictheme/uikit/pull/1025 excerpt][SRC:…/aliases.md]_
+- [ ] **IO-211** Number/string/boolean tokens — FLOAT, STRING and BOOLEAN map to `number`/`dimension`/`fontFamily`/`fontWeight`/`$extensions` exactly as Figma's native export does (verify rule, likely scope-driven). _Data:_ `resolvedType`, `scopes` _Test:_ fixture with each type/scope combo → equal to Figma export. _M6·P1·[KNOW]_
+- [ ] **IO-212** Alias tokens — Aliased variables export as `"{group.token}"` references; aliases across collections handled like Figma (reference vs resolved value). _Data:_ `VariableAlias` _Test:_ alias chain of 3 → references preserved; cross-collection alias → equals Figma. _M6·P1·[SRC:…/aliases.md][KNOW]_
+- [ ] **IO-213** Descriptions — Variable descriptions export as `$description` (deliberate superset if Figma omits them). _Data:_ `Variable.description` _Test:_ described variable → `$description` present; Figma import of the file still succeeds. _M6·P2·[SRC:forum.figma.com 47831 excerpt][ILL]_
+- [ ] **IO-214** Figma metadata — Scopes, code syntax, hidden-from-publishing and other Figma-only fields are written under `$extensions` with Figma's exact keys (verify) so Figma re-import preserves them. _Data:_ `scopes`, `codeSyntax`, `hiddenFromPublishing` _Test:_ export → import into Figma → scopes/code syntax retained. _M6·P2·[KNOW]_
+- [ ] **IO-215** Import mode — Importing a DTCG file into a chosen mode (or a new collection) updates variables by name path, creates missing ones, never deletes absent ones unless "Replace" is chosen, and is one undo step; legacy hex-string colors are accepted with a warning (Figma rejects them — documented superset). _Data:_ DTCG → `Variable` _Test:_ import file with 3 existing + 2 new tokens → 3 updated, 2 created; Undo → original. _M6·P1·[SRC:github.com/civictheme/uikit/pull/1025 excerpt][ILL]_
+- [ ] **IO-216** Circular aliases on import — Circular references are reported as errors for every token in the chain and those tokens are not imported. _Data:_ — _Test:_ a→b→c→a + 2 valid tokens → 3 errors, 2 imported. _M6·P1·[SRC:…/aliases.md]_
+- [ ] **IO-217** Type validation — Tokens whose `$value` doesn't match `$type` (or inherited group type) are rejected with per-token errors; unknown `$type` values skipped with warning. _Data:_ DTCG types _Test:_ dimension with unit "em" → error (DTCG allows px/rem only). _M6·P1·[SRC:…/types.md]_
+- [ ] **IO-218** Round-trip — Export → import into an empty document → export yields identical JSON. _Data:_ — _Test:_ fixture with all types and aliases. _M6·P1·[SRC:github.com/civictheme/uikit/pull/1025 excerpt][ILL]_
+- [ ] **IO-219** Interop with Figma — Illigma-exported files import into Figma via Import mode without errors, and Figma-exported files import into Illigma reproducing names, values and aliases. _Data:_ — _Test:_ bidirectional transfer of a 50-variable fixture → values equal. _M6·P1·[SRC:forum.figma.com 47831 excerpt][SRC:github.com/civictheme/uikit/pull/1025 excerpt]_
+- [ ] **IO-220** Styles as composite tokens (extension) — Optional export of text/effect/paint styles as DTCG `typography`/`shadow`/`gradient` composite tokens. _Data:_ `TextStyle`, `EffectStyle`, `PaintStyle` _Test:_ export → valid DTCG composite tokens per spec. _M6·P2·[SRC:…/composite-types.md][ILL]_
+
+### 6.21 Color management
+
+- [ ] **IO-221** New-document profile — New documents use the preferred profile from Preferences (default sRGB). _Data:_ `documentColorProfile` _Test:_ fresh install → new doc SRGB; set preference P3 → next new doc DISPLAY_P3. _M2·P0·[DOC:360039825114 excerpt]_
+- [ ] **IO-222** Change profile: Assign vs Convert — Changing a document's profile asks "Keep color values (Assign)" or "Keep appearance (Convert)"; Assign leaves stored numbers unchanged; Convert transforms every stored color so on-screen appearance is preserved within 1/255 per channel for in-gamut colors. _Data:_ all color sites _Test:_ sRGB doc with 20 colors → Convert to P3 → numbers change, display pixels equal within 1/255; Assign → numbers equal. _M2·P1·[DOC:360039825114 excerpt][KNOW]_
+- [ ] **IO-223** Convert coverage — Convert updates paints, gradient stops, effects, page and prototype backgrounds, local styles, all modes of local color variables, text range fills and instance overrides, in one undo step; remote library copies are not rewritten. _Data:_ — _Test:_ fixture with a color in every site → all converted; Undo restores all. _M2·P1·[ILL]_
+- [ ] **IO-224** Out-of-gamut handling — Converting P3 → sRGB handles out-of-gamut colors exactly as Figma does (clip vs gamut-map — verify). _Data:_ — _Test:_ P3 (1,0,0) → resulting sRGB numbers equal Figma's (§8 V-23). _M2·P1·[KNOW]_
+- [ ] **IO-225** Legacy files — `LEGACY` documents render as the preferred profile or sRGB if none. _Data:_ `LEGACY` _Test:_ open LEGACY fixture with preference P3 → renders as P3 assignment; preference unset → sRGB. _M2·P1·[DOC:360039825114 excerpt]_
+- [ ] **IO-226** Export color profile — Exports default to the document profile and can be set per export to sRGB or Display P3 (v4 ICC), converting colors accordingly. _Data:_ `colorProfile: DOCUMENT/SRGB/DISPLAY_P3_V4` _Test:_ export each option from a P3 doc → ICC tags and pixel values as expected. _M2·P1·[API][DOC:360039825114 excerpt]_
+- [ ] **IO-227** Stored values readout — Color inputs (hex/RGB) show stored document-space values; sampling with the eyedropper stores values in document space. _Data:_ `RGB` _Test:_ P3 doc: type #FF0000 → stored (1,0,0) in P3; eyedropper on that fill returns #FF0000. _M2·P1·[KNOW]_
+- [ ] **IO-228** Display color management — The canvas is color-managed to the monitor profile, so P3 content shows wide-gamut color on P3 displays and is correctly mapped on sRGB displays. _Data:_ — _Test:_ measure P3 (1,0,0) patch on a P3 display with a colorimeter vs Figma desktop on the same display. _M2·P1·[KNOW][ILL]_
+
+### 6.22 Fonts
+
+- [ ] **IO-229** References never rewritten on open — Opening a document never changes any `FontName`; missing fonts are detected per family/style (incl. variation settings) and listed. _Data:_ `FontName`, `hasMissingFont` _Test:_ open fixture on a machine lacking 2 fonts → model dump unchanged; list shows exactly those family/style pairs. _M3·P0·[API][DOC:360039956994 excerpt]_
+- [ ] **IO-230** Missing-font indicators — A file-level missing-font icon (left sidebar/toolbar) and an icon next to the font name for selected affected text appear, opening the Missing fonts dialog. _Data:_ — _Test:_ fixture → both icons visible; click → dialog. _M3·P0·[DOC:360039956994 excerpt]_
+- [ ] **IO-231** Rendering with missing fonts — Text with a missing font renders as Figma does (expected: previously computed appearance retained) and never reflows silently on open. _Data:_ cached glyph/derived text data _Test:_ save on machine A with font, open on B without → render equals A's; compare with Figma on a font-less machine (§8 V-24). _M3·P1·[KNOW]_
+- [ ] **IO-232** Editing missing-font text — Which edits are allowed on text with a missing font (move/resize vs character/property edits) matches Figma; disallowed edits explain how to resolve. _Data:_ — _Test:_ attempt typing, font-size change, resize on missing-font text → same allow/deny outcomes as Figma (§8 V-24). _M3·P1·[KNOW]_
+- [ ] **IO-233** Replace fonts — The Missing fonts dialog maps each missing family/style to an available one and applies to all affected layers, text ranges and text styles in one undo step, changing the document. _Data:_ `FontName` _Test:_ replace "Foo Bold" → "Inter Bold" → all ranges updated; Undo restores all. _M3·P0·[DOC:360039956994 excerpt]_
+- [ ] **IO-234** OS font discovery — Installed OS fonts (system and user) appear; newly installed fonts become available without relaunch (watcher or "Refresh fonts") and missing-font states resolve automatically. _Data:_ font registry _Test:_ install a font while a file using it is open → missing state clears within 5 s. _M3·P1·[DOC:360039956994 excerpt][ILL]_
+- [ ] **IO-235** Font formats — TTF and OTF (P0, Figma's supported set), TTC/OTC collections and variable fonts (P1); WOFF/WOFF2 (P2) are supported as font sources. _Data:_ — _Test:_ load each format → glyphs render; variable axes listed. _M3·P1·[DOC:360039956994 excerpt][ILL]_
+- [ ] **IO-236** Font embedding (opt-in) — Embedding a font into the document is allowed only when OS/2 `fsType` permits (Installable or Editable; Preview&Print → read-only rendering; Restricted → refused with reason); no automatic embedding. _Data:_ `assets/fonts/*`, `fsType` _Test:_ fonts with each fsType → expected outcomes; UI shows license notice. _M3·P2·[KNOW][ILL]_
+- [ ] **IO-237** Embedded font use — Embedded fonts are used only when the OS lacks the font, are never installed system-wide, and are removed when no longer used (on save). _Data:_ — _Test:_ open doc with embedded font on clean machine → renders; OS font list unchanged; delete all uses → font removed after save. _M3·P2·[ILL]_
+- [ ] **IO-238** Conflicting font versions — When the available font differs in version/metrics from the one used at authoring time (stored metrics hash), the layer is flagged (Figma cites conflicting versions as a missing-font cause). _Data:_ stored font fingerprint _Test:_ open with an older font version → flag shown; render uses available font only after user confirms. _M3·P2·[DOC:360039956994 excerpt][ILL]_
+- [ ] **IO-239** Variable-font settings — `variationSettings` round-trip; setting a font without a style picks the closest named instance (e.g., `wght: 900` → Black). _Data:_ `FontName.variationSettings`, `getFontFamilyVariationAxes` _Test:_ Inter `{wght:550}` round-trips; `{wght:900}` with no style → style "Black". _M3·P1·[API]_
+
+### 6.23 Cloud-feature equivalents
+
+- [ ] **IO-240** Local comments (P2) — Comments pinned to a canvas point or node, with threads, resolve/unresolve and author = local profile, stored in the file; excluded from exports; optional in Save a copy. _Data:_ comments store (Illigma) _Test:_ create, resolve, save, reopen → intact; export PNG → no comment pins. _M8·P2·[DOC:360039825314 title][ILL]_
+- [ ] **IO-241** Local branch & merge (P2) — "Create branch" makes a copy recording `baseFileId/baseRevision`; "Merge" computes a 3-way per-node/per-property diff, shows conflicts, and applies the result as one undo step in the main file. _Data:_ branch metadata _Test:_ change different properties of the same node in main and branch → auto-merged; same property → conflict UI. _M8·P2·[DOC:360063144053 title][DOC:5691189138839 title][ILL]_
+- [ ] **IO-242** Git-friendly workflow (P2) — The canonical text form can be stored next to the file and re-imported; a text-level merge by Git either yields a valid document or a precise validation error (never a silently corrupted document). _Data:_ canonical JSON _Test:_ two branches edit different nodes → git merge → import valid; conflicting edits → git conflict or validation error. _M8·P2·[ILL]_
+
+### 6.24 Robustness & security
+
+- [ ] **IO-243** Decompression & size limits — All archive/compressed inputs enforce limits on decompressed size, entry count, nesting and node count; violations abort cleanly. _Data:_ parser limits _Test:_ zip bomb and 10M-node synthetic file → clean abort < 5 s, memory bounded. _M8·P0·[ILL]_
+- [ ] **IO-244** Fuzzing — Native, SVG, raster, `.fig`, REST JSON, DTCG and clipboard parsers survive ≥ 1M fuzz iterations each without crash, hang or memory-safety error. _Data:_ — _Test:_ CI fuzz jobs green. _M8·P1·[ILL]_
+- [ ] **IO-245** No network during open/import — Opening documents and importing local files make no network requests (external `href`s, fonts, images are never fetched). _Data:_ — _Test:_ sandbox records zero outbound connections across the fixture corpus. _M8·P0·[ILL]_
+- [ ] **IO-246** Failed import isolation — Any failed or cancelled import leaves the open document byte-identical and the undo stack unchanged. _Data:_ — _Test:_ inject failures at 10 stages of each importer → document hash unchanged. _M8·P0·[ILL]_
+
+---
+
+## 7. Cross-area dependencies
+
+| Area / doc | Dependency |
+| --- | --- |
+| Foundation (M0: document model, undo/redo, renderer, persistence engine) | The file format serializes the document model 1:1; the journal hooks into the transaction/undo system; export parity depends on the renderer being the same code path as the canvas (no separate export renderer). |
+| `01-canvas-selection-transform` (CV) | Paste placement rules, Paste over selection / Paste to replace / Paste here, copy/paste properties, duplicate (ID remapping per IO-045), per-user viewport state. |
+| `02-frames-groups-sections-constraints` (FR) | Group-vs-frame reconstruction on `.fig`/SVG import; sections and frames as thumbnail nodes; clip-content effects on export bounds; slices. |
+| `03-auto-layout` (AL) | Layout-engine version flag persistence (IO-075); layout field round-trip; REST/`.fig` import of auto layout (incl. GRID). |
+| `04-shapes-vectors-booleans` (VC) | Vector-network storage (IO-025); SVG path ↔ network conversion; masks/booleans in SVG import/export; outline stroke used by SVG stroke simplification. |
+| `05-paint-effects-color-export` (PE) | Export section/dialog UI over this area's encoders; paint/effect definitions; image placement gestures; color picker readouts and color-profile UI. |
+| `06-text-typography` (TX) | Font model and loading, missing-font UI, text layout cache used for missing-font rendering, text in SVG/PDF export, text paste. |
+| `07-components-variants` (CP) | Instance override identity (IO-046), remote mains, cross-file paste linkage, new-mains-on-import semantics, slots in REST lossiness. |
+| `08-variables-styles-design-systems` (DS) | Library publish/update/swap UI on top of §3.9; variables model; DTCG import/export UI (§3.12); color variables under profile conversion. |
+| `09-prototyping` (PR) | Reaction/flow/Motion data round-trip; animated export (MP4/GIF/WebM); GIF/video assets; PDF links. |
+| `10-panels-shortcuts-workflow` (UX) | File menu, recent files, version history panel, preferences, missing-fonts entry points, shortcuts table consistency. |
+| Performance hardening (M8) | Budgets for open/autosave/memory on 100k–1M node fixtures (IO-014, IO-049, IO-077..081). |
+| Accessibility (M8) | Import reports, banners and dialogs must be keyboard- and screen-reader-accessible; PDF text extraction (IO-163) improves accessibility of exports. |
+| Legal/licensing (non-engineering) | Sign-off gates for `.fig` import and any Figma clipboard binary decoding (IO-187, IO-199); font embedding license policy (IO-236). |
+| Framer-derived visual design system | Visual styling of banners, dialogs, progress toasts and the version-history panel (behavior here, looks there). |
+
+---
+
+## 8. Needs live Figma verification
+
+Each experiment: **setup → action → what to record.** Record Figma version, platform (desktop app macOS/Windows, browser), plan type, and date. Results feed back into the referenced checklist items; until then those items remain hypotheses.
+
+- **V-01 `.fig` container (IO-191/192):** Setup: Design file with 2 pages, 3 images, 1 component. Action: Main menu → File → Save local copy. Record: whether the download is a ZIP; its entries (`canvas.fig`, `meta.json`, `thumbnail.png`, `images/…`); first 12 bytes of `canvas.fig`; compression of chunks (deflate vs zstd); whether fonts are absent.
+- **V-02 Local-copy re-import (IO-193):** Setup: file using a team-library component and a local component. Action: save local copy, re-import via file browser. Record: whether library instances become local mains or stay library-linked; component keys changed; history/comments absent.
+- **V-03 Checkpoint cadence (IO-062):** Setup: new file. Action: edit continuously for 70 min; then idle 60 min; then 1 edit. Record: timestamps of autosave entries (every 30 min from first edit? from last checkpoint? only when edits occurred?).
+- **V-04 Restore entries (IO-066):** Action: restore a 3-entry-old version. Record: the two entries created (titles/labels/order) and whether the restored content equals the selected version exactly.
+- **V-05 Named version constraints (IO-063):** Action: save version with whitespace-only title, 1,000-char title, emoji, empty description. Record: validation messages, truncation, max lengths.
+- **V-06 Version preview capabilities (IO-065):** Action: preview an old version; try select, copy, export, inspect. Record: what is allowed (copying from old versions?).
+- **V-07 Version actions (IO-068):** Record exact per-version menu items (Restore, Duplicate, Copy link, Name/Edit info…) and the result of Duplicate (new file name, location, history).
+- **V-08 Undo after restore (IO-066):** Action: restore a version, press ⌘Z. Record: whether undo reverts the restore, does nothing, or undoes earlier edits.
+- **V-09 Figma clipboard flavors (IO-172/185):** Action: copy (a) a frame, (b) a text layer, (c) an image layer; inspect the OS clipboard (macOS `osascript -e 'clipboard info'`, Windows clipboard viewer). Record: all flavors and sizes; `text/plain` content for each; whether any image flavor is present on plain copy.
+- **V-10 SVG import mapping (§3.7, IO-103…124, IO-182):** Setup: fixture SVGs, one construct each (rect with rx, circle, ellipse, line, polyline, text/tspan, image data URI, linear/radial gradient with transforms, clipPath, mask, pattern, marker, symbol/use, defs, filter shadow, `<style>` classes, units mm/pt/%, currentColor, display:none, no size attributes, viewBox ≠ size). Action: import each via drag-drop and via paste of SVG text. Record: resulting layer tree (types, names), frame size/name/clip, geometry (export JSON via plugin `exportAsync({format:'JSON_REST_V1'})`), dropped elements, warnings; also whether `<text>` from an Illigma SVG becomes editable text.
+- **V-11 Raster import (IO-093…095):** Import 8000×3000, 4097×10, 4096×4096 PNGs and 8 EXIF-orientation JPEGs. Record: stored pixel size (via plugin `Image.getSizeAsync`), layer size, rounding, orientation, whether original bytes are kept below 4096 (compare `getBytesAsync` with source bytes).
+- **V-12 Drop & bulk placement (IO-101, §4.9):** Drop 1 and 5 images on empty canvas, onto a frame, onto an auto-layout frame; use Place image (⇧⌘K) with 3 files. Record: parent chosen, positions/arrangement, sizes, selection after placement.
+- **V-13 Copy as PNG (IO-144):** Copy as PNG a 100×100 frame; paste into an image editor. Record: pixel size (1×/2×), color profile tag, background.
+- **V-14 Export bounds & sizes (IO-127…130):** Fixtures: 10.5×7.25 rect; rect with 8 px outside stroke and 20 px shadow; text 200×40 with short text; child clipped by parent. Export at 1×, 1.5×, 3×, `100w`, `5x`, `0x`, `abc`. Record: output pixel sizes, clamping/validation messages, effect inclusion, "Include bounding box" effect.
+- **V-15 JPG quality & matte (IO-137/138):** Export a transparent frame and a photo as JPG at each quality level. Record: matte color, quality option names, file sizes, default.
+- **V-16 Export UI scope (§4.1/4.2, IO-142):** With nothing selected and with a selection: open ⇧⌘E; add export settings to a page. Record: listed items, default row added by "+" (format/scale), page export bounds.
+- **V-17 Hidden node export (IO-134):** Export a hidden frame (eye off) directly. Record: blank output, error, or rendered content.
+- **V-18 SVG export structure (IO-148…155):** Export fixtures (text both modes, inside/outside strokes both simplify modes, image fills each scale mode, every effect, 19 blend modes, angular/diamond gradients, noise/texture/glass) with ids on/off. Record: markup patterns (root attributes, defs naming, filter chains, foreignObject usage, rasterization), and P3-document color output.
+- **V-19 PDF export (IO-163/165/168):** Export a text paragraph, linked text, a 3×2 grid of frames via "Export frames to PDF" with partial selection. Record: text selectable/searchable? fonts embedded (pdffonts)? link annotations; page order; scope (selection vs page); MediaBox units.
+- **V-20 Animated export (IO-169…171):** Export a Motion-animated top-level frame as MP4/GIF/WebM with each option. Record: UI option names/defaults, errors for nested frames, durations.
+- **V-21 Cross-file paste & remapping (IO-045/173):** Copy from file A (with unpublished local component instance, published library instance, local style, local variable binding, prototype link between two copied frames, pattern fill) to file B. Record: linkage of each asset in B (remote/local/detached), whether local styles/variables are copied, prototype link targets, pattern source.
+- **V-22 Paste priority (IO-174):** Put PNG + plain text on the clipboard (e.g., from a browser image copy) and paste. Record which flavor Figma uses; repeat with SVG text + PNG.
+- **V-23 Color management (IO-099/136/156/222/224/226, §3.13):** In sRGB and P3 files: import P3-tagged PNG; set P3 (1,0,0) fill; Convert P3→sRGB; export PNG/JPG/SVG/PDF with each color profile. Record: stored values after Convert (clip vs map), ICC tags in outputs, SVG fallback values, image pixel values on canvas, behavior for library assets with different profiles.
+- **V-24 Missing fonts (IO-231/232):** Open a file using a font not installed. Record: rendering (unchanged vs fallback), which edits are blocked (typing, size change, resize, auto-layout reflow), dialog contents, replacement scope (layers, styles).
+- **V-25 ⌘S (IO-052):** Press ⌘S/Ctrl+S in Figma desktop and browser. Record: toast text or dialog (e.g., save-to-version-history prompt), whether anything is saved.
+- **V-26 Shortcuts & menus (§4.3–4.4, §5):** Open Figma's keyboard-shortcuts panel and main/context menus. Record exact labels and shortcuts for Export, Place image, Save to version history, Copy as PNG/SVG/text/code, Copy link, Paste to replace/over selection/here, Export frames to PDF, Save local copy.
+- **V-27 REST auth limits (IO-200/206):** From Figma developer docs (when reachable): token expiry options, scopes, per-endpoint rate limits/tiers and the `Retry-After` header. (Documentation check, not UI.)
+- **V-28 REST style values (IO-202):** GET file with unused local styles. Record whether style values are retrievable without a referencing node (and via which endpoint).
+- **V-29 Native DTCG export/import (IO-209…219):** Export a collection with COLOR/FLOAT (various scopes)/STRING/BOOLEAN variables, aliases (same/cross collection), descriptions, code syntax, 2 modes; import modified files. Record: file naming, structure, `$type` choices per scope, `$extensions` keys, alias format, error messages, hex vs object colors.
+- **V-30 Private-name publishing (IO-089):** Publish a library with components named `_Base` and `.internal`. Record whether they are published.
+- **V-31 Default file thumbnail (IO-007):** New file with several frames, no custom thumbnail. Record which content the default thumbnail shows.
+- **V-32 Export-setting defaults per format (§2.6):** Add an export row, switch to SVG/PDF/JPG. Record default values of Ignore overlapping layers, Include bounding box, quality, resampling, color profile for each format.
+- **V-33 Resampling options (IO-139):** Record option names and default for JPG/PNG/PDF and their visual difference on a 2× upscaled pixel-art image.
+- **V-34 Plain-text of non-text layers (IO-178):** Copy a frame without text and a mixed selection; paste into a plain-text editor. Record result.
+- **V-35 Legal (IO-187/199, §3.11.0):** Not a live-Figma test: obtain current Figma Terms of Service and Developer Terms text; counsel review of reverse-engineering/interoperability clauses before enabling `.fig` or clipboard-binary features.
+
+---
+
+## 9. Sources
+
+### 9.1 Typings & specifications read in this session
+Plugin API typings `plugin-api.d.ts` v1.141.0 (line numbers approximate to this copy):
+- `fileKey` 79; `skipInvisibleInstanceChildren` ~85–110; `viewport` 119, `ViewportAPI` 3304–3330; `saveVersionHistoryAsync` 302–338, `VersionHistoryResult` 2142; `importComponentByKeyAsync`/`importComponentSetByKeyAsync`/`importStyleByKeyAsync` 1619–1627; `listAvailableShaders`/`importShaderById` 1633–1660; `listAvailableFontsAsync` 1662; `loadFontAsync` 1698; `getFontFamilyVariationAxes` 1726; `hasMissingFont` 1730; `createNodeFromSvg` 1734; `createImage` (PNG/JPEG/GIF, max 4096) 1742; `createImageAsync` 1778; `getImageByHash` 1782; `createVideoAsync` (MP4/MOV/WebM, 100 MB) 1792; file thumbnail APIs 1972–1990; `loadAllPagesAsync` 2002; `importVariableByKeyAsync` 2298; `LibraryVariableCollection` 2300; `NodeChangeProperty` 3751–3830; `RGB`/`RGBA` 3942/3950; `FontName` 3980; `FontNameInput` 4023; effects 4297–4632 (`GlassEffect` 4549, `Effect` union 4621); `ImageFilters` 4662; `ImagePaint` 4749; `VideoPaint` 4785; `PatternPaint` 4821; `Paint` union 4883; `Shader` 4969; `Guide` 4993; `ExportSettings*` 5063–5321; `WindingRule` 5325; `BlendMode`/`MaskType` 5478–5500; `Font` 5502; `PluginDataMixin` (100 kB limit) 6466–6520; `BaseNodeMixin` 6306; `SceneNodeMixin` 6584; `MotionNodeMixin` 6750; `ChildrenMixin` (back-to-front, fractional indexing) 6972; `ContainerMixin.expanded` 7603; `ExportMixin`/`exportAsync` 8982–9077; `PublishableMixin` 9306–9350; `DocumentNode`/`documentColorProfile` 10404–10416; `PageNode` 10563–10660; `TransformGroupNode` 10807; `SliceNode` 10817; `TextPathNode` 11027; `ComponentPropertyType` 11078; `SlotNode` 11259; `VariableResolvedDataType` 11664; `VariableValue` 11681; `Variable` 11711; `VariableCollection` 11925; `ExtendedVariableCollection` 11994; `SceneNode` union 12426; `StyleType` 12465; `Image` 12684; `Video` 12701; `TransformModifier` 12822.
+
+REST API `api_types.ts` v0.44.0: `IsLayerTrait` (pluginData, boundVariables, explicitVariableModes) 1–165; `HasExportSettingsTrait` 497; `HasGeometryTrait` (`fillGeometry`, `strokeGeometry`, `geometry=paths`) 504–551; `TypePropertiesTrait` (`characterStyleOverrides`, `styleOverrideTable`, `lineTypes`, `lineIndentations`) 677–727; `Node` union 839; `DocumentNode` 869; `CanvasNode` 875–911; `Constraint` 1364; `ExportSetting` 1383; `BlendMode` 1431; `ImageFilters` 1525; paints 1541–1684 (`ImagePaint` with `imageRef`, `gifRef`, `STRETCH` 1600); `Effect` 2044; `Style` 2050; `ComponentPropertyType` 2410; `Component` 2564; `ComponentSet` 2599; `VariableAlias` 2639; `VariableResolvedDataType` 2973; `StyleType` 3415; `Version` 3492; `LocalVariableCollection` 4601; `LocalVariable` 4691; `GetFileResponse` 5653–5745; `GetFileNodesResponse` 5746; `GetImagesResponse` 5811; `GetImageFillsResponse` 5826; `GetFileVersionsResponse` 6126.
+
+REST `openapi.yaml` v0.44.0: `info.termsOfService` (Developer Terms) ~8; `GET /v1/files/{file_key}` (version, ids, depth, geometry, plugin_data, branch_data) 109–194; `GET /v1/images/{file_key}` (scale 0.01–4, formats, svg_outline_text, svg_include_id, svg_include_node_id, svg_simplify_stroke, contents_only, use_absolute_bounds, 32 MP, 30-day expiry) 279–403; `GET /v1/files/{file_key}/images` (≤ 14-day expiry) 404–441; `GET /v1/files/{file_key}/versions` (page_size 30/max 50) 732–788; `GET /v1/files/{file_key}/variables/local` (Enterprise only) 2222–2275.
+
+### 9.2 Official Figma Help Center articles
+Seen only as **search excerpts** in this session (bodies not read):
+- 13402894554519 Export formats and settings for static designs — https://help.figma.com/hc/en-us/articles/13402894554519
+- 360040030374 Copy assets between design tools — https://help.figma.com/hc/en-us/articles/360040030374
+- 8403626871063 Save a local copy of files — https://help.figma.com/hc/en-us/articles/8403626871063
+- 360040027794 Guide to imports in Figma Design — https://help.figma.com/hc/en-us/articles/360040027794
+- 360038006754 (version history) — https://help.figma.com/hc/en-us/articles/360038006754
+- 360039825114 (color management / color profiles) — https://help.figma.com/hc/en-us/articles/360039825114
+- 360040328553 What can I do offline in Figma? — https://help.figma.com/hc/en-us/articles/360040328553
+- 360040028034 Add images and videos to designs — https://help.figma.com/hc/en-us/articles/360040028034
+- 360041089973 Add images and videos in bulk — https://help.figma.com/hc/en-us/articles/360041089973
+- 360039956994 (missing fonts) — https://help.figma.com/hc/en-us/articles/360039956994
+- 360052679454 Access shared resources in an organization — https://help.figma.com/hc/en-us/articles/360052679454
+
+Known from the 2026-09-27 catalog (title/ID only, not read): 360040028114 Export static designs from Figma; 41307983648407 Export animations from Figma; 360040514273 Import Sketch files; 360041003114 Import files to the file browser; 4409078832791 Copy and paste objects; 4412765442967 Copy and paste properties between layers; 360038511413 Set custom thumbnails for files; 360041051154 Guide to libraries in Figma; 360025508373 Publish a library; 360039234193 Review and accept library updates; 4404856784663 Swap libraries; 360063144053 Guide to branching; 5691189138839 Merge branch into main file; 360039825314 Guide to comments in Figma; 360040322673 Present to collaborators using spotlight; 4403130802199 Use cursor chat; 29638316371479 See viewer history; 26463081577367 Present prototypes offline; 360040321093 View prototypes on a mobile device; 360041486873 Use animated GIFs in prototypes; 37998629035799 Work with the Figma agent in design files; 40826832449303 Turn coded screens into editable design layers; 42031586813719 Use auto layout with CSS Flexbox in mind (via old feature guide).
+
+### 9.3 Live observation
+- [OBS] `old/docs/figma/observations/2026-09-27-live-figma.md`: Frame inspector shows an Export section; container layout settings show "Layout = Updated".
+
+### 9.4 Other sources
+Read in full this session (via GitHub raw / npm registry):
+- `fig-kiwi` npm README & metadata (v0.0.1, 2022, no license) — https://registry.npmjs.org/fig-kiwi
+- `kiwi-schema` npm metadata (MIT) — https://registry.npmjs.org/kiwi-schema ; Kiwi README & LICENSE — https://github.com/evanw/kiwi
+- `openfig-core` npm metadata (v0.4.1, MIT) — https://registry.npmjs.org/openfig-core
+- `fig2sketch` README & LICENSE (MIT, Sketch B.V.) — https://github.com/sketch-hq/fig2sketch
+- DTCG format chapters (`file-format.md`, `types.md`, `aliases.md`, `groups.md`, `composite-types.md`, `design-token.md`) — https://github.com/design-tokens/community-group/tree/main/technical-reports/format
+
+Search excerpts only:
+- Grida `.fig` format notes — https://grida.co/docs/wg/feat-fig/ ; Grida Figma copy-paste — https://grida.co/docs/editor/features/copy-paste-figma
+- figma-parser — https://github.com/sunyui/figma-parser
+- Simon Willison, "The web's clipboard" — https://simonwillison.net/2024/Sep/19/the-webs-clipboard
+- agent-native Figma clipboard importer — https://cdn.jsdelivr.net/npm/@agent-native/core@0.124.6/corpus/templates/design/actions/import-figma-clipboard.ts
+- Tencent Cloud article decoding Figma clipboard — https://cloud.tencent.com/developer/article/2435928
+- Figma forum threads (forum.figma.com): clarification-on-figmas-memory-usage-13811; t/my-figma-file-is-not-loading/44391; this-document-contains-unsaved-changes-why-27915; t/ctrl-shift-v-vs-ctrl-shift-r/57124; paste-files-after-copy-as-png-svg-macos-15378; t/import-svg/56630; import-svg-4221; t/importing-svg-not-working-properly/2144; importing-sag-logo-file-into-figma-12365; allow-pasting-from-illustrator-as-vector-14524; svg-export-incorrect-color-profile-39416; problem-with-managing-image-colour-profiles-34569; t/pdf-export-text-not-selectable/286; fix-pdf-export-support-font-embedding-instead-of-vector-outlining-50699; links-between-pages-in-pdf-export-23760; export-a-single-multi-page-pdf-from-selected-frames-without-creating-a-new-page-49835; exporting-to-svg-and-preserving-hyperlinks-36293; native-variable-export-feature-47831; t/maximum-image-size/3203
+- DTCG/Figma native export: https://github.com/civictheme/uikit/pull/1025 ; https://www.misha.wtf/blog/figma-dtcg-design-tokens ; https://atomize.tools/blog/figma-design-tokens-guide/
+- PDF multi-frame guide — https://www.layerpath.com/learn/how-to-export-multiple-frames-in-figma-as-one-pdf
+- Color management — https://bjango.com/articles/colourmanagementsettings/
+- Previous Illigma prototype docs (context only): `old/docs/figma/feature-guide.md` §16, `old/README.md`.
+
+Not obtainable this session (search budget exhausted / domains blocked): Figma Terms of Service text, REST token expiry & rate-limit documentation, full help-article bodies — see §8 V-26, V-27, V-35.
