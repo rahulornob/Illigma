@@ -22,11 +22,28 @@ After v1.0: a Tauri desktop app in v1.x, then optional multiplayer (CRDT over LA
 ## [Unreleased]
 
 ### Next
-- Design the remaining editor states: core selection states, popovers and menus, expanded inspector sections, and modes and views (Prototype, Inspect, comments, light mode).
+- Finish the design system: draw the 45 icons still missing from the library, add the missing components (scrub number input, segmented control, colour picker, fill/stroke/effect rows, search field, menu parts, dialog, toast), and rebuild the B screens from component instances.
+- Design the remaining editor states: core selection states, popovers and menus, expanded inspector sections, the full-page Variables manager, and modes and views (Prototype, Inspect, comments, light mode).
 - Then start Phase 0 (foundations): TypeScript monorepo, CanvasKit spike, operation-based document model, file format v0 and an offline web app.
 
-### Added
-- `CHANGELOG.md`, with the project's end goal (2026-10-13).
+### Added (2026-10-13)
+- `CHANGELOG.md`, with the project's end goal.
+- **Design system** in Figma ("00 · Design system"): a Foundations board (brand roles, primitive palette, alpha scale, semantic tokens, type, spacing, radius, elevation), a Components board (13 component sets) and an Icons board (118 Lucide-based icon components at 12 / 16 / 20 px).
+- Two variable collections: "Illigma Primitives" (raw colours and alpha steps) and "Illigma UI" (semantic Dark / Light tokens that alias the primitives).
+- Editor B details: Figma-style panel header (profile, present, Export, Design / Prototype / Inspect, zoom), title-bar Feedback and tab switcher (with an open state), a Pages list with emoji and divider pages, close-sidebar buttons, an Absolute position toggle, and an Effects "+" menu.
+
+### Changed (2026-10-13)
+- Universal rules: 4 px grid for every size, gap, padding, radius and position; type is 12 px minimum (sizes 12 / 16, line heights 16 / 24); icons are 1.2 px stroke at 12 / 16 / 20 px; every corner uses 60% corner smoothing.
+- Text colours are now white / black alpha tokens (92 / 70 / 50 / 32%) instead of grey hex values.
+- Filled buttons with text use darker `accent/fill` and `state/danger-fill` so white labels pass 4.5:1 contrast.
+- Colour roles reduced to two: Ember (brand) and Blue (everything interactive). Purple and lime were removed; the active tool and components are now blue.
+
+### Removed (2026-10-13)
+- The old "Illigma Theme" variable collection from the early prototype (only used on the "delete" page).
+- The duplicate selection header in the Properties panel.
+
+### Decided
+- Editor layout locked to **Approach B · Floating canvas** (2026-10-13), chosen from eight explored layouts. The others are archived in Figma for reference.
 
 ## 2026-10-13: Product and design baseline
 
