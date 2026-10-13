@@ -32,7 +32,7 @@ Target mix of 5: 2 design-system or product designers, 2 product or UI designers
 2. **Set-up (2 min):** share the Figma prototype in presentation mode, starting with the flow "Journey 1 · Create a file". Explain: "Some screens are clickable; for others, point and tell me what you'd do."
 3. **Tasks (25 min):** read each task from [usability-test.md](usability-test.md) word for word. Don't help. If they are stuck for 2 minutes, note it as a fail, then say "Let's move on."
    - After each task, ask: "How easy was that, from 1 to 7?"
-4. **Panels (5 min):** show "Docked panels" (`96:66946`) next to the floating layout. Ask: "Which would you rather work in all day? Why?"
+4. **Panels (5 min):** show "Docked panels (default)" (`96:66946`) next to "Floating islands" (`96:77383`). Ask: "Which would you rather work in all day? Why?"
 5. **Trust (3 min):** "Where do you think this file lives? How would you get it onto your other computer?"
 6. **SUS (3 min):** the standard 10-question System Usability Scale.
 7. **Wrap-up (2 min):** "Anything you expected and didn't see?"

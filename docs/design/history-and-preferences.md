@@ -16,7 +16,7 @@ Draft · 13 October 2026 · Phase 4.9 of the [design plan](PLAN.md) · Figma sec
 ## Version history
 
 - Opens from the File menu, the title bar's save status, or ⌥⌘H. It replaces the right panel, like Figma.
-- Versions are stored **inside the `.illigma` file**, so they travel with it through any synced folder. Autosaves are kept for 30 days (configurable). Named versions stay until you delete them.
+- Versions are stored **inside the `.illigma` file**, so they travel with it through any synced folder. Every autosave and named version is kept until you delete it (default since 2026-10-13, after the Phase 5 pilot). Preferences → Files and saving can set a limit if a file grows too large.
 - **Save version** (⌥⌘S) adds a named version with an optional description.
 - Kinds: **Current** (green dot), **Named** (filled blue dot) and **Autosave** (hollow dot). The **Show autosaves** toggle hides autosaves. Versions written by the save rules ("Kept from conflict copy", "Before reload") are named automatically. See [save-states.md](save-states.md).
 - Clicking a version shows it **read-only** on the canvas with a banner: **Back to current (Esc)** and **Restore this version**. Only Move, Comment and Hand stay in the tool dock; selecting, copying and exporting still work.

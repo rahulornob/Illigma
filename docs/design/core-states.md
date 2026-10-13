@@ -14,7 +14,7 @@ These are the everyday editor states from [core-loop.md](core-loop.md) that the 
 | Stroke + constraints expanded · shape tool flyout | `96:63086` | Stroke settings (position, weight, per side, dashes), constraints widget, and the shape tool flyout with shortcuts |
 | Styles · local styles list + create style | `96:64412` | Text, colour and effect styles with nothing selected, plus the Create style popover |
 | Import · progress and error states | `96:68049` | Converting with progress (keep working), and a file that could not be read (nothing created or changed) |
-| Docked panels | `96:66946` | The same editor with panels docked to the window edges (no gutters, radius or shadow), for the Phase 5 comparison |
+| Docked panels (default) | `96:66946` | The same editor with panels docked to the window edges (no gutters, radius or shadow), for the Phase 5 comparison |
 | View menu · zoom, rulers, guides | `96:64875` | Zoom commands, rulers, layout guides, pixel grid, outline mode, floating or docked panels, and hide interface. Rulers and a guide are on the canvas |
 
 ## Rules
@@ -27,7 +27,7 @@ These are the everyday editor states from [core-loop.md](core-loop.md) that the 
 - **Import** runs on this computer and shows progress; you can keep working. An unreadable file says why and that nothing was created. The report lists what was kept, warnings (missing fonts, plugin data) and anything skipped, and it can be saved. The original file is never changed.
 - **Styles** remain for gradients, images, type and effects. For colours that change between modes, the tip points to variables. Colour-style swatches are round, variable swatches square. Rows show ⋯ (edit, duplicate, delete) on hover.
 - **View menu** follows Figma's shortcuts: outline ⇧⌘O, pixel grid ⌘', snap to pixel grid ⇧⌘', rulers ⇧R, comments ⇧C.
-- **View**: Floating islands (default) or Docked panels. Docked panels are a View option for people who prefer Figma's classic layout; the docked layout itself is tested in Phase 5.
+- **View**: Docked panels (default since 2026-10-13) or Floating islands (`96:77383`).
 
 ## Known debt
 

@@ -12,7 +12,7 @@ Figma file **"Illigma"** (key `K9mCPjBElVGiPOHJvZ4CWY`), page **"Illigma — Edi
 | --- | --- | --- |
 | Home — dark | `88:24` | The user's style reference: panels expanded (`88:25`) and collapsed (`88:541`) |
 | Right panel — states | `88:785` | Style reference for the inspector cards (image, text, shape and adjustment states) |
-| 07 · Editor layout — B · Floating canvas (chosen) | `94:3118` | **Chosen Illigma editor layout** (`94:3119`): full-bleed canvas, floating Layers and Properties islands, bottom tool dock, context bar above the dock |
+| 07 · Editor layout — B | `94:3118` | **Chosen Illigma editor layout** (`94:3119`): Layers and Properties docked to the window edges (default), bottom tool dock, context bar above the dock. Floating islands are a View option |
 | 11 · Home & files | `96:19136` | Phase 4.1: Home / Recents, New design file dialog, first run, file ⋯ menu with missing-file card and undo toast. Built from File card and Sidebar nav item components. |
 | 12 · Empty canvas & frames | `96:26599` | Phase 4.2: new empty file with first-run hint, Frame tool presets, first frame drawn. |
 | 13 · Save states | `96:28993` | Phase 4.3: saving, disk full, changed on disk, conflict copy, compare dialog, file-state catalogue (see save-states.md). |
@@ -30,7 +30,9 @@ Figma file **"Illigma"** (key `K9mCPjBElVGiPOHJvZ4CWY`), page **"Illigma — Edi
 
 The reference designs set Illigma's **look**: a dark shell with rounded cards, the colours, Inter type sizes, inspector cards, toggles, colour-coded layer types, and blue selection. They do **not** set its features. Illigma is a UI design tool like Figma, not a photo editor.
 
-## Layout (Approach B · Floating canvas)
+## Layout (Approach B)
+
+Default since 2026-10-13: **docked panels** (decided after the Phase 5 pilot). Layers 264 px at the left edge and Properties 296 px at the right edge, full height below the title bar, radius 0, no shadow, a 1 px `border/default` line on the canvas side only. The **floating islands** described below are kept as View → Panels: floating (`96:77383`).
 
 - Title bar: 40 px on the shell colour, with file tabs, save state, zoom, Preview and Export.
 - Canvas: full-bleed under the title bar (1600 × 960 at the reference size), dot grid, no card border.

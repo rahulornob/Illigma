@@ -29,7 +29,7 @@ Draft · 13 October 2026 · Phase 5 of the [design plan](PLAN.md)
 | 3 | "How do you know your work is saved?" | First frame `96:28247` | points to the save status in the title bar | 1, 6 |
 | 4 | "Turn this button into a set with a small size." | Task 4 start `96:72680` | uses Add variant, or Add property → Variant | 3 |
 | 5 | "Make a colour that changes between light and dark." | Task 5 start `96:73332` | opens Variables, then creates a variable or mode | 3 |
-| 6 | "Make this screen's background use the theme colour." | Task 6 start `96:74091` | opens the fill's Variables tab and picks a variable | 3 |
+| 6 | "Make this screen's background use the theme colour." | Task 6 start `96:76581` | opens the fill's Variables tab and picks a variable | 3 |
 | 7 | "Show this screen in dark mode only." | Task 7 start `96:74921` | uses the Appearance mode button → Dark | 3 |
 | 8 | "Make the button open the Home screen when tapped, then try it." | Task 8 start `96:75753` | drags the connection, then presses Present | 4 |
 | 9 | "A developer needs the button's CSS. Get it for them." | Inspect `96:47901` | switches to Inspect and copies the code | 5 |
@@ -44,18 +44,18 @@ Draft · 13 October 2026 · Phase 5 of the [design plan](PLAN.md)
 
 ## Docked vs floating panels
 
-Figma moved UI3 back to docked panels after beta feedback. Half the participants start with **floating islands** and half with **docked panels** (View menu, `96:64875`). They switch halfway and say which they prefer and why. Decision rule: if 4 or more of 6 prefer docked, docked becomes the default and floating stays an option.
+Figma moved UI3 back to docked panels after beta feedback. Docked is now the default. Half the participants start docked and half with **floating islands** (`96:77383`). They switch halfway and say which they prefer and why. If 4 or more of 6 prefer floating, floating becomes the default again.
 
 ## Questions to answer
 
 1. Do Figma users find Variables from the left panel's Variables tab, or do they look elsewhere?
 2. Is the autosave status enough reassurance without a Save button?
 3. Do people understand local-only sharing (synced folders, phone preview over Wi-Fi) without a share link?
-4. Is the floating layout comfortable for a full session?
+4. Does the docked default hold up against floating with real users?
 
 ## Clean start screens
 
-Tasks 4–8 start from the screens in Figma section "22 · Test start screens" (`96:72680`, `96:73332`, `96:74091`, `96:74921`, `96:75753`). They show the state *before* the task (no menu open, nothing already done). The pilot showed that starting from "after" screens confuses people.
+Each task starts from a fresh state; tasks do not continue from each other. Tasks 4–8 start from the screens in Figma section "22 · Test start screens" (`96:72680`, `96:73332`, `96:76581`, `96:74921`, `96:75753`). They show the state *before* the task (no menu open, nothing already done). The pilot showed that starting from "after" screens confuses people.
 
 ## Pilot results (simulated, 13 October 2026)
 
@@ -82,13 +82,13 @@ Tasks 4–8 start from the screens in Figma section "22 · Test start screens" (
 | 7 | "Kept from conflict copy" sounded like lost work | 2 / 5 | 1 | **Fixed.** Renamed "Mac mini's copy (sync conflict) · kept, nothing lost" |
 | 8 | No phone presets visible before drawing a frame | 4 / 5 | 1 | **Fixed in part.** The empty-canvas hint says "Draw a frame, then pick a device size" (presets appear with the Frame tool, `96:27318`) |
 | 9 | Present (▷) starts at the flow start, not the selected frame | 3 / 5 | 1 | Open: add "Present from selected frame" to the ▷ menu |
-| 10 | Versions live inside the file: if the file is damaged, history goes too. Autosaves expire after 30 days | 4 / 5 | 2 (trust) | **Your decision.** Options: keep a second copy of history in app storage, or change the default retention to "keep all" |
+| 10 | Versions live inside the file: if the file is damaged, history goes too. Autosaves expire after 30 days | 4 / 5 | 2 (trust) | **Decided: keep all autosaves by default.** Preferences shows "Forever"; the history footer says everything is kept until you delete it |
 | 11 | Profile avatar "R" suggests an account | 2 / 5 | 1 | Open: tooltip "Local profile: your name on comments and versions" |
 | 12 | Delete version sits next to Rename with no confirmation | 2 / 5 | 1 | It can be undone (⌘Z). Leave, and watch for it in real sessions |
 
 ### Docked vs floating
 
-All five personas chose docked panels. The decision rule (4 of 6 real participants) still applies, but this is a strong early signal. Layout B (floating) was your choice, so changing the default is **your decision**.
+All five personas chose docked panels. **Decided (13 October 2026): docked panels are the default**, and floating islands stay a View option. All editor screens were converted. The real sessions still compare the two; if most real participants prefer floating, we switch back.
 
 ## After the sessions
 
