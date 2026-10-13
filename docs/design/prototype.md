@@ -20,7 +20,7 @@ Prototyping works like Figma's: connections between layers and frames, interacti
 - **Interactions**: one **Interaction row** (`96:43682`) per interaction ("On tap · Navigate to Home"). **+** adds one. The minus button removes it (undoable). Clicking a row opens Interaction details.
 - **Scroll behaviour**: position (scroll with parent, fixed, sticky) and overflow for frames.
 - **Flows on this page**: each flow and its starting frame. **+** adds a flow from the selected frame.
-- **Prototype settings** (nothing selected or a top-level frame): device, background colour.
+- **Prototype settings** (nothing selected or a top-level frame): device, orientation, starting frame, background colour.
 
 ## Canvas
 

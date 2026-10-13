@@ -19,6 +19,7 @@ Figma file **"Illigma"** (key `K9mCPjBElVGiPOHJvZ4CWY`), page **"Illigma — Edi
 | 14 · Components | `96:34464` | Phase 4.4: main component selected, variant set + Add property menu, Assets panel, Swap instance popover. |
 | 15 · Variables | `96:40346` | Phase 4.5: Variables manager (table, edit popover, mode menu, type menu, delete undo, empty state), frame mode switching, variable picker. See variables.md. |
 | 16 · Prototype | `96:44506` | Phase 4.6: Prototype tab with connection, interaction details, action menu, presentation view, phone preview over the local network and its states. See prototype.md. |
+| 17 · Inspect | `96:47900` | Phase 4.7: Inspect tab with measurement redline, properties and code cards, export card with copied state, page summary. See inspect.md. |
 | Archive · other approaches | — | Approach A (old "06 · Design editor", `91:3182`), C (unified header) and D–H (philosophy explorations). Reference only |
 | 01–05 | — | Earlier explorations (brand directions, layouts, styles, Studio), kept for reference only |
 

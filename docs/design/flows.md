@@ -4,7 +4,7 @@ Draft · 13 October 2026 · Phase 3 of the [design plan](PLAN.md) · Figma secti
 
 The six v1 journeys from PRD section 3, drawn step by step as grey-box wireframes of layout B. The blue box in each wireframe marks where the user is working. The badge says whether that state is already designed.
 
-**Totals:** 36 steps · 24 Designed · 4 Partial · 7 Missing · 1 Outside the app.
+**Totals:** 36 steps · 27 Designed · 4 Partial · 4 Missing · 1 Outside the app.
 
 ## 1 · Create a file offline
 
@@ -54,9 +54,9 @@ The six v1 journeys from PRD section 3, drawn step by step as grey-box wireframe
 
 | # | Step | Where | Status |
 |---|---|---|---|
-| 1 | Switch to the Inspect tab | Properties | Missing |
-| 2 | Hover to measure and read properties | Canvas | Missing |
-| 3 | Copy a CSS / Tailwind / SwiftUI snippet | Properties | Missing |
+| 1 | Switch to the Inspect tab | Properties | Designed (17 · Inspect) |
+| 2 | Hover to measure and read properties | Canvas | Designed (17 · Inspect) |
+| 3 | Copy a CSS / Tailwind / SwiftUI snippet | Properties | Designed (17 · Inspect) |
 | 4 | Export PNG / SVG at 1x, 2x, 3x | Properties → Export | Partial |
 | 5 | Export tokens as JSON | Dialog | Missing |
 | 6 | Turn on the local MCP server for AI tools | Dialog / Preferences | Missing |
@@ -89,7 +89,7 @@ The six v1 journeys from PRD section 3, drawn step by step as grey-box wireframe
 4. ~~Component creation, main component, variant set, Assets panel~~ (done in 4.4)
 5. ~~Variables manager (full page) and mode switching~~ (done in 4.5, see [variables.md](variables.md))
 6. ~~Prototype mode: connections, interaction panel, flows, presentation view~~ (done in 4.6, see [prototype.md](prototype.md))
-7. Inspect mode: measurements, properties, code snippets
+7. ~~Inspect mode: measurements, properties, code snippets~~ (done in 4.7, see [inspect.md](inspect.md))
 8. Export dialog and token export
 9. Version history, Preferences (incl. phone preview, MCP server)
 10. Remaining states from [core-loop.md](core-loop.md): text selected, nothing selected, multi-select, popovers, context menus, light mode, docked panels
