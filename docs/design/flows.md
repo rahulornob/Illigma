@@ -4,14 +4,14 @@ Draft · 13 October 2026 · Phase 3 of the [design plan](PLAN.md) · Figma secti
 
 The six v1 journeys from PRD section 3, drawn step by step as grey-box wireframes of layout B. The blue box in each wireframe marks where the user is working. The badge says whether that state is already designed.
 
-**Totals:** 36 steps · 6 Designed · 5 Partial · 24 Missing · 1 Outside the app.
+**Totals:** 36 steps · 8 Designed · 6 Partial · 21 Missing · 1 Outside the app.
 
 ## 1 · Create a file offline
 
 | # | Step | Where | Status |
 |---|---|---|---|
-| 1 | Home: recent files, folders, New file | Full screen | Missing |
-| 2 | Choose where to save (a folder on disk) | Dialog | Missing |
+| 1 | Home: recent files, folders, New file | Full screen | Designed (11 · Home & files) |
+| 2 | Choose where to save (a folder on disk) | Dialog | Designed (New design file dialog) |
 | 3 | Empty canvas with a first-run hint ("Press F to draw a frame") | Canvas | Missing |
 | 4 | Frame tool + device presets | Properties panel | Missing |
 | 5 | Draw shapes and text inside the frame | Canvas | Designed (interactions spec) |
@@ -66,7 +66,7 @@ The six v1 journeys from PRD section 3, drawn step by step as grey-box wireframe
 | # | Step | Where | Status |
 |---|---|---|---|
 | 1 | Save to a synced folder (iCloud Drive, Dropbox) | Save dialog | Partial |
-| 2 | On another machine: Home → open the file from the synced folder | Full screen | Missing |
+| 2 | On another machine: Home → open the file from the synced folder | Full screen | Partial (Home designed; synced-folder open flow not yet) |
 | 3 | File changed on disk → reload banner | Title bar | Missing |
 | 4 | Version history: named versions, restore | Left panel | Missing |
 | 5 | Compare two versions visually | Canvas | Missing |
@@ -83,7 +83,7 @@ The six v1 journeys from PRD section 3, drawn step by step as grey-box wireframe
 
 ## Phase 4 backlog, in order
 
-1. Home / file browser (+ open, import, new file, choose folder)
+1. ~~Home / file browser~~ (done in 4.1)
 2. Empty canvas and first-run hints; frame presets
 3. Save states: saving, error, changed on disk, conflict
 4. Component creation, main component, variant set, Assets panel

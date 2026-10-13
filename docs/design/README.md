@@ -13,7 +13,7 @@ Figma file **"Illigma"** (key `K9mCPjBElVGiPOHJvZ4CWY`), page **"Illigma — Edi
 | Home — dark | `88:24` | The user's style reference: panels expanded (`88:25`) and collapsed (`88:541`) |
 | Right panel — states | `88:785` | Style reference for the inspector cards (image, text, shape and adjustment states) |
 | 07 · Editor layout — B · Floating canvas (chosen) | `94:3118` | **Chosen Illigma editor layout** (`94:3119`): full-bleed canvas, floating Layers and Properties islands, bottom tool dock, context bar above the dock |
-| 11 · Home & files | — | Phase 4.1: Home / Recents, New design file dialog, first run, file ⋯ menu with missing-file card and undo toast. Built from File card and Sidebar nav item components. |
+| 11 · Home & files | `96:19136` | Phase 4.1: Home / Recents, New design file dialog, first run, file ⋯ menu with missing-file card and undo toast. Built from File card and Sidebar nav item components. |
 | Archive · other approaches | — | Approach A (old "06 · Design editor", `91:3182`), C (unified header) and D–H (philosophy explorations). Reference only |
 | 01–05 | — | Earlier explorations (brand directions, layouts, styles, Studio), kept for reference only |
 
@@ -60,7 +60,16 @@ Figma section **"00 · Design system"** (`94:12013`): a Foundations board (`94:1
 
 **4 px grid (2026-10-13, universal):** every spacing, padding, gap, fixed size, radius and position is a multiple of 4. Type is on the grid too: font sizes are 12, 16 or 20 px (12 px is the minimum) and line heights 16 or 24 px. Text styles: `UI/Title` 16/24 Semi Bold; `UI/Heading` 12/16 Semi Bold; `UI/Button`, `UI/Value`, `UI/Tab`, `UI/Micro` 12/16 Medium or Semi Bold; `UI/Body`, `UI/Label`, `UI/Caption` 12/16 Regular. Hierarchy comes from weight and colour, not extra sizes. Icons are 12, 16 or 20 px. Only 1 px hairlines (dividers, borders) are exempt. Tokens updated to match: `radius/md` 8, `radius/tool` 8, `radius/button` 8, `radius/chip` 8, `size/row` 32.
 
-Icons: Lucide, 1.2 px stroke at every size. This is a universal rule (2026-10-13). The **icon library** is the "Icons" board (`94:13574`) in "00 · Design system": 118 component sets named `icon/<lucide-name>` (from lucide-static 0.460.0, ISC licence), each with Size = 12 / 16 / 20, colour bound to `text/secondary`. An "Illigma custom" group holds icons Lucide lacks (inner/drop shadow, layer/background blur, noise, texture, corner-radius). Use instances from the library; never paste raw SVG.
+Icons: Lucide, 1.2 px stroke at every size. This is a universal rule (2026-10-13). The **icon library** is the "Icons" board (`94:13574`) in "00 · Design system": 125 component sets named `icon/<lucide-name>` (from lucide-static 0.460.0, ISC licence), each with Size = 12 / 16 / 20, colour bound to `text/secondary`. An "Illigma custom" group (`icon/custom/<name>`) holds icons Lucide lacks: inner and drop shadow, layer and background blur, noise, texture, corner radius, gap, horizontal and vertical padding. Use instances from the library; never paste raw SVG.
+
+**Component and state rules (2026-10-13, after the first full QA pass):**
+- Field height is `size/field` 28 px (Input, Select, Number input, Property row); Search field and Medium buttons are 32; rows are 32.
+- Every interactive component has Default, Hover, Pressed, Focus and Disabled states where they apply. **Focus** = 2 px `accent/default` ring outside the control. **Disabled** = label and icon in `text/disabled`, no layer opacity.
+- Filled surfaces with text use `accent/fill` / `state/danger-fill`; on the inverse surface (toasts) status icons use `state/success-on-inverse` / `state/danger-on-inverse`.
+- Radius is bound to `radius/*` tokens (`radius/xs` 4, `radius/button`·`field`·`chip`·`tool` 8, `radius/card` 12, `radius/panel` 16, `radius/full` 999).
+- Elevation uses effect styles `Elevation/1 island` and `Elevation/2 popover`.
+- Canvas overlays in diagrams (selection handles, radius dots, measurement pills, guides) and document/mock content are exempt from the 4 px grid and token rules.
+- Library (Components board `94:12872`): Button, Icon button (24/28/32/36), Tool button, Input, Select, Toggle & checkbox, Tab, Segment, Search field, Number input (letter or icon label, unit, dropdown), Property row, Layer row (12 types incl. Instance / Component / Group / Vector / Section; Hidden and Locked states), Page row, Menu item, Menu parts, Badge, Key, Avatar, Tooltip, Toast, Dialog, Colour picker, Inspector card, File tab, Logo / App, File card, File row, Option card, Sidebar nav item.
 
 **Corner smoothing:** every rounded corner uses 60% corner smoothing (2026-10-13, universal), including buttons, fields, cards, panels and menus.
 

@@ -37,7 +37,7 @@ const vars=await figma.variables.getLocalVariablesAsync();
 const cols=await figma.variables.getLocalVariableCollectionsAsync();
 const ui=cols.find(c=>c.name==='Illigma UI'), prim=cols.find(c=>c.name==='Illigma Primitives');
 const coll=id=>{const v=vars.find(x=>x.id===id);return v?v.variableCollectionId:null;};
-const skip=n=>{let q=n;while(q){if(/Screen \(document preview\)|Swatch \(doc|Welcome|Sign up|^Home$|Thumbnail|Mock/.test(q.name||''))return true; if(q!==n&&q.type==='INSTANCE') return true; q=q.parent;}return false;}; // instance internals are checked on their main component
+const skip=n=>{let q=n;while(q){if(/Screen \(document preview\)|Swatch \(doc|Welcome|Sign up|^Home$|Thumbnail|Mock|dynamic|Emoji \(doc|^Handle$|Radius dot|^Pill |^Point$|Bézier|^Guide$|^Tint$|Marquee|Union|Selection$|Diagram \/ .* \/ Canvas|^Canvas$/.test(q.name||''))return true; if(q!==n&&q.type==='INSTANCE') return true; q=q.parent;}return false;}; // instance internals are checked on their main component
 const out={unbound:[],primitiveBound:[],offGrid:[],smallText:[],noStyle:[],smoothing:[],rawIcons:[],detachedLibraryLike:[]};
 const push=(k,n,x)=>{if(out[k].length<40)out[k].push(`${n.id} ${n.name}${x?' · '+x:''}`);};
 for(const id of IDS){const root=await figma.getNodeByIdAsync(id); if(!root) continue;
