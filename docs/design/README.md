@@ -13,6 +13,7 @@ Figma file **"Illigma"** (key `K9mCPjBElVGiPOHJvZ4CWY`), page **"Illigma — Edi
 | Home — dark | `88:24` | The user's style reference: panels expanded (`88:25`) and collapsed (`88:541`) |
 | Right panel — states | `88:785` | Style reference for the inspector cards (image, text, shape and adjustment states) |
 | 07 · Editor layout — B · Floating canvas (chosen) | `94:3118` | **Chosen Illigma editor layout** (`94:3119`): full-bleed canvas, floating Layers and Properties islands, bottom tool dock, context bar above the dock |
+| 11 · Home & files | — | Phase 4.1: Home / Recents, New design file dialog, first run, file ⋯ menu with missing-file card and undo toast. Built from File card and Sidebar nav item components. |
 | Archive · other approaches | — | Approach A (old "06 · Design editor", `91:3182`), C (unified header) and D–H (philosophy explorations). Reference only |
 | 01–05 | — | Earlier explorations (brand directions, layouts, styles, Studio), kept for reference only |
 

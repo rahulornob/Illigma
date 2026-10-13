@@ -28,6 +28,6 @@ Every phase ends with a design audit (reference style, photo-editor creep, Figma
 | 1 · Principles and core loop | Done (2026-10-13) |
 | 2 · Canvas interaction specs | Done (2026-10-13) |
 | 3 · Low-fidelity flows | Done (2026-10-13). Journey 6 reworked: synced folders + version history; Git optional. |
-| 4 · High-fidelity states | In progress: 4.1 Home / file browser |
+| 4 · High-fidelity states | In progress. 4.1 Home / file browser: done and audited (Figma section "11 · Home & files": Recents, New file dialog, First run, File menu + missing file + undo). Next: 4.2 empty canvas, first-run hints, frame presets. |
 | 5 · Prototype and test | Not started |
 | 6 · Approval gate | Not started |
