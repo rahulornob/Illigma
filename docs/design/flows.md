@@ -4,7 +4,7 @@ Draft · 13 October 2026 · Phase 3 of the [design plan](PLAN.md) · Figma secti
 
 The six v1 journeys from PRD section 3, drawn step by step as grey-box wireframes of layout B. The blue box in each wireframe marks where the user is working. The badge says whether that state is already designed.
 
-**Totals:** 36 steps · 18 Designed · 4 Partial · 13 Missing · 1 Outside the app.
+**Totals:** 36 steps · 24 Designed · 4 Partial · 7 Missing · 1 Outside the app.
 
 ## 1 · Create a file offline
 
@@ -43,12 +43,12 @@ The six v1 journeys from PRD section 3, drawn step by step as grey-box wireframe
 
 | # | Step | Where | Status |
 |---|---|---|---|
-| 1 | Switch to the Prototype tab | Properties | Missing |
-| 2 | Drag a connection from the button to a frame | Canvas | Missing |
-| 3 | On tap → Navigate to → Smart animate | Properties | Missing |
-| 4 | Set the flow's starting point | Canvas | Missing |
-| 5 | Present full screen (▷) | Full screen | Missing |
-| 6 | Live preview on a phone over the local network | Dialog | Missing |
+| 1 | Switch to the Prototype tab | Properties | Designed (16 · Prototype) |
+| 2 | Drag a connection from the button to a frame | Canvas | Designed (16 · Prototype) |
+| 3 | On tap → Navigate to → Smart animate | Properties | Designed (16 · Prototype) |
+| 4 | Set the flow's starting point | Canvas | Designed (16 · Prototype) |
+| 5 | Present full screen (▷) | Full screen | Designed (16 · Prototype) |
+| 6 | Live preview on a phone over the local network | Dialog | Designed (16 · Prototype) |
 
 ## 5 · Hand off to a developer
 
@@ -88,7 +88,7 @@ The six v1 journeys from PRD section 3, drawn step by step as grey-box wireframe
 3. ~~Save states~~ (done in 4.3, see [save-states.md](save-states.md))
 4. ~~Component creation, main component, variant set, Assets panel~~ (done in 4.4)
 5. ~~Variables manager (full page) and mode switching~~ (done in 4.5, see [variables.md](variables.md))
-6. Prototype mode: connections, interaction panel, flows, presentation view
+6. ~~Prototype mode: connections, interaction panel, flows, presentation view~~ (done in 4.6, see [prototype.md](prototype.md))
 7. Inspect mode: measurements, properties, code snippets
 8. Export dialog and token export
 9. Version history, Preferences (incl. phone preview, MCP server)
