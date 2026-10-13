@@ -115,7 +115,7 @@ Overlays never scale with zoom: lines stay 1 px and handles stay 8 px on screen.
 | Action | Result |
 |---|---|
 | F, then drag | Draws a frame. Click alone creates a 100 × 100 frame. |
-| F, then pick a preset | The inspector lists device sizes (phone, tablet, desktop, watch, paper). |
+| F, then pick a preset | While the Frame tool is active, the Properties panel lists presets grouped as Phone, Tablet, Desktop, Presentation, Watch, Social media and Paper. Picking one places a frame of that size; dragging on the canvas draws a custom size. New files open on an empty canvas with a hint card (no presets in the New file dialog). |
 | Space + drag, or middle mouse | Pans. |
 | Scroll / Shift + scroll | Pans vertically / horizontally. |
 | ⌘ + scroll, pinch, Shift+= / Shift+− | Zooms around the cursor. Range 2% to 25,600%. |
