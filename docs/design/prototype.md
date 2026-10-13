@@ -36,7 +36,7 @@ Prototyping works like Figma's: connections between layers and frames, interacti
 - **Action**: Navigate to, Change to (component variants only), Back, Scroll to, Open link, Open overlay, Swap overlay, Close overlay, Set variable, Set variable mode, Conditional. **+ Add action** runs several actions on one trigger.
 - **Animation**: Instant, Dissolve, Smart animate, Move in / out, Push, Slide in / out; easing curve with a live preview, and duration in ms.
 - **Options**: preserve scroll position; preview on hover.
-- **Overlays** (Open / Swap overlay): position on a 3×3 grid (or manual), close on outside click, dim background (colour + opacity).
+- **Overlays** (Open / Swap overlay): position select (nine positions or Manual) with a 3×3 grid picker, animation type, easing and duration, close on outside click, dim background (colour + opacity). Preserve scroll position applies only to Navigate and Swap, so it is hidden for overlays.
 - A connection whose destination was deleted shows the **Error** state of the Interaction row (red tint, warning icon).
 
 ## Presentation view
