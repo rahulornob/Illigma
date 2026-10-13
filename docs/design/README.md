@@ -21,6 +21,7 @@ Figma file **"Illigma"** (key `K9mCPjBElVGiPOHJvZ4CWY`), page **"Illigma — Edi
 | 16 · Prototype | `96:44506` | Phase 4.6: Prototype tab with connection, interaction details, action menu, presentation view, phone preview over the local network and its states. See prototype.md. |
 | 17 · Inspect | `96:47900` | Phase 4.7: Inspect tab with measurement redline, properties and code cards, export card with copied state, page summary. See inspect.md. |
 | 18 · Export | `96:50720` | Phase 4.8: export settings card with options, Export dialog (⇧⌘E) with HTML prototype, token export, progress and failure states. See export.md. |
+| 19 · History & preferences | `96:54238` | Phase 4.9: version history (view, compare, save version), Preferences (AI tools / MCP with approval and error states, files and saving). See history-and-preferences.md. |
 | Archive · other approaches | — | Approach A (old "06 · Design editor", `91:3182`), C (unified header) and D–H (philosophy explorations). Reference only |
 | 01–05 | — | Earlier explorations (brand directions, layouts, styles, Studio), kept for reference only |
 
