@@ -34,3 +34,12 @@ These are the everyday editor states from [core-loop.md](core-loop.md) that the 
 - Comment replies have no @mentions: there are no accounts to notify (feature inventory: Local N/A).
 - Style folders and a "new style from selection" entry in pickers are not drawn.
 - Rulers do not yet show the selection range highlight.
+
+## Section 21 · Journey gaps
+
+| Screen | Node | What it shows |
+|---|---|---|
+| Auto layout child · width sizing menu | `96:69202` | Fixed / Hug / Fill, min and max width, ignore auto layout |
+| New file · save in a synced folder | `96:69948` | Recent folders including iCloud Drive and Dropbox; Illigma never syncs itself |
+| Home · synced folder on another computer | `96:70626` | The synced folder on a second machine; a file still downloading uses the File card **Downloading** state and opens when ready |
+| Effects · drop shadow settings | `96:71623` | X, Y, blur, spread, colour, show behind transparent areas, save as effect style |

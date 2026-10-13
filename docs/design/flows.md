@@ -4,7 +4,7 @@ Draft · 13 October 2026 · Phase 3 of the [design plan](PLAN.md) · Figma secti
 
 The six v1 journeys from PRD section 3, drawn step by step as grey-box wireframes of layout B. The blue box in each wireframe marks where the user is working. The badge says whether that state is already designed.
 
-**Totals:** 36 steps · 32 Designed · 3 Partial · 0 Missing · 1 Outside the app.
+**Totals:** 36 steps · 35 Designed · 0 Partial · 0 Missing · 1 Outside the app.
 
 ## 1 · Create a file offline
 
@@ -23,7 +23,7 @@ The six v1 journeys from PRD section 3, drawn step by step as grey-box wireframe
 |---|---|---|---|
 | 1 | Select layers → Shift+A adds auto layout | Canvas | Designed |
 | 2 | Tune gap, padding, alignment | Properties | Designed |
-| 3 | Children: Fill / Hug / Fixed | Properties | Partial |
+| 3 | Children: Fill / Hug / Fixed | Properties | Designed (21 · Journey gaps) |
 | 4 | ⌘D four times → five screens to the right | Canvas | Designed |
 | 5 | Rename frames | Layers panel | Designed |
 | 6 | Shift+1 to fit the whole flow | Canvas | Designed |
@@ -65,8 +65,8 @@ The six v1 journeys from PRD section 3, drawn step by step as grey-box wireframe
 
 | # | Step | Where | Status |
 |---|---|---|---|
-| 1 | Save to a synced folder (iCloud Drive, Dropbox) | Save dialog | Partial |
-| 2 | On another machine: Home → open the file from the synced folder | Full screen | Partial (Home designed; synced-folder open flow not yet) |
+| 1 | Save to a synced folder (iCloud Drive, Dropbox) | Save dialog | Designed (21 · Journey gaps) |
+| 2 | On another machine: Home → open the file from the synced folder | Full screen | Designed (21 · Journey gaps) |
 | 3 | File changed on disk → reload banner | Title bar | Designed (13 · Save states) |
 | 4 | Version history: named versions, restore | Right panel | Designed (19 · History & preferences) |
 | 5 | Compare two versions visually | Canvas | Designed (19 · History & preferences) |
@@ -92,4 +92,4 @@ The six v1 journeys from PRD section 3, drawn step by step as grey-box wireframe
 7. ~~Inspect mode: measurements, properties, code snippets~~ (done in 4.7, see [inspect.md](inspect.md))
 8. ~~Export dialog and token export~~ (done in 4.8, see [export.md](export.md))
 9. ~~Version history, Preferences (incl. phone preview, MCP server)~~ (done in 4.9, see [history-and-preferences.md](history-and-preferences.md))
-10. Remaining states from [core-loop.md](core-loop.md): text selected, nothing selected, multi-select, popovers, context menus, light mode, docked panels
+10. ~~Remaining states from [core-loop.md](core-loop.md)~~ (done in 4.10, see [core-states.md](core-states.md)); last journey gaps closed in section "21 · Journey gaps"

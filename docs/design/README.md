@@ -23,6 +23,7 @@ Figma file **"Illigma"** (key `K9mCPjBElVGiPOHJvZ4CWY`), page **"Illigma — Edi
 | 18 · Export | `96:50720` | Phase 4.8: export settings card with options, Export dialog (⇧⌘E) with HTML prototype, token export, progress and failure states. See export.md. |
 | 19 · History & preferences | `96:54238` | Phase 4.9: version history (view, compare, save version), Preferences (AI tools / MCP with approval and error states, files and saving). See history-and-preferences.md. |
 | 20 · Core states | `96:58049` | Phase 4.10: text + font picker, multi-select + context menu, Light mode, comments, import report, stroke + constraints + tool flyout, styles, view menu, docked panels. See core-states.md. |
+| 21 · Journey gaps | `96:69201` | Width sizing menu (Fixed / Hug / Fill, min/max), saving into a synced folder, opening from a synced folder on another computer (File card Downloading state), drop shadow settings popover. |
 | Archive · other approaches | — | Approach A (old "06 · Design editor", `91:3182`), C (unified header) and D–H (philosophy explorations). Reference only |
 | 01–05 | — | Earlier explorations (brand directions, layouts, styles, Studio), kept for reference only |
 

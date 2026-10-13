@@ -13,6 +13,7 @@ Prototyping works like Figma's: connections between layers and frames, interacti
 | State · Action menu | `96:47443` | Every action in the Action select |
 | Present · Onboarding flow | `96:47537` | Presentation view: flow switcher, device, restart, hotspot hints, Preview on phone, step navigation |
 | Present · Preview on phone | `96:47621` | QR code and local address. Shows who is connected (with Disconnect); sharing can be turned off |
+| Prototype · Open overlay settings | `96:71007` | Open overlay: position on the 3×3 grid, close on outside click, dim background with colour and opacity |
 | Preview on phone · states | `96:49879` | Waiting for a device, approve a new device (pairing code), no network, blocked by firewall |
 
 ## Prototype tab (Properties panel)
@@ -35,6 +36,7 @@ Prototyping works like Figma's: connections between layers and frames, interacti
 - **Action**: Navigate to, Change to (component variants only), Back, Scroll to, Open link, Open overlay, Swap overlay, Close overlay, Set variable, Set variable mode, Conditional. **+ Add action** runs several actions on one trigger.
 - **Animation**: Instant, Dissolve, Smart animate, Move in / out, Push, Slide in / out; easing curve with a live preview, and duration in ms.
 - **Options**: preserve scroll position; preview on hover.
+- **Overlays** (Open / Swap overlay): position on a 3×3 grid (or manual), close on outside click, dim background (colour + opacity).
 - A connection whose destination was deleted shows the **Error** state of the Interaction row (red tint, warning icon).
 
 ## Presentation view

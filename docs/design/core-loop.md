@@ -53,7 +53,7 @@ flowchart LR
 |---|---|---|---|
 | Inspector: auto layout card (direction, wrap, grid, gap, padding, alignment) | Done | — | 01 Auto layout |
 | Selected auto-layout frame on canvas: padding and gap handles | Done (09 spec) | **2**, 4 | 01 Auto layout |
-| Child in auto layout: fill / hug / fixed, absolute position | Part | 2, 4 | 01 Auto layout |
+| Child in auto layout: fill / hug / fixed, absolute position | Done (21 · width sizing menu) | 2, 4 | 01 Auto layout |
 | Constraints and layout guides card | Done (20) | 4 | 01 Constraints & layout guides |
 
 ### D · Style (journey 1)
@@ -62,7 +62,7 @@ flowchart LR
 |---|---|---|---|
 | Fill card + colour picker (custom, variables, document colours, gradients, image) | Done (15 · picker) | 4 | 01 Fills & color picker; Gradients; Images |
 | Stroke card expanded (weight, position, per-side, dashes) | Done (20) | 4 | 01 Strokes |
-| Effects card + menu (shadows, blurs, noise, texture, glass) | Part (menu done) | 4 | 01 Effects |
+| Effects card + menu (shadows, blurs, noise, texture, glass) | Done (21 · drop shadow settings) | 4 | 01 Effects |
 | Corner radius: independent corners, smoothing | Part | 4 | 01 Corner radius & smoothing |
 | Text selected: typography card, text styles, font picker | Done (20) | 4 | 01 Text & typography; Fonts |
 | **Canvas:** text editing (caret, selection, resize modes) | Done (09 spec) | **2** | 01 Text & typography |
@@ -91,7 +91,7 @@ flowchart LR
 | State | Status | Phase | Inventory |
 |---|---|---|---|
 | Prototype mode: connections on canvas, interaction panel (trigger, action, animation) | Done (16) | 3, 4 | 02 Prototyping: connections, triggers, animation |
-| Flows and starting points, overlays, scroll behaviour | Part (16; overlays not drawn) | 4 | 02 Prototyping: flows and overlays; scroll |
+| Flows and starting points, overlays, scroll behaviour | Done (16) | 4 | 02 Prototyping: flows and overlays; scroll |
 | Presentation view (full screen, device frame, hotspots) | Done (16) | 4 | 02 Prototype playback |
 | Live preview on a phone over the local network | Done (16) | 4 | 03 Mobile app (local equivalent) |
 
