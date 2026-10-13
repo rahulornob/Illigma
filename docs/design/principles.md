@@ -36,6 +36,7 @@ Panels exist to serve the canvas.
 - Ember is the brand only (logo, marketing, empty states).
 - Blue is everything interactive: selection, focus, the active tool, components, primary actions.
 - Green, amber and red mean success, warning and danger, and nothing else.
+- Pink (`guide/smart`) is for on-canvas guides and measuring only: smart guides, spacing, auto-layout padding and gap.
 - Layer-type colours tell types apart in the layers panel only.
 
 **Test:** if this colour appears, can the user say what it means?

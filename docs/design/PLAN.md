@@ -25,8 +25,8 @@ Every phase ends with a design audit (reference style, photo-editor creep, Figma
 
 | Phase | Status |
 |---|---|
-| 1 · Principles and core loop | In progress (drafts written 2026-10-13, waiting for your review) |
-| 2 · Canvas interaction specs | Not started |
+| 1 · Principles and core loop | Done (2026-10-13) |
+| 2 · Canvas interaction specs | Draft done and audited (2026-10-13): interactions.md + Figma section "09 · Canvas interactions" (15 diagrams). Waiting for your review. |
 | 3 · Low-fidelity flows | Not started |
 | 4 · High-fidelity states | Not started (design system and layout B are ready) |
 | 5 · Prototype and test | Not started |
