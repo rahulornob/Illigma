@@ -4,7 +4,7 @@ Draft · 13 October 2026 · Phase 3 of the [design plan](PLAN.md) · Figma secti
 
 The six v1 journeys from PRD section 3, drawn step by step as grey-box wireframes of layout B. The blue box in each wireframe marks where the user is working. The badge says whether that state is already designed.
 
-**Totals:** 36 steps · 7 Designed · 5 Partial · 24 Missing.
+**Totals:** 36 steps · 6 Designed · 5 Partial · 24 Missing · 1 Outside the app.
 
 ## 1 · Create a file offline
 
@@ -66,7 +66,7 @@ The six v1 journeys from PRD section 3, drawn step by step as grey-box wireframe
 | # | Step | Where | Status |
 |---|---|---|---|
 | 1 | Saved as a readable `.illigma` file in a folder | Finder | Partial (format in PRD 6.2) |
-| 2 | `git commit` from the terminal | Terminal | Designed (outside the app) |
+| 2 | Version the file with Git: `git commit` in a terminal or GitHub Desktop. Illigma has no screen for this; it works because the file is a normal file on disk. | Outside Illigma | Outside app |
 | 3 | On another machine: Home → Open file | Full screen | Missing |
 | 4 | File changed on disk → reload banner | Title bar | Missing |
 | 5 | Version history panel: named versions, restore | Left panel | Missing |
