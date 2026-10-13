@@ -22,9 +22,14 @@ After v1.0: a Tauri desktop app in v1.x, then optional multiplayer (CRDT over LA
 ## [Unreleased]
 
 ### Next
-- Finish the design system: draw the 45 icons still missing from the library, add the missing components (scrub number input, segmented control, colour picker, fill/stroke/effect rows, search field, menu parts, dialog, toast), and rebuild the B screens from component instances.
-- Design the remaining editor states: core selection states, popovers and menus, expanded inspector sections, the full-page Variables manager, and modes and views (Prototype, Inspect, comments, light mode).
-- Then start Phase 0 (foundations): TypeScript monorepo, CanvasKit spike, operation-based document model, file format v0 and an offline web app.
+- Phase 5: run the usability test in [docs/design/usability-test.md](docs/design/usability-test.md) with 5 working designers (floating vs docked panels), then fix what it finds.
+- Phase 6: approval gate. Once the visuals are approved, start Phase 0 (foundations): TypeScript monorepo, CanvasKit spike, operation-based document model, file format v0 and an offline web app.
+
+### Added (2026-10-13, design phase 4)
+- High-fidelity editor states in Figma, sections 11–20, each audited by the design QA agent with fixes applied: Home and files, empty canvas and frame presets, save and file states, components and variants, Variables manager and modes, Prototype mode with presentation and phone preview over the local network, Inspect mode, Export and token export, version history and compare, Preferences (including the local MCP server), and core states (text and font picker, multi-select, Light mode, comments, import report, stroke and constraints, styles, view menu, docked panels).
+- Specs for each area in `docs/design/`: save-states, variables, prototype, inspect, export, history-and-preferences, core-states.
+- A clickable prototype of journeys 1 and 3 (flow starting points on the Figma page) and a usability test plan.
+- New library components: Variable row, Variable option, Interaction row, Version row, Asset tile; new icons and a Code/Body text style (JetBrains Mono).
 
 ### Added (2026-10-13)
 - `CHANGELOG.md`, with the project's end goal.

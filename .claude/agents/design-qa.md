@@ -70,7 +70,7 @@ Using the screenshots and the docs, check:
 2. **Local-first correctness**: nothing that implies cloud, accounts, teams, share links or telemetry; cloud-only Figma features have a local equivalent.
 3. **Figma parity**: compare with how Figma does the same screen; list missing P0 behaviour from `docs/feature-inventory/` (cite the file and section).
 4. **States**: hover, focus, selected, disabled, empty, loading, error, mixed, overridden, bound-to-variable, as relevant to the screen.
-5. **Visual quality**: alignment, consistent gutters (8 px between islands), overlaps, clipping, truncation, contrast (text on its actual background ≥ 4.5:1 except placeholder/disabled; compute it when unsure).
+5. **Visual quality**: alignment, consistent gutters (8 px between islands), overlaps, clipping, truncation, contrast (text on its actual background ≥ 4.5:1 except placeholder/disabled; compute it when unsure). When a paint is bound to a colour variable, Figma renders the variable's own alpha and ignores the paint's `opacity`, so use the token alpha alone. Never multiply token alpha by paint opacity (checked 2026-10-13).
 6. **Copy**: plain, specific, sentence case, no jargon, consistent names with the rest of the design.
 
 ## Step 3 · Report
