@@ -1,5 +1,7 @@
 # Illigma visual design
 
+**Design plan:** [PLAN.md](PLAN.md) (phases 1–6) · [principles.md](principles.md) · [core-loop.md](core-loop.md) (state map; replaces "States still to design" below).
+
 Status (2026-10-13): the dark-theme editor screen is designed and has passed three audit rounds. Development starts once the remaining core states are designed and approved.
 
 ## Where the design lives
