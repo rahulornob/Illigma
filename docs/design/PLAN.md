@@ -27,7 +27,7 @@ Every phase ends with a design audit (reference style, photo-editor creep, Figma
 |---|---|
 | 1 · Principles and core loop | Done (2026-10-13) |
 | 2 · Canvas interaction specs | Done (2026-10-13) |
-| 3 · Low-fidelity flows | Draft done (2026-10-13): flows.md + Figma section "10 · Core flows". Waiting for your review. |
-| 4 · High-fidelity states | Not started (design system and layout B are ready) |
+| 3 · Low-fidelity flows | Done (2026-10-13). Journey 6 reworked: synced folders + version history; Git optional. |
+| 4 · High-fidelity states | In progress: 4.1 Home / file browser |
 | 5 · Prototype and test | Not started |
 | 6 · Approval gate | Not started |

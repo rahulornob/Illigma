@@ -61,16 +61,16 @@ The six v1 journeys from PRD section 3, drawn step by step as grey-box wireframe
 | 5 | Export tokens as JSON | Dialog | Missing |
 | 6 | Turn on the local MCP server for AI tools | Dialog / Preferences | Missing |
 
-## 6 · Files on disk and Git
+## 6 · Work across machines and keep history
 
 | # | Step | Where | Status |
 |---|---|---|---|
-| 1 | Saved as a readable `.illigma` file in a folder | Finder | Partial (format in PRD 6.2) |
-| 2 | Version the file with Git: `git commit` in a terminal or GitHub Desktop. Illigma has no screen for this; it works because the file is a normal file on disk. | Outside Illigma | Outside app |
-| 3 | On another machine: Home → Open file | Full screen | Missing |
-| 4 | File changed on disk → reload banner | Title bar | Missing |
-| 5 | Version history panel: named versions, restore | Left panel | Missing |
-| 6 | Readable diff of the change | Terminal / Git tool | Missing (needs a diff format spec) |
+| 1 | Save to a synced folder (iCloud Drive, Dropbox) | Save dialog | Partial |
+| 2 | On another machine: Home → open the file from the synced folder | Full screen | Missing |
+| 3 | File changed on disk → reload banner | Title bar | Missing |
+| 4 | Version history: named versions, restore | Left panel | Missing |
+| 5 | Compare two versions visually | Canvas | Missing |
+| 6 | Optional: keep the file in Git (terminal or GitHub Desktop) | Outside Illigma | Outside app |
 
 ## What the flows revealed
 
@@ -79,7 +79,7 @@ The six v1 journeys from PRD section 3, drawn step by step as grey-box wireframe
 3. **The Variables entry point is still undecided.** Journey 3 needs a clear path to the full-page manager. Layout B's "Variable" tab is a placeholder (your call, kept for later).
 4. **Saving needs more states.** "Saved" is designed, but saving, disk full, file changed on disk and conflicts are not (principle 1, never lose work).
 5. **Local-first replacements need a home.** Phone preview over the network, the MCP server and token export each need a place, most likely Preferences plus a menu entry. Preferences is not designed either.
-6. **Diffs need a format decision.** Journey 6 relies on a readable diff, which depends on the `.illigma` format (PRD 6.2). It goes to development Phase 0, not design.
+6. **Journey 6 changed (2026-10-13).** It is now "work across machines and keep history" using synced folders and version history. Git is optional and outside the app.
 
 ## Phase 4 backlog, in order
 

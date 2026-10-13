@@ -78,7 +78,7 @@ The primary user is a product designer who already knows Figma; every design dec
 3. Build a button component with 3 variant properties and 2 modes (light, dark), then use it across screens.
 4. Wire a clickable prototype with Smart Animate and present it full screen.
 5. Hand off: a developer opens the same file in inspect mode, copies CSS, exports SVG and PNG at 1x/2x/3x, and exports tokens as JSON.
-6. Commit the file to Git, change it on another machine, and see a readable diff.
+6. Save the file to a synced folder (iCloud Drive, Dropbox, a USB stick), reopen it on another machine, reload when it changed on disk, and restore an earlier version from version history. Teams can also keep files in Git, because a file is a normal file on disk, but this is optional and outside the app.
 
 ## 4. Figma product surface audit
 
