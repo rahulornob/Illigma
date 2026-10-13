@@ -27,11 +27,11 @@ Draft · 13 October 2026 · Phase 5 of the [design plan](PLAN.md)
 | 1 | "Make a new design file and save it in your Design folder." | Home `96:19138` | clicks New design file, then Create file | 1 |
 | 2 | "Add a phone-sized frame." | Empty canvas `96:26601` | chooses the Frame tool, then a Phone preset (or presses F) | 1 |
 | 3 | "How do you know your work is saved?" | First frame `96:28247` | points to the save status in the title bar | 1, 6 |
-| 4 | "Turn this button into a set with a small size." | Main component `96:34466` | uses Add variant, or Add property → Variant | 3 |
-| 5 | "Make a colour that changes between light and dark." | Variant set `96:36486` | opens Variables, then creates a variable or mode | 3 |
-| 6 | "Make this screen's background use the theme colour." | Bind fill `96:42118` | opens the fill's Variables tab and picks a variable | 3 |
-| 7 | "Show this screen in dark mode only." | Frame mode `96:41049` | uses the Appearance mode button → Dark | 3 |
-| 8 | "Make the button open the Home screen when tapped, then try it." | Prototype `96:44507` | drags the connection, then presses Present | 4 |
+| 4 | "Turn this button into a set with a small size." | Task 4 start `96:72680` | uses Add variant, or Add property → Variant | 3 |
+| 5 | "Make a colour that changes between light and dark." | Task 5 start `96:73332` | opens Variables, then creates a variable or mode | 3 |
+| 6 | "Make this screen's background use the theme colour." | Task 6 start `96:74091` | opens the fill's Variables tab and picks a variable | 3 |
+| 7 | "Show this screen in dark mode only." | Task 7 start `96:74921` | uses the Appearance mode button → Dark | 3 |
+| 8 | "Make the button open the Home screen when tapped, then try it." | Task 8 start `96:75753` | drags the connection, then presses Present | 4 |
 | 9 | "A developer needs the button's CSS. Get it for them." | Inspect `96:47901` | switches to Inspect and copies the code | 5 |
 | 10 | "Go back to the version from before the hand-off." | Version history `96:54239` | opens version history and restores, or compares then restores | 6 |
 
@@ -52,6 +52,43 @@ Figma moved UI3 back to docked panels after beta feedback. Half the participants
 2. Is the autosave status enough reassurance without a Save button?
 3. Do people understand local-only sharing (synced folders, phone preview over Wi-Fi) without a share link?
 4. Is the floating layout comfortable for a full session?
+
+## Clean start screens
+
+Tasks 4–8 start from the screens in Figma section "22 · Test start screens" (`96:72680`, `96:73332`, `96:74091`, `96:74921`, `96:75753`). They show the state *before* the task (no menu open, nothing already done). The pilot showed that starting from "after" screens confuses people.
+
+## Pilot results (simulated, 13 October 2026)
+
+**This was not a real usability test.** Five AI agents each played a Figma user (design-system lead, startup product designer, agency power user, freelancer, junior designer) and did a first-click test from screenshots only, without seeing layer names. It finds obvious problems cheaply. It does **not** count toward the PRD target, and real people will behave differently.
+
+| Measure | Result |
+|---|---|
+| Tasks with a confident, correct first click | about 7 of 10 per persona |
+| Weakest tasks | 5 (create a light/dark colour), 6 (bind fill), 7 (frame mode): ease 3–5 |
+| Strongest tasks | 3 (saved?), 8 (prototype), 9 (CSS), 10 (restore): ease 5–7 |
+| Estimated SUS | 70–72 (target ≥ 75) |
+| Panel preference | **Docked 5 of 5** ("no wasted gutters", "feels like Figma", "canvas edge predictable") |
+
+### Findings and what changed
+
+| # | Finding | People | Severity | Fix |
+|---|---|---|---|---|
+| 1 | Inspect values contradicted Design (padding 24/14 vs "24 all sides"; radius 36 vs 999) | 3 / 5 | 3 (hand-off trust) | **Fixed.** Design screens now show padding 24 and radius 999, matching Inspect and the CSS |
+| 2 | Start screens for tasks 4–8 looked already done or had an unrelated menu open | 5 / 5 | 2 (test artefact) | **Fixed.** Clean start screens in section 22 |
+| 3 | Variables and modes hard to find; the sun-moon button gives no clue; "Theme · Dark values" in the picker reads like a mode switch | 5 / 5 | 2 | **Fixed in part.** A "Variable mode (Light / Dark)" label above the mode control, "Variable mode ▸" in the right-click menu, the picker's select now reads "Collection: Theme" with a note that swatches show this frame's mode. Re-test with real people |
+| 4 | "Place an image or SVG" and "Find any action" both showed ⌘K | 5 / 5 | 1 | **Fixed.** Place image is ⇧⌘K |
+| 5 | Unclear where a new file is saved | 5 / 5 | 2 | **Fixed in part.** The button reads "New design file…" (the dialog asks for the folder). The save status shows the full path and file name everywhere |
+| 6 | Unclear whether Restore overwrites current work | 4 / 5 | 2 | **Fixed.** The banner says "Restoring saves your current work as a version first" |
+| 7 | "Kept from conflict copy" sounded like lost work | 2 / 5 | 1 | **Fixed.** Renamed "Mac mini's copy (sync conflict) · kept, nothing lost" |
+| 8 | No phone presets visible before drawing a frame | 4 / 5 | 1 | **Fixed in part.** The empty-canvas hint says "Draw a frame, then pick a device size" (presets appear with the Frame tool, `96:27318`) |
+| 9 | Present (▷) starts at the flow start, not the selected frame | 3 / 5 | 1 | Open: add "Present from selected frame" to the ▷ menu |
+| 10 | Versions live inside the file: if the file is damaged, history goes too. Autosaves expire after 30 days | 4 / 5 | 2 (trust) | **Your decision.** Options: keep a second copy of history in app storage, or change the default retention to "keep all" |
+| 11 | Profile avatar "R" suggests an account | 2 / 5 | 1 | Open: tooltip "Local profile: your name on comments and versions" |
+| 12 | Delete version sits next to Rename with no confirmation | 2 / 5 | 1 | It can be undone (⌘Z). Leave, and watch for it in real sessions |
+
+### Docked vs floating
+
+All five personas chose docked panels. The decision rule (4 of 6 real participants) still applies, but this is a strong early signal. Layout B (floating) was your choice, so changing the default is **your decision**.
 
 ## After the sessions
 
