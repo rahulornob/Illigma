@@ -6,6 +6,7 @@ The previous browser prototype has been retired. Illigma is being rebuilt from s
 
 ## Documents
 
+- [Changelog](CHANGELOG.md): the end goal, what has changed, and what comes next.
 - [Product requirements (PRD)](docs/PRD.md): vision, scope, requirements, architecture, roadmap, risks and decisions.
 - [Visual design](docs/design/): the current editor design (Figma file "Illigma"), exported design tokens (`tokens.json`), and the states still to design.
 - [Figma feature inventory](docs/feature-inventory/): 5,356 rows covering every feature in Figma's 896 Help Center articles, plus the Plugin API, REST API and keyboard shortcuts, each with an Illigma priority (P0 = v1.0, P1 = v1.x, P2 = v2+, Module, or a local-first equivalent).
