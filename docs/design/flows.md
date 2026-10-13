@@ -4,7 +4,7 @@ Draft · 13 October 2026 · Phase 3 of the [design plan](PLAN.md) · Figma secti
 
 The six v1 journeys from PRD section 3, drawn step by step as grey-box wireframes of layout B. The blue box in each wireframe marks where the user is working. The badge says whether that state is already designed.
 
-**Totals:** 36 steps · 10 Designed · 6 Partial · 19 Missing · 1 Outside the app.
+**Totals:** 36 steps · 12 Designed · 5 Partial · 18 Missing · 1 Outside the app.
 
 ## 1 · Create a file offline
 
@@ -15,7 +15,7 @@ The six v1 journeys from PRD section 3, drawn step by step as grey-box wireframe
 | 3 | Empty canvas with a first-run hint ("Press F to draw a frame") | Canvas | Designed (12 · Empty canvas) |
 | 4 | Frame tool + device presets | Properties panel | Designed (12 · Frame tool presets) |
 | 5 | Draw shapes and text inside the frame | Canvas | Designed (interactions spec) |
-| 6 | Autosaved to `~/Design/…`, works offline | Title bar | Partial |
+| 6 | Autosaved to `~/Design/…`, works offline | Title bar | Designed (13 · Save states) |
 
 ## 2 · Five-screen flow with auto layout
 
@@ -67,7 +67,7 @@ The six v1 journeys from PRD section 3, drawn step by step as grey-box wireframe
 |---|---|---|---|
 | 1 | Save to a synced folder (iCloud Drive, Dropbox) | Save dialog | Partial |
 | 2 | On another machine: Home → open the file from the synced folder | Full screen | Partial (Home designed; synced-folder open flow not yet) |
-| 3 | File changed on disk → reload banner | Title bar | Missing |
+| 3 | File changed on disk → reload banner | Title bar | Designed (13 · Save states) |
 | 4 | Version history: named versions, restore | Left panel | Missing |
 | 5 | Compare two versions visually | Canvas | Missing |
 | 6 | Optional: keep the file in Git (terminal or GitHub Desktop) | Outside Illigma | Outside app |
@@ -85,7 +85,7 @@ The six v1 journeys from PRD section 3, drawn step by step as grey-box wireframe
 
 1. ~~Home / file browser~~ (done in 4.1)
 2. ~~Empty canvas and first-run hints; frame presets~~ (done in 4.2)
-3. Save states: saving, error, changed on disk, conflict
+3. ~~Save states~~ (done in 4.3, see [save-states.md](save-states.md))
 4. Component creation, main component, variant set, Assets panel
 5. Variables manager (full page) and mode switching
 6. Prototype mode: connections, interaction panel, flows, presentation view
