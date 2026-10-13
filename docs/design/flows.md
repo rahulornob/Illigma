@@ -4,7 +4,7 @@ Draft · 13 October 2026 · Phase 3 of the [design plan](PLAN.md) · Figma secti
 
 The six v1 journeys from PRD section 3, drawn step by step as grey-box wireframes of layout B. The blue box in each wireframe marks where the user is working. The badge says whether that state is already designed.
 
-**Totals:** 36 steps · 12 Designed · 5 Partial · 18 Missing · 1 Outside the app.
+**Totals:** 36 steps · 15 Designed · 5 Partial · 15 Missing · 1 Outside the app.
 
 ## 1 · Create a file offline
 
@@ -32,11 +32,11 @@ The six v1 journeys from PRD section 3, drawn step by step as grey-box wireframe
 
 | # | Step | Where | Status |
 |---|---|---|---|
-| 1 | Select → Create component (⌥⌘K) | Canvas / context bar | Missing |
-| 2 | Add a variant property → variant set | Properties | Missing |
+| 1 | Select → Create component (⌥⌘K) | Canvas / context bar | Designed (14 · Components) |
+| 2 | Add a variant property → variant set | Properties | Designed (14 · Components) |
 | 3 | Variables manager: collection with Light / Dark modes | Full page | Missing |
 | 4 | Bind a fill to a variable (colour picker → Variables tab) | Popover | Partial |
-| 5 | Assets panel: drop instances into screens | Layers panel → Assets | Missing |
+| 5 | Assets panel: drop instances into screens | Layers panel → Assets | Designed (14 · Components) |
 | 6 | Switch a frame's mode Light ↔ Dark | Properties | Missing |
 
 ## 4 · Prototype and present
@@ -86,7 +86,7 @@ The six v1 journeys from PRD section 3, drawn step by step as grey-box wireframe
 1. ~~Home / file browser~~ (done in 4.1)
 2. ~~Empty canvas and first-run hints; frame presets~~ (done in 4.2)
 3. ~~Save states~~ (done in 4.3, see [save-states.md](save-states.md))
-4. Component creation, main component, variant set, Assets panel
+4. ~~Component creation, main component, variant set, Assets panel~~ (done in 4.4)
 5. Variables manager (full page) and mode switching
 6. Prototype mode: connections, interaction panel, flows, presentation view
 7. Inspect mode: measurements, properties, code snippets

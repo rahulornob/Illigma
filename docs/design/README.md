@@ -14,6 +14,9 @@ Figma file **"Illigma"** (key `K9mCPjBElVGiPOHJvZ4CWY`), page **"Illigma — Edi
 | Right panel — states | `88:785` | Style reference for the inspector cards (image, text, shape and adjustment states) |
 | 07 · Editor layout — B · Floating canvas (chosen) | `94:3118` | **Chosen Illigma editor layout** (`94:3119`): full-bleed canvas, floating Layers and Properties islands, bottom tool dock, context bar above the dock |
 | 11 · Home & files | `96:19136` | Phase 4.1: Home / Recents, New design file dialog, first run, file ⋯ menu with missing-file card and undo toast. Built from File card and Sidebar nav item components. |
+| 12 · Empty canvas & frames | `96:26599` | Phase 4.2: new empty file with first-run hint, Frame tool presets, first frame drawn. |
+| 13 · Save states | `96:28993` | Phase 4.3: saving, disk full, changed on disk, conflict copy, compare dialog, file-state catalogue (see save-states.md). |
+| 14 · Components | `96:34464` | Phase 4.4: main component selected, variant set + Add property menu, Assets panel, Swap instance popover. |
 | Archive · other approaches | — | Approach A (old "06 · Design editor", `91:3182`), C (unified header) and D–H (philosophy explorations). Reference only |
 | 01–05 | — | Earlier explorations (brand directions, layouts, styles, Studio), kept for reference only |
 
