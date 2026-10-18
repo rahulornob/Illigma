@@ -132,6 +132,8 @@ interface ChildPicture {
   chunks?: Chunk[];
   /** Child id → index of the chunk that draws it. */
   chunkOf?: Map<NodeId, number>;
+  /** Images its own picture uses (its chunks list theirs), so decoded images nothing draws any more can be freed. */
+  images?: Set<string>;
 }
 
 interface ImageEntry {
@@ -162,6 +164,8 @@ interface Outline {
 interface Chunk {
   picture: SkPicture | null;
   nodes: number;
+  /** Images this chunk's picture uses. */
+  images?: Set<string>;
 }
 
 /** Above this many children, a top-level node records its children in chunks. */
@@ -198,6 +202,8 @@ export class PageRenderer {
   private readonly decoding = new Set<Promise<void>>();
   /** The top-level child being recorded, so images that aren't ready yet know whom to re-record. */
   private recordingTop: NodeId | null = null;
+  /** Images the picture being recorded uses (see `ChildPicture.images`). */
+  private recordingImages: Set<string> | null = null;
   /** True inside `drawSubtree`: images are decoded on the spot rather than after the recording. */
   private decodeNow = false;
   private disposed = false;
@@ -416,15 +422,22 @@ export class PageRenderer {
       const cached = this.children.get(n.id);
       if (!this.all && stale === undefined && cached) continue;
       recorded++;
-      if (!this.all && stale && cached?.chunks && n.visible && n.opacity > 0) {
-        this.rerecordChunks(n, cached, stale);
-        continue;
+      // Every picture recorded for `n` (its chunks too) names it, so an image still loading re-records it once ready.
+      this.recordingTop = n.id;
+      try {
+        if (!this.all && stale && cached?.chunks && n.visible && n.opacity > 0) {
+          this.rerecordChunks(n, cached, stale);
+          continue;
+        }
+        if (cached) dropChild(cached);
+        this.children.set(n.id, this.recordChild(n));
+      } finally {
+        this.recordingTop = null;
       }
-      if (cached) dropChild(cached);
-      this.children.set(n.id, this.recordChild(n));
     }
     this.stale.clear();
     this.all = false;
+    this.freeUnusedImages();
 
     // The page picture is just one drawPicture per child, so re-recording it is cheap.
     const recorder = new this.ck.PictureRecorder();
@@ -460,13 +473,11 @@ export class PageRenderer {
     const recorder = new this.ck.PictureRecorder();
     const canvas = recorder.beginRecording(EVERYWHERE(this.ck), true);
     this.nodeCount = 0; // drawNode counts into this; record() re-sums the page total after
-    this.recordingTop = n.id;
-    this.drawNode(canvas, n);
-    this.recordingTop = null;
+    const images = this.collectImages(() => this.drawNode(canvas, n));
     const nodes = this.nodeCount;
     const picture = recorder.finishRecordingAsPicture();
     recorder.delete();
-    return { picture, nodes };
+    return { picture, nodes, ...(images && { images }) };
   }
 
   /** Re-record the chunks drawing `kids` (children of the chunked top-level node `n`), then `n`'s own picture. */
@@ -496,8 +507,10 @@ export class PageRenderer {
     const recorder = new this.ck.PictureRecorder();
     const canvas = recorder.beginRecording(EVERYWHERE(this.ck), true);
     this.nodeCount = 0;
-    for (const k of nodes) this.drawNode(canvas, k);
-    const chunk = { picture: recorder.finishRecordingAsPicture(), nodes: this.nodeCount };
+    const images = this.collectImages(() => {
+      for (const k of nodes) this.drawNode(canvas, k);
+    });
+    const chunk: Chunk = { picture: recorder.finishRecordingAsPicture(), nodes: this.nodeCount, ...(images && { images }) };
     recorder.delete();
     return chunk;
   }
@@ -508,16 +521,55 @@ export class PageRenderer {
     const canvas = recorder.beginRecording(EVERYWHERE(this.ck), true);
     this.nodeCount = 0;
     let nodes = 0;
-    this.drawNode(canvas, n, (inner) => {
-      for (const chunk of c.chunks ?? []) {
-        if (chunk.picture) inner.drawPicture(chunk.picture);
-        nodes += chunk.nodes;
-      }
-    });
+    const images = this.collectImages(() =>
+      this.drawNode(canvas, n, (inner) => {
+        for (const chunk of c.chunks ?? []) {
+          if (chunk.picture) inner.drawPicture(chunk.picture);
+          nodes += chunk.nodes;
+        }
+      }),
+    );
+    if (images) c.images = images;
+    else delete c.images;
     c.picture = recorder.finishRecordingAsPicture();
     c.nodes = this.nodeCount + nodes;
     recorder.delete();
     return c;
+  }
+
+  /**
+   * Run `draw`, collecting the images it uses. Returns them, or undefined
+   * for none. Nested calls don't happen: each recording is one picture.
+   */
+  private collectImages(draw: () => void): Set<string> | undefined {
+    const images = new Set<string>();
+    this.recordingImages = images;
+    try {
+      draw();
+    } finally {
+      this.recordingImages = null;
+    }
+    return images.size ? images : undefined;
+  }
+
+  /**
+   * Free decoded images no cached picture uses any more (the layers using
+   * them were deleted or changed). A picture keeps its own reference to the
+   * images it draws, so freeing ours never changes what is on screen; an
+   * image needed again is decoded again. Images still loading stay.
+   */
+  private freeUnusedImages(): void {
+    if (!this.images.size) return;
+    const used = new Set<string>();
+    for (const c of this.children.values()) {
+      for (const h of c.images ?? []) used.add(h);
+      for (const chunk of c.chunks ?? []) for (const h of chunk.images ?? []) used.add(h);
+    }
+    for (const [hash, e] of this.images) {
+      if (used.has(hash) || e.state === "loading") continue;
+      e.image?.delete();
+      this.images.delete(hash);
+    }
   }
 
   /** Draw `n` and its subtree; `children`, if given, draws its children instead (in its space, inside its clip). */
@@ -641,6 +693,7 @@ export class PageRenderer {
    */
   private imageShader(n: ReadonlyNode, paint: DeepReadonly<Extract<FilePaint, { type: "IMAGE" }>>) {
     if (paint.imageHash === null) return null;
+    this.recordingImages?.add(paint.imageHash);
     const entry = this.imageEntry(paint.imageHash);
     // Export draws once and can't wait: decode now if the bytes are at hand.
     if (entry.state === "loading" && this.decodeNow) {

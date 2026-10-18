@@ -3,7 +3,7 @@
  * browser's private storage (OPFS) or in a folder the person picks.
  */
 import { Document, newId, type Operation } from "@illigma/core";
-import { keyBetween, readPackage, writePackage, writeZip, type FileTree, type IlligmaFile, type NodeId } from "@illigma/format";
+import { keyBetween, readPackage, readPackageWithReportAsync, writePackage, writeZip, type FileTree, type IlligmaFile, type NodeId } from "@illigma/format";
 import {
   acquireFileLock,
   folderBackend,
@@ -116,18 +116,64 @@ function withNewFileId(file: IlligmaFile, name = file.manifest.name): IlligmaFil
   return { ...file, manifest: { ...file.manifest, fileId: newId(), name } };
 }
 
-/** Only the tab holding the lock reads the journal: in a read-only tab it belongs to the other tab's live session. */
-async function startSession(doc: Document, backend: Backend, lock: FileLock | null): Promise<Session> {
+/** A package read for editing: the file without the images no layer uses, and those images apart. */
+interface OpenedPackage {
+  file: IlligmaFile;
+  /** Sound images no layer uses, by hash: recovered edits may use them again. */
+  unused: Map<string, Uint8Array>;
+  /** Their paths in the package (`ReadReport.unusedImages`). */
+  unusedPaths: string[];
+}
+
+/** Read a package for editing. Images are hashed natively (`crypto.subtle`), not in JavaScript on the main thread. */
+async function openPackage(tree: FileTree): Promise<OpenedPackage> {
+  const report = await readPackageWithReportAsync(tree, { unusedImages: "load" });
+  const unused = new Map<string, Uint8Array>();
+  const images = new Map(report.file.images ?? []);
+  for (const path of report.unusedImages) {
+    const hash = path.slice("images/".length, path.lastIndexOf("."));
+    const bytes = images.get(hash);
+    if (bytes) unused.set(hash, bytes);
+    images.delete(hash);
+  }
+  const file: IlligmaFile = { ...report.file };
+  if (images.size) file.images = images;
+  else delete file.images;
+  return { file, unused, unusedPaths: report.unusedImages };
+}
+
+/**
+ * Only the tab holding the lock reads the journal: in a read-only tab it belongs to the other tab's live session.
+ *
+ * Images (docs/design/save-states.md, "Images"): with recovered edits pending, the images they may use are added to
+ * the document (those no layer of the file uses, and the copies in the journal), so Keep shows them. With none
+ * pending, image files no layer uses are removed: nothing can use them any more. Saves never remove images.
+ */
+async function startSession(doc: Document, backend: Backend, lock: FileLock | null, opened?: OpenedPackage): Promise<Session> {
   const journal = new RecoveryJournal(doc.fileId);
   let recovered: Operation[][] = [];
+  let journalRead = false;
   if (lock) {
     try {
       await journal.load(backend.saveId);
       recovered = await journal.recovered();
+      journalRead = true;
     } catch {
       // An unreadable journal is not a reason to refuse the file. Its lines stay on disk: the journal never rewrites what it couldn't read.
       recovered = [];
     }
+  }
+  if (lock && recovered.length) {
+    const images = [...(opened?.unused.values() ?? []), ...(await journal.recoveredImages().catch(() => new Map<string, Uint8Array>())).values()];
+    for (const bytes of images) {
+      try {
+        doc.addImage(bytes);
+      } catch {
+        // Not an image Illigma can use (e.g. a damaged copy): the layers using it show a missing image.
+      }
+    }
+  } else if (lock && journalRead && opened?.unusedPaths.length) {
+    await backend.collectImages?.(opened.unusedPaths).catch(() => []);
   }
   return { doc, backend, journal, recovered, lock };
 }
@@ -162,7 +208,8 @@ export async function openStoredFile(fileId: string, name: string): Promise<Sess
     // Without the lock, leave any save in progress alone: it belongs to the other tab.
     const tree = await backend.read({ repair: lock !== null });
     if (isEmpty(tree)) throw new Error(`"${name}" is empty or was removed from this browser's storage.`);
-    return startSession(loadDocument(readPackage(tree)), backend, lock);
+    const opened = await openPackage(tree);
+    return startSession(loadDocument(opened.file), backend, lock, opened);
   });
 }
 
@@ -191,7 +238,8 @@ export async function openFolder(locations: LocationStore = (locationStore ??= i
       return startSession(doc, backend, lock);
     });
   }
-  let doc = loadDocument(readPackage(tree));
+  const opened = await openPackage(tree);
+  let doc = loadDocument(opened.file);
   const copy = await isCopyOfAnother(doc.fileId, backend.dir, locations).catch(() => false);
   if (copy) doc = loadDocument(withNewFileId(doc.toFile()));
   const lock = await acquireFileLock(doc.fileId);
@@ -201,7 +249,7 @@ export async function openFolder(locations: LocationStore = (locationStore ??= i
       await backend.write(writePackage(doc.toFile())).catch(() => {});
       await isCopyOfAnother(doc.fileId, backend.dir, locations).catch(() => false);
     }
-    return startSession(doc, backend, lock);
+    return startSession(doc, backend, lock, opened);
   });
 }
 

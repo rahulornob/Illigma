@@ -4,7 +4,7 @@
  * Access API (Chromium).
  */
 
-import { isBinaryPackagePath, isSafePageId, parseImagePath, type FileData, type FileTree } from "@illigma/format";
+import { isBinaryPackagePath, isSafePageId, parseImagePath, sha256HexAsync, type FileData, type FileTree } from "@illigma/format";
 import { assertFileId, listFiles, openDir, opfsRoot, readBytes, readText, writeText } from "./fs.js";
 import { atLocation, nextGeneration, type FileLocation, type LocationState } from "./location-queue.js";
 
@@ -107,6 +107,16 @@ export interface Backend {
    * from a click: browsers only show the prompt during a user gesture.
    */
   requestAccess?(): Promise<boolean>;
+  /**
+   * Remove image files no layer uses: `paths` must come from
+   * `ReadReport.unusedImages` of the package as last read here, with no
+   * recovered edits pending and nothing in memory that could use them (the
+   * file was just opened). Removes nothing if the package changed on disk
+   * since, or a save is pending; never touches anything but
+   * "images/<sha-256>.<ext>" files. Saves never remove images (see
+   * docs/design/save-states.md, "Images"). Returns the paths removed.
+   */
+  collectImages?(paths: readonly string[]): Promise<string[]>;
 }
 
 /** A package stored in OPFS. */
@@ -202,7 +212,7 @@ async function removeAt(dir: FileSystemDirectoryHandle, path: string): Promise<v
 interface Commit {
   /** Final paths. Each has a staged copy at path + TEMP_SUFFIX until the commit is finished. */
   files: string[];
-  /** Page and image files the new save no longer has. */
+  /** Page files the new save no longer has (and, from older versions, image files). */
   remove: string[];
 }
 
@@ -234,6 +244,7 @@ interface Snapshot {
  * complete old package (no marker yet) or the complete new one.
  */
 async function snapshot(dir: FileSystemDirectoryHandle): Promise<Snapshot> {
+  // Listed first, then read: a file another tab removes in between throws NotFoundError (stableSnapshot retries).
   const tree: FileTree = new Map();
   let untidy = false;
   for (const [path, handle] of await listFiles(dir, (name) => {
@@ -311,6 +322,8 @@ export function newSaveId(): string {
 interface WriteCheck {
   /** Shown in errors. */
   label: string;
+  /** Image paths whose bytes on disk were checked against their name in this session. */
+  verifiedImages?: Set<string>;
   /** Refuse unless the package on disk holds one of these save ids (null: none). Undefined: don't check. */
   expectSaveIds?: ReadonlySet<string | null> | undefined;
   /** Refuse a folder that is neither a package, nor blank, nor named "*.illigma". */
@@ -333,10 +346,13 @@ interface WriteCheck {
  *    Copying rather than FileSystemHandle.move() keeps every staged copy
  *    until the marker is gone, so a repair can always redo this step; move()
  *    onto an existing file also differs between Chromium versions.
- * 4. Remove stale pages and images, then the marker, then the staged copies.
+ * 4. Remove stale pages, then the marker, then the staged copies.
  *
  * Images already on disk under the same name (their hash) and size are not
- * written again: autosaves only write the images that are new.
+ * written again once their bytes were checked against the name in this
+ * session (`check.verifiedImages`): autosaves only write the images that are
+ * new, and a damaged copy is repaired by the first save. Saves never remove
+ * image files (see `Backend.collectImages`).
  */
 async function writeTree(dir: FileSystemDirectoryHandle, tree: FileTree, saveId: string, check: WriteCheck): Promise<string> {
   for (const path of tree.keys()) checkTreePath(path);
@@ -347,8 +363,9 @@ async function writeTree(dir: FileSystemDirectoryHandle, tree: FileTree, saveId:
   const previousManifest = await tryRead(dir, "manifest.json");
   const files: [string, FileData][] = [[REV_FILE, revText(saveId)]];
   for (const [path, data] of tree) {
-    // An image's name is the hash of its bytes, so one already on disk at full size needn't be written again.
-    if (parseImagePath(path) && typeof data !== "string" && (await trySize(dir, path)) === data.length) continue;
+    // An image's name is the hash of its bytes, so one already on disk, sound, needn't be written again.
+    const image = parseImagePath(path);
+    if (image && typeof data !== "string" && (await soundOnDisk(dir, path, image.hash, data.length, check.verifiedImages))) continue;
     files.push([path, data]);
   }
   // The manifest goes last, so a reader that ignores the marker (an older Illigma) still never sees a page missing.
@@ -367,7 +384,7 @@ async function writeTree(dir: FileSystemDirectoryHandle, tree: FileTree, saveId:
       staged.push(path + TEMP_SUFFIX);
       await writeText(await fileAt(dir, path + TEMP_SUFFIX, true), text);
     }
-    remove = [...stalePages(previousManifest, tree), ...(await staleImages(dir, tree))];
+    remove = stalePages(previousManifest, tree);
     staged.push(COMMIT_FILE); // a torn marker is "invalid" and ignored, but tidy it up too
     await writeText(await fileAt(dir, COMMIT_FILE, true), JSON.stringify({ files: files.map(([p]) => p), remove }));
   } catch (err) {
@@ -408,21 +425,38 @@ function stalePages(previousManifest: string | undefined, tree: FileTree): strin
   return out;
 }
 
-/** Image files to remove: "images/<sha-256>.<ext>" files (Illigma's own names) the new save no longer has. Other files under images/ are never touched. */
-async function staleImages(dir: FileSystemDirectoryHandle, tree: FileTree): Promise<string[]> {
-  let images: FileSystemDirectoryHandle;
+/**
+ * True if the image file at `path` is on disk with `size` bytes whose SHA-256
+ * is `hash`. Its contents are hashed once per session (`verified` remembers
+ * the paths checked); after that, the size is enough. A copy whose bytes
+ * don't match is written again.
+ */
+async function soundOnDisk(dir: FileSystemDirectoryHandle, path: string, hash: string, size: number, verified: Set<string> | undefined): Promise<boolean> {
+  let file: File;
   try {
-    images = await dir.getDirectoryHandle("images");
+    file = await (await fileAt(dir, path, false)).getFile();
   } catch (err) {
-    if (isMissing(err)) return [];
+    if (isMissing(err)) return false;
     throw err;
   }
-  const out: string[] = [];
-  for await (const [name, handle] of images.entries()) {
-    const path = `images/${name}`;
-    if (handle.kind === "file" && parseImagePath(path) && !tree.has(path)) out.push(path);
+  if (file.size !== size) return false;
+  if (verified?.has(path)) return true;
+  const ok = (await sha256HexAsync(new Uint8Array(await file.arrayBuffer()))) === hash;
+  if (ok) verified?.add(path);
+  return ok;
+}
+
+/** Remove the listed image files, if the package still holds save `saveId` and no save is pending. Returns the paths removed. */
+async function collectImageFiles(dir: FileSystemDirectoryHandle, paths: readonly string[], saveId: string | null): Promise<string[]> {
+  if ((await readCommit(dir)) !== null || parseRev(await tryRead(dir, REV_FILE)) !== saveId) return [];
+  const removed: string[] = [];
+  for (const path of [...new Set(paths)].sort()) {
+    if (!parseImagePath(path)) continue; // only Illigma's own image names, never anything else
+    if ((await trySize(dir, path)) === undefined) continue;
+    await removeAt(dir, path);
+    removed.push(path);
   }
-  return out.sort();
+  return removed;
 }
 
 /** How often a read retries while another tab keeps saving under it. */
@@ -439,12 +473,23 @@ async function stamp(dir: FileSystemDirectoryHandle): Promise<string> {
  * files and miss the marker that explains them.
  */
 async function stableSnapshot(dir: FileSystemDirectoryHandle): Promise<Snapshot> {
+  let missing: unknown = null;
   for (let i = 0; i < READ_ATTEMPTS; i++) {
     const before = await stamp(dir);
-    const snap = await snapshot(dir);
-    if ((await stamp(dir)) === before) return snap;
+    let snap: Snapshot | null = null;
+    try {
+      snap = await snapshot(dir);
+      missing = null;
+    } catch (err) {
+      // A file listed a moment ago was removed (another tab saved): the package changed under the read, so try again.
+      if (!isMissing(err)) throw err;
+      missing = err;
+    }
+    if (snap && (await stamp(dir)) === before) return snap;
     await new Promise((r) => setTimeout(r, 20 * (i + 1)));
   }
+  // Still missing every time: the package itself is gone (callers tell that apart by NotFoundError).
+  if (missing) throw missing;
   throw new Error("The file kept changing while Illigma read it (another tab or app is saving it). Try again in a moment.");
 }
 
@@ -571,6 +616,7 @@ export function opfsBackend(fileId: string, name: string, rootOrOptions?: FileSy
   const save = knownSave();
   const label = "Browser storage";
   const { queue, write } = packageQueue({ kind: "opfs", path, root: opts.root }, label);
+  const verifiedImages = new Set<string>();
   return {
     label,
     kind: "opfs",
@@ -593,7 +639,7 @@ export function opfsBackend(fileId: string, name: string, rootOrOptions?: FileSy
     write: (tree, wopts) =>
       write(wopts, async () => {
         const id = wopts?.saveId ?? newSaveId();
-        const check = { label, expectSaveIds: save.expect(wopts) };
+        const check = { label, expectSaveIds: save.expect(wopts), verifiedImages };
         await save.write(id, async () => writeTree(await fileDir(true), tree, id, check));
       }),
     changedOnDisk: () =>
@@ -602,6 +648,15 @@ export function opfsBackend(fileId: string, name: string, rootOrOptions?: FileSy
           return await save.changed(await fileDir(false));
         } catch (err) {
           if (isNotFound(err)) return false; // gone: the next save says so
+          throw err;
+        }
+      }),
+    collectImages: (paths) =>
+      queue(async () => {
+        try {
+          return await collectImageFiles(await fileDir(false), paths, save.saveId);
+        } catch (err) {
+          if (isNotFound(err)) return [];
           throw err;
         }
       }),
@@ -661,6 +716,7 @@ export interface FolderBackend extends Backend {
  */
 export function folderBackend(dir: FileSystemDirectoryHandle): FolderBackend {
   const save = knownSave();
+  const verifiedImages = new Set<string>();
   const { queue, write } = packageQueue({ kind: "folder", dir }, dir.name);
   return {
     label: dir.name,
@@ -680,7 +736,7 @@ export function folderBackend(dir: FileSystemDirectoryHandle): FolderBackend {
       write(opts, async () => {
         await assertPermission(dir, "readwrite");
         const id = opts?.saveId ?? newSaveId();
-        await save.write(id, () => writeTree(dir, tree, id, { label: dir.name, expectSaveIds: save.expect(opts), guardFolder: true }));
+        await save.write(id, () => writeTree(dir, tree, id, { label: dir.name, expectSaveIds: save.expect(opts), guardFolder: true, verifiedImages }));
       }),
     changedOnDisk: () =>
       queue(async () => {
@@ -688,6 +744,11 @@ export function folderBackend(dir: FileSystemDirectoryHandle): FolderBackend {
         return save.changed(dir);
       }),
     canCreateFile: () => mayHoldPackage(dir),
+    collectImages: (paths) =>
+      queue(async () => {
+        await assertPermission(dir, "readwrite");
+        return collectImageFiles(dir, paths, save.saveId);
+      }),
     // Not queued: the prompt must open while the click's user activation is still live.
     requestAccess: async () => {
       const request = (dir as unknown as PermissionHandle).requestPermission;

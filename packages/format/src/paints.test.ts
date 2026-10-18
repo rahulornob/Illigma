@@ -113,14 +113,23 @@ describe("paints, effects and blend modes in the file", () => {
 });
 
 describe("images in the package", () => {
-  it("are stored once each, by hash and format, only when a paint uses them", () => {
+  it("are stored once each, by hash and format: used ones first, then those no paint uses (undo or recovery may use them again)", () => {
     const file = paintsFile();
     const unused = Uint8Array.from([...PNG_1PX, 0]); // still a PNG by its first bytes
-    file.images?.set(sha256Hex(unused), unused);
+    const unusedHash = sha256Hex(unused);
+    file.images?.set(unusedHash, unused);
     const tree = writePackage(file);
-    expect([...tree.keys()].filter((k) => k.startsWith("images/"))).toEqual([imagePath(PNG_HASH, "png"), imagePath(GIF_HASH, "gif")]);
+    expect([...tree.keys()].filter((k) => k.startsWith("images/"))).toEqual([imagePath(PNG_HASH, "png"), imagePath(GIF_HASH, "gif"), imagePath(unusedHash, "png")]);
     expect(tree.get(`images/${PNG_HASH}.png`)).toBe(PNG_1PX);
-    expect(readPackage(tree).images).toEqual(new Map([[PNG_HASH, PNG_1PX], [GIF_HASH, GIF_1PX]]));
+    // Opening leaves unused images out, and lists them as the only image files a host may remove.
+    const report = readPackageWithReport(tree);
+    expect(report.file.images).toEqual(new Map([[PNG_HASH, PNG_1PX], [GIF_HASH, GIF_1PX]]));
+    expect(report.unusedImages).toEqual([imagePath(unusedHash, "png")]);
+    expect(report.warnings).toEqual([`${imagePath(unusedHash, "png")} is not used by any layer, so it was ignored.`]);
+    // …or keeps them, for recovered edits.
+    const loaded = readPackageWithReport(tree, { unusedImages: "load" });
+    expect(loaded.file.images).toEqual(new Map([[PNG_HASH, PNG_1PX], [GIF_HASH, GIF_1PX], [unusedHash, unused]]));
+    expect(loaded.warnings).toEqual([]);
   });
 
   it("refuse to save an image that doesn't match its hash, isn't an image, or is too large", () => {
@@ -162,7 +171,7 @@ describe("images in the package", () => {
     const png = `images/${PNG_HASH}.png`;
     const gif = `images/${GIF_HASH}.gif`;
     const flipped = (tree.get(png) as Uint8Array).slice();
-    flipped[20] = (flipped[20] as number) ^ 0xff;
+    flipped[flipped.length - 20] = (flipped[flipped.length - 20] as number) ^ 0xff; // in the pixel data, not the header
     tree.set(png, flipped);
     tree.set(gif, enc.encode("GIF? no"));
     const stray = "a".repeat(64);
@@ -185,7 +194,8 @@ describe("images in the package", () => {
     const tree = writePackage(paintsFile());
     tree.set(`images/${PNG_HASH}.png`, "\u0089PNG");
     expect(readPackageWithReport(tree).warnings[0]).toMatch(/was read as text/);
-    const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
+    // SOI, an APP0 segment, then a baseline frame header (SOF0) of 8 × 4 pixels.
+    const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0, 4, 0, 0, 0xff, 0xc0, 0, 11, 8, 0, 4, 0, 8, 1, 1, 0x11, 0, 0xff, 0xd9]);
     const hash = sha256Hex(jpeg);
     const file = paintsFile();
     file.nodes.find((n) => n.id === "rect1")!.fills = [{ type: "IMAGE", visible: true, imageHash: hash, scaleMode: "FILL" }];

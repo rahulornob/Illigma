@@ -12,13 +12,14 @@
 // Delete reselects, Shift-click ranges in the Layers panel.
 // QC round 6: on macOS only ⌘ skips constraints (Ctrl doesn't); dragging an
 // auto layout child far outside its frame shows no line and drops nothing.
+// QC round 7: an image fill written into the file appears once it decodes, with no interaction.
 //
 // Screen ↔ world mapping comes from the selection overlay: selecting the
 // "Desktop" frame (a known world rect) shows where world points land.
 //
 // Usage (from the repo root):  node apps/web/e2e/canvas.mjs [--headed] [--no-build]
 
-import { createFile, drag, eventually, field, layerRow, layerRows, newContext, poll, runE2E, selectedRows, setField, watchErrors } from "./lib.mjs";
+import { canvasReady, createFile, drag, eventually, field, layerRow, layerRows, newContext, poll, runE2E, selectedRows, setField, waitSaved, watchErrors } from "./lib.mjs";
 
 await runE2E("canvas", {}, async ({ browser, url, log, check, outDir, errors }) => {
   const context = await newContext(browser);
@@ -746,5 +747,65 @@ await runE2E("canvas", {}, async ({ browser, url, log, check, outDir, errors }) 
   check((await field(page, "X position")) === 24, "the arrow reorders instead of nudging");
   await undo();
   check(await eventually(async () => (await field(page, "Y position")) === 24, 2_000), "undo the reorder");
+
+  log("QC round 7: an image fill appears once it decodes, with no interaction");
+  {
+    const fileId = await createFile(page, url);
+    await waitSaved(page);
+    await page.goto(url); // home: the editor closes the file and lets go of it
+    // Add a second page holding a layer with an image fill: a 64 × 64 magenta PNG under images/<sha-256>.png, as Illigma
+    // stores it. On its own page, nothing else draws once the page is shown, so only the decode can ask for the frame.
+    await page.evaluate(async (id) => {
+      const c = new OffscreenCanvas(64, 64);
+      const g = c.getContext("2d");
+      g.fillStyle = "#ff00ff";
+      g.fillRect(0, 0, 64, 64);
+      const bytes = new Uint8Array(await (await c.convertToBlob({ type: "image/png" })).arrayBuffer());
+      const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((b) => b.toString(16).padStart(2, "0")).join("");
+      const root = await navigator.storage.getDirectory();
+      const dir = await (await root.getDirectoryHandle("files")).getDirectoryHandle(id);
+      const write = async (d, name, data) => {
+        const w = await (await d.getFileHandle(name, { create: true })).createWritable();
+        await w.write(data);
+        await w.close();
+      };
+      await write(await dir.getDirectoryHandle("images", { create: true }), `${hash}.png`, bytes);
+      const manifest = JSON.parse(await (await (await dir.getFileHandle("manifest.json")).getFile()).text());
+      const pages = await dir.getDirectoryHandle("pages");
+      const name = `${manifest.pages[0].id}.json`;
+      const nodes = JSON.parse(await (await (await pages.getFileHandle(name)).getFile()).text());
+      const page = nodes.find((n) => n.type === "PAGE");
+      const hero = nodes.find((n) => n.name === "Hero");
+      const imagePage = { ...page, id: "imgpage0001", name: "Images", index: `${page.index}V` };
+      const photo = { ...hero, id: "imgrect0001", name: "Photo", parentId: imagePage.id, x: 0, y: 0, fills: [{ type: "IMAGE", visible: true, imageHash: hash, scaleMode: "FILL" }] };
+      await write(pages, `${imagePage.id}.json`, JSON.stringify([photo, imagePage]));
+      manifest.pages.push({ id: imagePage.id, name: imagePage.name });
+      await write(dir, "manifest.json", JSON.stringify(manifest));
+    }, fileId);
+    const viewer = await context.newPage();
+    watchErrors(viewer, errors);
+    await viewer.goto(`${url}#/file/${fileId}`);
+    await canvasReady(viewer);
+    /** Magenta pixels in a screenshot of the canvas (decoded in the page). */
+    const magenta = async () => {
+      const shot = (await viewer.locator("canvas.canvas").screenshot()).toString("base64");
+      return viewer.evaluate(async (b64) => {
+        const bmp = await createImageBitmap(await (await fetch(`data:image/png;base64,${b64}`)).blob());
+        const c = new OffscreenCanvas(bmp.width, bmp.height);
+        const g = c.getContext("2d");
+        g.drawImage(bmp, 0, 0);
+        const d = g.getImageData(0, 0, bmp.width, bmp.height).data;
+        let n = 0;
+        for (let i = 0; i < d.length; i += 4) if (d[i] > 230 && d[i + 1] < 30 && d[i + 2] > 230) n++;
+        return n;
+      }, shot);
+    };
+    await viewer.waitForTimeout(1_000); // let the first page settle
+    await viewer.locator(`section[aria-labelledby="pages-heading"] button.row`, { hasText: "Images" }).click();
+    // No click, key or pointer move on the canvas: only the decode itself may ask for the frame.
+    check(await eventually(async () => (await magenta()) > 500, 5_000), `the image fill should appear by itself once decoded, got ${await magenta()} magenta pixels`);
+    await viewer.screenshot({ path: `${outDir}/canvas-image.png` });
+    await viewer.close();
+  }
   await context.close();
 });

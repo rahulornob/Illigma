@@ -28,10 +28,19 @@
  * Changes left from an earlier session ("carried") are kept until the person
  * decides: only `discardRecovered()`, `clear()` without a checkpoint, or
  * `clear(mark, { recovered: true })` after they were saved remove them.
+ *
+ * Images: change lines hold only an image's hash, so the bytes of every image
+ * the document adds (`Document.addImage`) are copied to OPFS
+ * "journal/<fileId>.images/<hash>" as soon as it is added, always before the
+ * first change line appended after it. A copy is removed once a save made
+ * after a later change holds it (saves write every image the document holds),
+ * or with the carried changes. `recoveredImages()` reads the copies left by
+ * an earlier session.
  */
 
 import type { Change, Document, Operation } from "@illigma/core";
-import { appendText, assertFileId, openDir, opfsRoot, readText, writeText } from "./fs.js";
+import { IMAGE_HASH_PATTERN } from "@illigma/format";
+import { appendText, assertFileId, openDir, opfsRoot, readBytes, readText, writeText } from "./fs.js";
 import { atLocation } from "./location-queue.js";
 
 /** How long changes are batched before they are appended. */
@@ -99,6 +108,12 @@ export class RecoveryJournal {
   private written: Entry[] = [];
   private timer: ReturnType<typeof setTimeout> | undefined;
   private loaded: Promise<void> | null = null;
+  /** Images added by this session, not yet copied: bytes, and the last change recorded before each was added. */
+  private pendingImages = new Map<string, { bytes: Uint8Array; after: number }>();
+  /** Images this session copied into the journal, with the last change recorded before each was added. */
+  private sessionImages = new Map<string, number>();
+  /** Image copies an earlier session left, found when the journal was loaded. */
+  private carriedImages = new Set<string>();
 
   constructor(
     readonly fileId: string,
@@ -138,6 +153,9 @@ export class RecoveryJournal {
       const saved = savedId ? lines.map((l) => l.save).lastIndexOf(savedId) : -1;
       const kept = saved >= 0 && Array.isArray(lines[saved]!.keep) ? (lines[saved]!.keep as Line[]) : [];
       this.carried = [...kept, ...lines.slice(saved + 1)].filter(hasOps).map((l) => ({ seq: 0, line: JSON.stringify(l), ops: l.ops }));
+      this.carriedImages = new Set((await this.listImageCopies()).filter((h) => !this.sessionImages.has(h) && !this.pendingImages.has(h)));
+      // Copies nothing carried can use any more (the changes reached the file or were discarded) are removed.
+      if (!this.carried.length && this.carriedImages.size) await this.removeImageCopies([...this.carriedImages]).catch(() => {});
     })().catch((err: unknown) => {
       this.loaded = null; // try again next time
       throw err;
@@ -242,6 +260,29 @@ export class RecoveryJournal {
   }
 
   /**
+   * Image files an earlier session added and copied into the journal, by
+   * hash, for replaying its recovered changes (`Document.addImage` checks
+   * each one). Empty when nothing is carried.
+   */
+  recoveredImages(): Promise<Map<string, Uint8Array>> {
+    return this.enqueue(async () => {
+      await this.loadNow();
+      const out = new Map<string, Uint8Array>();
+      if (!this.carried.length) return out;
+      const dir = await this.imageDir(false).catch(() => null);
+      if (!dir) return out;
+      for (const hash of [...this.carriedImages].sort()) {
+        try {
+          out.set(hash, await readBytes(await dir.getFileHandle(hash)));
+        } catch {
+          // Gone or unreadable: the layers using it show a missing image.
+        }
+      }
+      return out;
+    });
+  }
+
+  /**
    * Record every change `doc` commits (edits, undo and redo). Changes are
    * appended in batches at most every 250 ms. Returns a function that stops
    * recording and appends what is still batched; its promise settles once
@@ -249,10 +290,30 @@ export class RecoveryJournal {
    */
   attach(doc: Document): () => Promise<void> {
     const unsubscribe = doc.subscribe((change) => this.record(change));
+    const unsubscribeImages = doc.subscribeImages?.((hash, bytes) => this.recordImage(hash, bytes));
     return () => {
       unsubscribe();
+      unsubscribeImages?.();
       return this.flush().catch(() => {});
     };
+  }
+
+  /** Copy a newly added image into the journal now, ahead of any change line that may use it. */
+  private recordImage(hash: string, bytes: Uint8Array): void {
+    if (!IMAGE_HASH_PATTERN.test(hash) || this.pendingImages.has(hash) || this.sessionImages.has(hash)) return;
+    this.pendingImages.set(hash, { bytes, after: this.seq });
+    void this.enqueue(() => this.writeImages()).catch(() => {}); // retried before the next append
+  }
+
+  /** Copy pending images into the journal. Runs inside the queue; throws if one can't be written (it stays pending). */
+  private async writeImages(): Promise<void> {
+    if (!this.pendingImages.size) return;
+    const dir = await this.imageDir(true);
+    for (const [hash, { bytes, after }] of [...this.pendingImages]) {
+      await writeText(await dir.getFileHandle(hash, { create: true }), bytes);
+      this.pendingImages.delete(hash);
+      this.sessionImages.set(hash, after);
+    }
   }
 
   /** The sequence number of the last recorded change. Pass it to `clear` to drop only what came before. */
@@ -313,6 +374,12 @@ export class RecoveryJournal {
       // A stashed copy of what the save holds must not come back as a recovery.
       this.dropStashed((l) => (l.sid === this.sid ? (l.seq ?? 0) <= through : recovered));
       await this.rewrite();
+      // Image copies the saved file now holds: this session's added before a saved change, and the carried ones once nothing is carried.
+      const saved = [...this.sessionImages].filter(([, after]) => after < through).map(([hash]) => hash);
+      for (const hash of saved) this.sessionImages.delete(hash);
+      const done = [...saved, ...(this.carried.length ? [] : [...this.carriedImages])];
+      if (!this.carried.length) this.carriedImages.clear();
+      await this.removeImageCopies(done).catch(() => {});
     });
   }
 
@@ -323,6 +390,9 @@ export class RecoveryJournal {
       this.carried = [];
       this.dropStashed((l) => l.sid !== this.sid);
       await this.rewrite();
+      const carriedImages = [...this.carriedImages];
+      this.carriedImages.clear();
+      await this.removeImageCopies(carriedImages).catch(() => {});
     });
   }
 
@@ -344,6 +414,8 @@ export class RecoveryJournal {
   /** Append buffered changes up to `through`, then `extra`. Runs inside the queue. */
   private async append(through: number, extra?: string): Promise<void> {
     await this.loadNow();
+    // An image goes in before any line that may use it; if it can't, the lines wait in the buffer too.
+    await this.writeImages();
     const batch = this.buffer.filter((e) => e.seq <= through);
     if (!batch.length && extra === undefined) return;
     const text = batch.map((e) => e.line + "\n").join("") + (extra === undefined ? "" : extra + "\n");
@@ -370,6 +442,38 @@ export class RecoveryJournal {
 
   private async dir(): Promise<FileSystemDirectoryHandle> {
     return openDir(await opfsRoot(this.root), ["journal"], true);
+  }
+
+  /** OPFS "journal/<fileId>.images", where image copies live. */
+  private async imageDir(create: boolean): Promise<FileSystemDirectoryHandle> {
+    return openDir(await opfsRoot(this.root), ["journal", `${this.fileId}.images`], create);
+  }
+
+  /** Hashes of the image copies in the journal. */
+  private async listImageCopies(): Promise<string[]> {
+    let dir: FileSystemDirectoryHandle;
+    try {
+      dir = await this.imageDir(false);
+    } catch (err) {
+      if ((err as { name?: unknown })?.name === "NotFoundError") return [];
+      throw err;
+    }
+    const out: string[] = [];
+    for await (const [name, handle] of dir.entries()) if (handle.kind === "file" && IMAGE_HASH_PATTERN.test(name)) out.push(name);
+    return out;
+  }
+
+  /** Remove image copies, except any this session or the carried changes still need. */
+  private async removeImageCopies(hashes: readonly string[]): Promise<void> {
+    const remove = hashes.filter((h) => !this.pendingImages.has(h) && !this.sessionImages.has(h) && !this.carriedImages.has(h));
+    if (!remove.length) return;
+    const dir = await this.imageDir(false).catch(() => null);
+    if (!dir) return;
+    for (const hash of remove) {
+      await dir.removeEntry(hash).catch((err: unknown) => {
+        if ((err as { name?: unknown })?.name !== "NotFoundError") throw err;
+      });
+    }
   }
 
   /**

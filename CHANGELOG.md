@@ -25,6 +25,18 @@ After v1.0: a Tauri desktop app in v1.x, then optional multiplayer (CRDT over LA
 - Phase 0 (foundations): renderer spike (CanvasKit, 10,000 layers at 60 fps), offline web app, design tokens in code. See [docs/dev/phase-0.md](docs/dev/phase-0.md).
 - Run the real usability sessions (Phase 5) in parallel; fix what they find.
 
+### Fixed (2026-10-18, QC round 7: images and hit-testing)
+- **Images in big frames appear.** An image inside a top-level frame with more than 256 children (recorded in chunks), or on that frame itself, never showed: the frame wasn't re-recorded once the image decoded. It is now.
+- **The canvas redraws when an image decodes**, with no click or pointer move needed (the editor passes `onImageReady`). New e2e check in `canvas.mjs`.
+- **No more lost images on save.** Saves never remove image files. A damaged, oversized or misnamed image file Illigma couldn't load is left as it is (its layers keep the hash), instead of being deleted by the next save. Unused image files are removed only when a file opens with no recovered edits pending, and only sound ones (`ReadReport.unusedImages`, `Backend.collectImages`).
+- **Images survive undo and crashes.** Saves write every image the document holds, so deleting an image layer, saving, undoing and crashing keeps the image. The recovery journal copies each added image (`Document.subscribeImages`) before the change lines that use it, so an image added after the last save comes back with Keep. With recovered edits pending, unused images on disk are loaded too.
+- **Image size in pixels is capped**: 16,384 pixels a side and 64 megapixels, read from the PNG, JPEG, WebP or GIF header before decoding (`imageDimensions`, `imageSizeProblem`, `IMAGE_LIMITS.maxSide` and `maxPixels`). A 1.5 MB file of 20,000 × 20,000 pixels no longer makes the canvas allocate gigabytes: `addImage` refuses it, and opening leaves it out with a plain warning (and on disk).
+- A save checks an image already on disk once per session (by hash) before skipping it, so a damaged copy of the same size is repaired.
+- Reading a package retries when another tab removes a file between listing and reading it, instead of failing.
+- The renderer frees decoded images no cached picture uses any more.
+- **Hit-testing of aligned strokes**: on closed shapes, inside strokes are hit over their whole weight inside the outline, and outside strokes over their whole weight outside it (no phantom inner band). Rectangles, ellipses and frames can be picked on a centred or outside stroke past their box; a frame still clips its children to its box.
+- The prototype importer warns when it keeps only a layer's first 100 effects. Opening a file hashes images with `crypto.subtle` (`readPackageWithReportAsync`, `sha256HexAsync`) instead of JavaScript on the main thread.
+
 ### Added (2026-10-18, paints and effects in export)
 - `@illigma/export` writes gradients, images, blend modes, effects and stroke alignment. PNG and JPG get them from the renderer, with image bytes from the document (`ExportSource.image`). Export bounds include drop shadows and layer blur.
 - SVG: linear and radial gradients in the layer's space; one embedded image per file, used through patterns; `mix-blend-mode`; one `<filter>` per layer for drop shadows, inner shadows and layer blur; inside and outside strokes clipped or masked.
