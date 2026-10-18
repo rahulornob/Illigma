@@ -252,12 +252,15 @@ export function resizeScale(box: Rect, handle: Handle, dx: number, dy: number, m
 /**
  * `r` after the scale `t`, upright again (a flip just swaps its edges).
  * Edges that moved snap to whole pixels, edges that stayed put don't move,
- * and the result is never thinner than `min` (it grows away from the fixed edge).
+ * and an axis the scale changes is never thinner than `min` (it grows away
+ * from the fixed edge). An axis the scale leaves alone, or one with no size
+ * (a line's height), keeps its size, even below `min`.
  */
 export function scaleRect(r: Rect, t: Scale, opts: { snap?: boolean; min?: number } = {}): Rect {
   const snap = opts.snap ?? true;
   const min = opts.min ?? 1;
   const axis = (start: number, size: number, s: number, p: number): [number, number] => {
+    if (s === 1 || size === 0) return [start, size];
     const map = (v: number) => {
       const out = p + (v - p) * s;
       return snap && Math.abs(out - v) > 1e-9 ? Math.round(out) : out;
@@ -290,20 +293,30 @@ export function scalePoint(t: Scale, x: number, y: number): Point {
  * The handle under a point given in the selection frame's own space, in
  * screen pixels (0, 0 is the frame's top-left; `w`, `h` its size on screen).
  * Corners win over edges; edges can be grabbed anywhere along their length.
+ *
+ * Outside the box an edge grabs `tolerance` pixels; inside, at most a quarter
+ * of the box, so the middle of a small layer always moves it (as in Figma)
+ * and its corners stay reachable from outside. An axis with no size (a line)
+ * has no edges on it: grabbing the line moves it, its ends resize it.
  */
 export function handleAt(lx: number, ly: number, w: number, h: number, tolerance = 6): Handle | null {
   if (lx < -tolerance || ly < -tolerance || lx > w + tolerance || ly > h + tolerance) return null;
-  const onX = Math.abs(lx) <= tolerance || Math.abs(lx - w) <= tolerance;
-  const onY = Math.abs(ly) <= tolerance || Math.abs(ly - h) <= tolerance;
-  // On a box smaller than the grab area, the nearer edge wins.
-  const hx = Math.abs(lx) <= Math.abs(lx - w) ? -1 : 1;
-  const hy = Math.abs(ly) <= Math.abs(ly - h) ? -1 : 1;
-  const pick = (x: -1 | 0 | 1, y: -1 | 0 | 1) => (Object.keys(HANDLES) as Handle[]).find((k) => HANDLES[k].hx === x && HANDLES[k].hy === y) ?? null;
-  if (onX && onY) return pick(hx, hy); // corners first
-  if (onX) return pick(hx, 0);
-  if (onY) return pick(0, hy);
-  return null;
+  /** -1 near the start edge, 1 near the end edge, 0 neither. */
+  const side = (v: number, size: number): -1 | 0 | 1 => {
+    if (size <= 0) return 0;
+    const inside = Math.min(tolerance, size / 4);
+    if (v <= inside) return -1;
+    if (v >= size - inside) return 1;
+    return 0;
+  };
+  const hx = side(lx, w);
+  const hy = side(ly, h);
+  if (!hx && !hy) return null;
+  return (Object.keys(HANDLES) as Handle[]).find((k) => HANDLES[k].hx === hx && HANDLES[k].hy === hy) ?? null;
 }
+
+/** Edge handles are hidden below this on-screen size, where they would cover the corners (Figma does the same). */
+export const SMALL_SELECTION = 24;
 
 /** The resize cursor for a handle on a frame turned by `rotation` degrees. */
 export function handleCursor(handle: Handle, rotation = 0): string {

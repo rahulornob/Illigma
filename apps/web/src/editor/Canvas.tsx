@@ -18,6 +18,7 @@ import {
   marqueeHits,
   placementOf,
   rectFromPoints,
+  SMALL_SELECTION,
   toSpace,
   worldBounds,
   worldCorners,
@@ -137,6 +138,8 @@ export function Canvas(props: CanvasProps) {
     renderer: null as PageRenderer | null,
     frame: 0,
     gesture: null as Gesture | null,
+    /** The pointer that owns the gesture: a second finger or pen never takes it over. */
+    pointerId: null as number | null,
     draft: null as { x: number; y: number; width: number; height: number } | null,
     space: false,
     /** The pointer is over the canvas. */
@@ -178,6 +181,16 @@ export function Canvas(props: CanvasProps) {
     return p.readOnly || p.tool !== "move" ? [] : movable(p.doc, ids);
   };
 
+  /**
+   * The box the resize handles sit on: around the layers a drag changes (not locked
+   * ones, nor children of a selected parent), so the box follows the pointer. Null if
+   * none can be resized.
+   */
+  const handleFrame = (): SelectionFrame | null => {
+    const ids = editable(pageSelection());
+    return ids.length ? selectionFrame(live.current.props.doc, ids) : null;
+  };
+
   /** Lay an overlay box over a (possibly turned) box on the page; lines stay 1 px and sharp at any zoom. */
   const place = (el: HTMLElement, f: SelectionFrame) => {
     const dpr = window.devicePixelRatio || 1;
@@ -203,11 +216,16 @@ export function Canvas(props: CanvasProps) {
     const sel = selRef.current;
     const label = sizeRef.current;
     const ids = pageSelection();
-    const frame = selectionFrame(p.doc, ids);
+    // With handles, the box is the one they resize; otherwise it's around everything selected.
+    const resizable = handleFrame();
+    const frame = resizable ?? selectionFrame(p.doc, ids);
     if (sel && label) {
       if (frame) {
         place(sel, frame);
-        sel.dataset.handles = editable(ids).length && gesture?.kind !== "move" ? "on" : "off";
+        sel.dataset.handles = resizable && gesture?.kind !== "move" ? "on" : "off";
+        const z = live.current.camera.zoom;
+        // On a tiny selection the edge handles would cover the corners: show the corners only.
+        sel.dataset.small = frame.width * z < SMALL_SELECTION || frame.height * z < SMALL_SELECTION ? "on" : "off";
         // The size label sits under the selection's upright bounds, whatever its rotation.
         const corners = [fromSpace(frame, 0, 0), fromSpace(frame, frame.width, 0), fromSpace(frame, frame.width, frame.height), fromSpace(frame, 0, frame.height)];
         const b = boundsOf(corners.map((c) => toScreen(c.x, c.y))) as Rect;
@@ -519,9 +537,7 @@ export function Canvas(props: CanvasProps) {
 
   /** The resize handle of the selection under a screen point, if the selection can be resized. */
   const handleUnder = (sx: number, sy: number): Handle | null => {
-    const ids = editable(pageSelection());
-    if (!ids.length) return null;
-    const f = selectionFrame(live.current.props.doc, pageSelection());
+    const f = handleFrame();
     if (!f) return null;
     const z = live.current.camera.zoom;
     const w = toWorld(sx, sy);
@@ -548,6 +564,14 @@ export function Canvas(props: CanvasProps) {
     const w = toWorld(p.sx, p.sy);
     let dx = w.x - (g.kind === "pan" ? 0 : g.wx);
     let dy = w.y - (g.kind === "pan" ? 0 : g.wy);
+    if ((g.kind === "move" || g.kind === "resize") && !g.edit.open) {
+      // Ended elsewhere (committed before a save the page needed): the drag is over.
+      l.gesture = null;
+      l.pointerId = null;
+      setResizeCursor(null);
+      requestDraw();
+      return;
+    }
     if (g.kind === "move") {
       g.last = p;
       if (p.shift) ({ x: dx, y: dy } = constrainToAxis(dx, dy));
@@ -586,6 +610,7 @@ export function Canvas(props: CanvasProps) {
       l.draft = null;
     } else return false;
     l.gesture = null;
+    l.pointerId = null;
     setResizeCursor(null);
     requestDraw();
     return true;
@@ -624,6 +649,14 @@ export function Canvas(props: CanvasProps) {
       const g = live.current.gesture;
       if (!g) return;
       if (e.type === "keydown" && e.key === "Escape") {
+        if (g.kind === "press") {
+          // Before a drag starts, Escape drops the press (no move follows); the editor's Escape still deselects.
+          live.current.gesture = null;
+          live.current.pointerId = null;
+          setResizeCursor(null);
+          requestDraw();
+          return;
+        }
         if (cancelDrag()) {
           e.preventDefault();
           e.stopPropagation();
@@ -639,6 +672,19 @@ export function Canvas(props: CanvasProps) {
     return () => {
       window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("keyup", onKey, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Leaving the window or tab mid-drag (Alt-Tab, a system dialog) cancels it: the pointer-up may never come.
+  useEffect(() => {
+    const onBlur = () => abortGesture();
+    const onHidden = () => document.visibilityState === "hidden" && abortGesture();
+    window.addEventListener("blur", onBlur);
+    document.addEventListener("visibilitychange", onHidden);
+    return () => {
+      window.removeEventListener("blur", onBlur);
+      document.removeEventListener("visibilitychange", onHidden);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -661,14 +707,13 @@ export function Canvas(props: CanvasProps) {
     const base = { kind: "press" as const, sx, sy, wx: w.x, wy: w.y, handle: null, scope: p.pageId, additive: false, base: current, click: null };
     // A handle of the selection resizes, even where another layer is on top (Shift then keeps the ratio).
     const handle = handleUnder(sx, sy);
-    const hit = p.hitTest?.(w.x, w.y, { deep: e.metaKey || e.ctrlKey }) ?? null;
     if (handle) {
-      // Released without a drag, it's an ordinary click on whatever is under the handle.
-      const click = e.shiftKey ? null : hit ? [hit] : [];
-      l.gesture = { ...base, then: "resize", ids: editable(current), handle, click };
-      setResizeCursor(handleCursor(handle, selectionFrame(p.doc, current)?.rotation ?? 0));
+      // Released without a drag, the selection stays as it is (as in Figma), even if another layer is under the handle.
+      l.gesture = { ...base, then: "resize", ids: editable(current), handle, click: null };
+      setResizeCursor(handleCursor(handle, handleFrame()?.rotation ?? 0));
       return;
     }
+    const hit = p.hitTest?.(w.x, w.y, { deep: e.metaKey || e.ctrlKey }) ?? null;
     if (e.shiftKey) {
       if (!hit) {
         l.gesture = { ...base, then: "marquee", ids: [], additive: true };
@@ -707,11 +752,12 @@ export function Canvas(props: CanvasProps) {
 
   const onPointerDown = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     if (status !== "ready") return;
+    const l = live.current;
+    if (l.gesture) return; // a second button, finger or pen during a drag: the first pointer keeps it
     e.currentTarget.focus({ preventScroll: true });
     e.currentTarget.setPointerCapture(e.pointerId);
     const { sx, sy } = local(e);
-    const l = live.current;
-    if (l.gesture) return; // a second button during a drag
+    l.pointerId = e.pointerId;
     l.hoverId = null;
     if (e.button === 1 || l.space) {
       l.gesture = { kind: "pan", lastX: sx, lastY: sy };
@@ -740,7 +786,7 @@ export function Canvas(props: CanvasProps) {
       return;
     }
     const handle = handleUnder(sx, sy);
-    setResizeCursor(handle ? handleCursor(handle, selectionFrame(p.doc, pageSelection())?.rotation ?? 0) : null);
+    setResizeCursor(handle ? handleCursor(handle, handleFrame()?.rotation ?? 0) : null);
     const w = toWorld(sx, sy);
     const next = handle ? null : (p.hitTest?.(w.x, w.y, { deep: e.metaKey || e.ctrlKey }) ?? null);
     if (next !== l.hoverId) {
@@ -749,12 +795,25 @@ export function Canvas(props: CanvasProps) {
     }
   };
 
+  /** Events from a pointer that doesn't own the running gesture are ignored. */
+  const foreign = (e: { pointerId: number }) => {
+    const l = live.current;
+    return l.gesture !== null && l.pointerId !== null && e.pointerId !== l.pointerId;
+  };
+
   const onPointerMove = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     const l = live.current;
     const g = l.gesture;
     const { sx, sy } = local(e);
     if (!g) {
       hover(e, sx, sy);
+      return;
+    }
+    if (foreign(e)) return;
+    if ((e.buttons & 1) === 0 && g.kind !== "pan") {
+      // The button is up but the pointer-up never came (released outside the window, a system dialog):
+      // end the drag where it is now, as a release would.
+      finishGesture(null);
       return;
     }
     if (g.kind === "press") {
@@ -784,15 +843,26 @@ export function Canvas(props: CanvasProps) {
   };
 
   const onPointerUp = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (foreign(e)) return;
+    finishGesture(e);
+  };
+
+  /**
+   * End the gesture as a release does: a click selects, a move or resize is kept,
+   * a drawn shape is created. `e` null: the release was missed (only seen as a move
+   * with no button down), so a pending click or a shape being drawn is dropped.
+   */
+  const finishGesture = (e: ReactPointerEvent<HTMLCanvasElement> | null) => {
     const l = live.current;
     const g = l.gesture;
     l.gesture = null;
+    l.pointerId = null;
     setPanning(false);
     setResizeCursor(null);
     if (!g) return;
     if (g.kind === "press") {
       // A click: no drag happened.
-      if (g.click) select(g.click);
+      if (g.click && e) select(g.click);
       requestDraw();
       return;
     }
@@ -806,6 +876,11 @@ export function Canvas(props: CanvasProps) {
       return;
     }
     if (g.kind !== "draw") return;
+    if (!e) {
+      l.draft = null;
+      requestDraw();
+      return;
+    }
     const { sx, sy } = local(e);
     const clicked = Math.hypot(sx - g.sx, sy - g.sy) <= DRAG_THRESHOLD;
     const rect = clicked || !l.draft ? { x: g.wx - 50, y: g.wy - 50, width: 100, height: 100 } : l.draft;
@@ -830,12 +905,21 @@ export function Canvas(props: CanvasProps) {
     requestDraw();
   };
 
-  const onPointerCancel = () => {
+  /** Stop whatever the pointer is doing and put back what a drag changed. */
+  const abortGesture = () => {
     const l = live.current;
-    if (!cancelDrag()) l.gesture = null;
+    if (!cancelDrag()) {
+      l.gesture = null;
+      l.pointerId = null;
+      setResizeCursor(null);
+    }
     l.draft = null;
     setPanning(false);
     requestDraw();
+  };
+
+  const onPointerCancel = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (!foreign(e)) abortGesture();
   };
 
   const cursor =
@@ -863,7 +947,9 @@ export function Canvas(props: CanvasProps) {
           }
         }}
         onPointerCancel={onPointerCancel}
-        onLostPointerCapture={() => live.current.gesture && live.current.gesture.kind !== "pan" && onPointerCancel()}
+        onLostPointerCapture={(e) => live.current.gesture && live.current.gesture.kind !== "pan" && onPointerCancel(e)}
+        // Right-click never opens the browser's menu over the canvas (and can't leave a drag open behind it).
+        onContextMenu={(e) => e.preventDefault()}
       />
       <div className="canvas-overlay" aria-hidden="true">
         <div ref={outlinesRef} />

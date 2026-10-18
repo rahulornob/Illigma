@@ -63,7 +63,15 @@ describe("resize", () => {
     expect(resize("e", -200, 0)).toEqual({ x: 100, y: 50, width: 1, height: 100 });
     expect(resize("w", 200, 0)).toEqual({ x: 299, y: 50, width: 1, height: 100 });
     expect(resize("e", -199.8, 0).width).toBe(1);
-    expect(resize("e", 0, 0, { fromCenter: true }, { x: 0, y: 0, width: 0, height: 10 }).width).toBe(1);
+  });
+
+  it("leaves an axis it doesn't scale, or one with no size, alone (a line keeps height 0)", () => {
+    const line: Rect = { x: 10, y: 20, width: 100, height: 0 };
+    expect(resize("e", 40, 0, {}, line)).toEqual({ x: 10, y: 20, width: 140, height: 0 });
+    expect(resize("se", 40, 30, {}, line)).toEqual({ x: 10, y: 20, width: 140, height: 0 });
+    expect(resize("e", 0, 0, { fromCenter: true }, { x: 0, y: 0, width: 0, height: 10 })).toEqual({ x: 0, y: 0, width: 0, height: 10 });
+    // A thin layer resized along the other axis stays thin.
+    expect(resize("e", 20, 0, {}, { x: 0, y: 0, width: 10, height: 0.5 })).toEqual({ x: 0, y: 0, width: 30, height: 0.5 });
   });
 
   it("snaps moved edges to whole pixels but leaves edges that stayed put alone", () => {
@@ -135,6 +143,29 @@ describe("handles", () => {
   it("picks the nearer edge on a box smaller than the grab area", () => {
     expect(handleAt(1, 1, 4, 4)).toBe("nw");
     expect(handleAt(3.5, 3.5, 4, 4)).toBe("se");
+  });
+
+  it("keeps the middle of a small box for moving: inside, an edge grabs at most a quarter of the box", () => {
+    expect(handleAt(5, 50, 10, 100)).toBeNull();
+    expect(handleAt(4, 4, 8, 8)).toBeNull();
+    expect(handleAt(2, 50, 10, 100)).toBe("w");
+    expect(handleAt(8, 50, 10, 100)).toBe("e");
+    // Corners and edges are still reachable from outside.
+    expect(handleAt(-4, -4, 8, 8)).toBe("nw");
+    expect(handleAt(12, 12, 8, 8)).toBe("se");
+    expect(handleAt(4, -5, 8, 8)).toBe("n");
+    expect(handleAt(-5, 4, 8, 8)).toBe("w");
+    expect(handleAt(4, 13, 8, 8)).toBe("s");
+    expect(handleAt(4, 15, 8, 8)).toBeNull();
+    // Big boxes keep the full 6 px inside.
+    expect(handleAt(95, 25, 100, 50)).toBe("e");
+  });
+
+  it("gives a line (no height) no top or bottom edge: grabbing it moves, its ends resize", () => {
+    expect(handleAt(50, 0, 100, 0)).toBeNull();
+    expect(handleAt(50, 4, 100, 0)).toBeNull();
+    expect(handleAt(-3, 0, 100, 0)).toBe("w");
+    expect(handleAt(103, 1, 100, 0)).toBe("e");
   });
 
   it("turns the resize cursor with the layer", () => {

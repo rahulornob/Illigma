@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Document } from "@illigma/core";
-import { deleteLayers, duplicateLayers, movable, moveBy, resizeBy, selectionFrame, snapDelta, snapshot, startBounds } from "./edit";
+import { createdLayers, deleteLayers, duplicateLayers, layerRange, movable, moveBy, resizeBy, selectionFrame, snapDelta, snapshot, startBounds } from "./edit";
 import { worldBounds } from "./geometry";
 
 function setup() {
@@ -113,5 +113,44 @@ describe("delete and duplicate", () => {
     expect(doc.subtree(frameCopy as string)).toHaveLength(5);
     doc.undo();
     expect(doc.has(frameCopy as string)).toBe(false);
+  });
+});
+
+describe("undo selection and layer ranges", () => {
+  it("finds the outermost layers a change creates: undoing a delete brings them back to select", () => {
+    const { doc, frame, a, b } = setup();
+    doc.transact("Delete", (tx) => deleteLayers(tx, doc, [a, b]));
+    let created: string[] = [];
+    const stop = doc.subscribe((c) => (created = createdLayers(c.ops)));
+    doc.undo();
+    stop();
+    expect(created.sort()).toEqual([a, b].sort());
+    expect(createdLayers([])).toEqual([]);
+    // Moves and renames create nothing.
+    doc.transact("Move", (tx) => tx.set(frame, "x", 1));
+    const off = doc.subscribe((c) => (created = createdLayers(c.ops)));
+    doc.undo();
+    off();
+    expect(created).toEqual([]);
+  });
+
+  it("selects every row between the anchor and the Shift-clicked row, either way", () => {
+    const rows = ["p", "q", "r", "s", "t"];
+    expect(layerRange(rows, "q", "s")).toEqual(["q", "r", "s"]);
+    expect(layerRange(rows, "t", "r")).toEqual(["r", "s", "t"]);
+    expect(layerRange(rows, null, "r")).toEqual(["r"]);
+    expect(layerRange(rows, "gone", "r")).toEqual(["r"]);
+  });
+});
+
+describe("resizing a line", () => {
+  it("keeps a line's height at 0 while its length changes", () => {
+    const { doc, page } = setup();
+    const line = doc.transact("Line", (tx) => tx.create("LINE", page, { x: 0, y: 400, width: 100, height: 0 }));
+    const starts = snapshot(doc, [line]);
+    doc.transact("Resize", (tx) => resizeBy(tx, starts, "e", 50, 0, {}));
+    expect(xywh(doc, line)).toEqual({ x: 0, y: 400, width: 150, height: 0 });
+    doc.transact("Resize", (tx) => resizeBy(tx, starts, "se", 50, 20, {}));
+    expect(xywh(doc, line)).toEqual({ x: 0, y: 400, width: 150, height: 0 });
   });
 });

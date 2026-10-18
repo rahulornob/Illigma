@@ -6,6 +6,10 @@
 // cancels, Shift keeps an axis), handle resize (Shift ratio, Alt from the
 // centre, flip past the opposite edge), marquee, Shift-click, multi-select
 // move and resize, Delete, ⌘D, arrow-key nudges and the hover outline.
+// QC round 5: small layers move, drags never get stuck (missed release,
+// blur, a second pointer), handle clicks keep the selection, Escape before a
+// drag starts, handles on the movable layers only, ⌘D in a field, undo of
+// Delete reselects, Shift-click ranges in the Layers panel.
 //
 // Screen ↔ world mapping comes from the selection overlay: selecting the
 // "Desktop" frame (a known world rect) shows where world points land.
@@ -104,6 +108,8 @@ await runE2E("canvas", {}, async ({ browser, url, log, check, outDir, errors }) 
   m = await mapping();
   await clickSelects(1300, 1000, null, "(empty canvas)");
   await clickSelects(ellipse.x + ellipse.w / 2, ellipse.y + ellipse.h / 2, ellipseName, "(ellipse centre)");
+  // Deselect first: on the selected ellipse this corner is its resize handle, and clicking a handle keeps the selection.
+  await clickSelects(1300, 1000, null, "(empty canvas)");
   await clickSelects(ellipse.x + 6, ellipse.y + 6, null, "(ellipse bounding-box corner, outside the curve)");
   await clickSelects(ellipse.x + ellipse.w / 2, ellipse.y + 4, ellipseName, "(just inside the ellipse's top)");
   await clickSelects(400, 320, "Hero", "(Hero, inside Desktop)");
@@ -405,8 +411,8 @@ await runE2E("canvas", {}, async ({ browser, url, log, check, outDir, errors }) 
   await clickWorld(400, 320);
   await page.keyboard.up("Shift");
   check((await selectedName()) === "Avatar", `Shift-click on a selected layer should remove it, got ${await selectedName()}`);
-  await layerRow(page, "Hero").click({ modifiers: ["Shift"] });
-  check((await selectedName()) === "Avatar,Hero", `Shift-click in the Layers panel should add, got ${await selectedName()}`);
+  await layerRow(page, "Hero").click({ modifiers: ["ControlOrMeta"] });
+  check((await selectedName()) === "Avatar,Hero", `⌘-click in the Layers panel should add, got ${await selectedName()}`);
 
   log("resizing a multi-selection scales every member");
   hp = await handlePoint("se");
@@ -428,6 +434,7 @@ await runE2E("canvas", {}, async ({ browser, url, log, check, outDir, errors }) 
   check((await selectedRows(page).count()) === 0, "nothing stays selected after Delete");
   await undo();
   check(await eventually(async () => (await layerRows(page).count()) === before5, 2_000), "one undo should bring both back");
+  check(await eventually(async () => (await selectedName()) === "Avatar,Hero", 2_000), `undoing Delete should select the restored layers again, got ${await selectedName()}`);
 
   log("⌘D duplicates in place, above the original");
   await clickWorld(400, 320);
@@ -465,5 +472,147 @@ await runE2E("canvas", {}, async ({ browser, url, log, check, outDir, errors }) 
   await page.mouse.move(avatarAt.x, avatarAt.y, { steps: 3 });
   check(await eventually(async () => (await page.locator(".layer-outline:visible").count()) === 1, 2_000), "hovering Avatar should show one hover outline");
   await page.screenshot({ path: `${outDir}/canvas-manipulation.png` });
+
+  // ---- QC round 5 ----
+
+  /** The live state of a drag: true while the document has a drag open (Delete/undo would be swallowed). */
+  const pointerEvent = (type, x, y, init = {}) =>
+    canvas.evaluate((c, [type, x, y, init]) => c.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerType: "mouse", ...init })), [type, x, y, init]);
+
+  log("a tiny selected layer moves when dragged from its middle (8 × 8 at fit zoom)");
+  await page.keyboard.press("Escape");
+  await layerRow(page, "Avatar").click();
+  await setField(page, "Width", 8);
+  await setField(page, "Height", 8);
+  await canvas.focus();
+  const tiny = m.toScreen(1204, 44);
+  check(await eventually(async () => (await page.locator(".selection-box").getAttribute("data-small")) === "on", 2_000), "a tiny selection shows its corner handles only");
+  await page.mouse.move(tiny.x, tiny.y);
+  check(await eventually(async () => (await canvas.evaluate((c) => c.style.cursor)) === "default", 2_000), "the middle of a tiny selection shows the move cursor, not a resize one");
+  await drag(page, tiny.x, tiny.y, tiny.x + 60, tiny.y + 30);
+  let av = await box4("Avatar");
+  check(av.w === 8 && av.h === 8, `dragging the middle of a tiny layer must not resize it, got ${av.w} × ${av.h}`);
+  check(near(av.x, 1200 + 60 / m.z, tol) && near(av.y, 40 + 30 / m.z, tol), `dragging the middle of a tiny layer should move it by (${60 / m.z}, ${30 / m.z}), got (${av.x}, ${av.y})`);
+  await undo();
+  check(await fieldIs("X position", 1200), "undo the tiny move");
+  // Its corner is still reachable from outside.
+  const tinyBox = await selectionRect();
+  const seOut = { x: tinyBox.x + tinyBox.width + 4, y: tinyBox.y + tinyBox.height + 4 };
+  await drag(page, seOut.x, seOut.y, seOut.x + 40, seOut.y + 40);
+  av = await box4("Avatar");
+  check(av.x === 1200 && av.w > 8 && av.h > 8, `the SE corner of a tiny layer resizes it from just outside, got X ${av.x}, ${av.w} × ${av.h}`);
+  await undo();
+  check(await fieldIs("Width", 8), "undo the tiny resize");
+  await undo();
+  await undo();
+  check(await fieldIs("Width", 96) && (await fieldIs("Height", 96)), "undo the size edits");
+
+  log("a missed release (button already up) ends the drag; nothing stays stuck");
+  await clickWorld(400, 320);
+  await page.mouse.move(heroAt.x, heroAt.y);
+  await page.mouse.down();
+  await page.mouse.move(heroAt.x + 40, heroAt.y, { steps: 5 });
+  check(await eventually(async () => (await field(page, "X position")) > 120, 2_000), "Hero should be moving");
+  // The browser lost the pointer-up (released over a system dialog): the next move comes with no button down.
+  await pointerEvent("pointermove", heroAt.x + 40, heroAt.y, { pointerId: 1, buttons: 0 });
+  const kept = await field(page, "X position");
+  check(near(kept, 120 + 40 / m.z, tol), `the drag should end where it was, got X ${kept}`);
+  await page.mouse.move(heroAt.x + 200, heroAt.y + 100, { steps: 3 });
+  check((await field(page, "X position")) === kept, "moving on after the missed release must not move the layer");
+  await page.mouse.up();
+  await canvas.focus();
+  await page.keyboard.press("ArrowRight");
+  check(await fieldIs("X position", kept + 1), "nudges work again after a missed release (no drag left open)");
+  await undo();
+  await undo();
+  check(await fieldIs("X position", 120), "the drag and the nudge are each one undo step");
+
+  log("leaving the window mid-drag cancels it");
+  await page.mouse.move(heroAt.x, heroAt.y);
+  await page.mouse.down();
+  await page.mouse.move(heroAt.x + 50, heroAt.y + 50, { steps: 5 });
+  check(await eventually(async () => (await field(page, "X position")) !== 120, 2_000), "Hero should be moving");
+  await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+  check(await fieldIs("X position", 120), "blur should put the layer back");
+  await page.mouse.move(heroAt.x + 90, heroAt.y + 60, { steps: 3 });
+  await page.mouse.up();
+  check((await field(page, "X position")) === 120 && (await field(page, "Y position")) === 160, "the cancelled drag must not move the layer afterwards");
+  await page.keyboard.press("ArrowDown");
+  check(await fieldIs("Y position", 161), "nudges work again after a blur");
+  await undo();
+  check(await fieldIs("Y position", 160), "undo the nudge");
+  const menuOpened = await canvas.evaluate((c) => c.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 10, clientY: 10 })));
+  check(menuOpened === false, "right-click on the canvas must not open the browser's menu");
+
+  log("a second pointer can't take over a drag");
+  await page.mouse.move(heroAt.x, heroAt.y);
+  await page.mouse.down();
+  await page.mouse.move(heroAt.x + 30, heroAt.y, { steps: 4 });
+  await pointerEvent("pointerdown", heroAt.x + 400, heroAt.y + 200, { pointerId: 7, pointerType: "touch", buttons: 1, isPrimary: false });
+  await pointerEvent("pointermove", heroAt.x + 500, heroAt.y + 300, { pointerId: 7, pointerType: "touch", buttons: 1, isPrimary: false });
+  await pointerEvent("pointerup", heroAt.x + 500, heroAt.y + 300, { pointerId: 7, pointerType: "touch", buttons: 0, isPrimary: false });
+  await page.mouse.move(heroAt.x + 60, heroAt.y, { steps: 4 });
+  await page.mouse.up();
+  const heroNow = { x: await field(page, "X position"), y: await field(page, "Y position") };
+  check(near(heroNow.x, 120 + 60 / m.z, tol) && heroNow.y === 160, `only the first pointer drives the drag, got (${heroNow.x}, ${heroNow.y})`);
+  await undo();
+  check(await fieldIs("X position", 120), "the drag is one undo step");
+
+  log("clicking a handle without dragging keeps the selection");
+  await clickWorld(400, 320);
+  const eh = await handlePoint("e");
+  await page.mouse.click(eh.x + 4, eh.y); // just outside Hero's right edge, over Desktop
+  check((await selectedName()) === "Hero", `a click on a handle should keep Hero selected, got ${await selectedName()}`);
+
+  log("Escape between the press and the drag drops the press");
+  await page.keyboard.press("Escape");
+  const avatarCentre = m.toScreen(1248, 88);
+  await page.mouse.move(avatarCentre.x, avatarCentre.y);
+  await page.mouse.down();
+  check((await selectedName()) === "Avatar", "pressing on Avatar selects it");
+  await page.keyboard.press("Escape");
+  await page.mouse.move(avatarCentre.x + 60, avatarCentre.y, { steps: 6 });
+  await page.mouse.up();
+  check((await selectedName()) === null, `Escape should clear the selection, got ${await selectedName()}`);
+  check((await box4("Avatar")).x === 1200, `Avatar must not move after Escape, got X ${await field(page, "X position")}`);
+
+  log("handles sit on the layers a resize changes (a parent and its child both selected)");
+  await layerRow(page, "Hero").click();
+  await setField(page, "X position", 1200); // Hero now sticks out of Desktop on the right
+  await layerRow(page, "Desktop").click();
+  await layerRow(page, "Hero").click({ modifiers: ["ControlOrMeta"] });
+  check((await selectedName()) === "Desktop,Hero", `Desktop and Hero should both be selected, got ${await selectedName()}`);
+  const dRect = await selectionRect();
+  check(near(dRect.width, 1440 * m.z, 1), `the handle box should be Desktop's (the layer a resize changes), ${dRect.width} px wide vs ${1440 * m.z}`);
+  const seH = await handlePoint("se");
+  await drag(page, seH.x, seH.y, seH.x + 50, seH.y);
+  const after7 = await selectionRect();
+  check(near(after7.x + after7.width, seH.x + 50, 2), `the box edge should follow the pointer, edge ${after7.x + after7.width} vs pointer ${seH.x + 50}`);
+  check(near((await box4("Desktop")).w, 1440 + 50 / m.z, tol), `Desktop should grow by ${50 / m.z}`);
+  await undo();
+  check(await fieldIs("Width", 1440), "undo the resize");
+  await layerRow(page, "Hero").click();
+  await undo();
+  check(await fieldIs("X position", 120), "undo the X edit");
+
+  log("⌘D in a Properties field never reaches the browser (bookmark dialog) and duplicates nothing");
+  await page.evaluate(() => {
+    globalThis.__dPrevented = null;
+    window.addEventListener("keydown", (e) => e.key.toLowerCase() === "d" && (globalThis.__dPrevented = e.defaultPrevented));
+  });
+  const layersBefore = await layerRows(page).count();
+  await page.getByLabel("X position").focus();
+  await page.keyboard.press("ControlOrMeta+d");
+  check((await page.evaluate(() => globalThis.__dPrevented)) === true, "⌘D in a field should be prevented");
+  check((await layerRows(page).count()) === layersBefore, "⌘D in a field must not duplicate");
+  await page.keyboard.press("Escape");
+
+  log("Shift-click in the Layers panel selects a range; ⌘-click toggles");
+  await layerRow(page, "Desktop").click();
+  await layerRow(page, "Hero").click({ modifiers: ["Shift"] });
+  check((await selectedName()) === "Desktop,Avatar,Hero", `Shift-click should select Desktop through Hero, got ${await selectedName()}`);
+  await layerRow(page, "Avatar").click({ modifiers: ["ControlOrMeta"] });
+  check((await selectedName()) === "Desktop,Hero", `⌘-click should remove Avatar, got ${await selectedName()}`);
+  await page.keyboard.press("Escape");
   await context.close();
 });

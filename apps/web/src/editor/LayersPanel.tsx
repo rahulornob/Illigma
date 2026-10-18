@@ -1,14 +1,16 @@
+import { useRef, type MouseEvent } from "react";
 import type { Document, ReadonlyNode } from "@illigma/core";
 import type { Node, NodeId } from "@illigma/format";
 import { Icon, type IconName } from "../ui/Icon";
+import { layerRange } from "./edit";
 
 interface LayersPanelProps {
   doc: Document;
   pageId: NodeId;
   selection: readonly NodeId[];
   onPage(id: NodeId): void;
-  /** `toggle`: Shift- or ⌘-click adds the layer to the selection, or removes it. */
-  onSelect(id: NodeId, toggle: boolean): void;
+  /** The new selection after a click on a layer row. */
+  onSelect(ids: NodeId[]): void;
 }
 
 const TYPE_ICON: Partial<Record<Node["type"], IconName>> = {
@@ -26,6 +28,8 @@ const typeClass = (t: Node["type"]) =>
 
 export function LayersPanel({ doc, pageId, selection, onPage, onSelect }: LayersPanelProps) {
   const pages = doc.pages();
+  /** Where a Shift-click range starts: the row last clicked without Shift. */
+  const anchor = useRef<NodeId | null>(null);
 
   const rows: { node: ReadonlyNode; depth: number }[] = [];
   const walk = (parent: NodeId, depth: number) => {
@@ -36,6 +40,19 @@ export function LayersPanel({ doc, pageId, selection, onPage, onSelect }: Layers
     }
   };
   walk(pageId, 0);
+
+  // As in Figma: a click selects the layer, ⌘/Ctrl-click adds or removes it, Shift-click selects the range from the last click.
+  const click = (e: MouseEvent, id: NodeId) => {
+    if (e.shiftKey) {
+      const order = rows.map((r) => r.node.id);
+      const from = anchor.current !== null && order.includes(anchor.current) ? anchor.current : (selection[selection.length - 1] ?? null);
+      onSelect(layerRange(order, from, id));
+      return;
+    }
+    anchor.current = id;
+    if (e.metaKey || e.ctrlKey) onSelect(selection.includes(id) ? selection.filter((x) => x !== id) : [...selection, id]);
+    else onSelect([id]);
+  };
 
   return (
     <aside className="panel panel-left" aria-label="Layers">
@@ -73,7 +90,7 @@ export function LayersPanel({ doc, pageId, selection, onPage, onSelect }: Layers
                   aria-pressed={selection.includes(node.id)}
                   aria-label={`${node.name}, ${node.type.toLowerCase()}`}
                   style={{ paddingLeft: 8 + depth * 16 }}
-                  onClick={(e) => onSelect(node.id, e.shiftKey || e.metaKey || e.ctrlKey)}
+                  onClick={(e) => click(e, node.id)}
                 >
                   <span className={`row-icon ${typeClass(node.type)}`}>
                     <Icon name={TYPE_ICON[node.type] ?? "square"} />

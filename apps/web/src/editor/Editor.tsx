@@ -17,7 +17,7 @@ import {
 import { onBeforeUpdate } from "../sw-update";
 import { Icon, LogoMark } from "../ui/Icon";
 import { Canvas, type CanvasHandle, type HitTest, type Tool } from "./Canvas";
-import { deleteLayers, duplicateLayers, movable, moveBy, snapshot } from "./edit";
+import { createdLayers, deleteLayers, duplicateLayers, movable, moveBy, snapshot } from "./edit";
 import { nudgeFor } from "./geometry";
 import { useDocVersion, useSaveDisplay } from "./hooks";
 import { LayersPanel } from "./LayersPanel";
@@ -98,6 +98,16 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
     [doc, pageId],
   );
 
+  /**
+   * A drag still open on the canvas is kept before anything that writes the document
+   * (closing the tab, going Home, Keep, an app update): a save or journal flush would
+   * otherwise silently leave it out, or fail on it.
+   */
+  const settleDrag = useCallback(() => {
+    const drag = doc.live;
+    if (drag?.open) drag.commit();
+  }, [doc]);
+
   /** Writes that replace the session (Keep, Discard, reloads): closing the file waits for them before giving up the lock. */
   const track = <T,>(work: Promise<T>): Promise<T> => {
     whileClosing(doc.fileId, work);
@@ -108,17 +118,24 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
   useEffect(() => {
     if (viewOnly) return; // the journal belongs to the tab that is editing
     const detach = journal.attach(doc);
-    // The 250 ms batch must not be lost when the tab is hidden or closed.
-    const flushJournal = () => void journal.flush().catch(() => {});
+    // The 250 ms batch must not be lost when the tab is hidden or closed. The OPFS append is asynchronous and may
+    // not finish before the page goes away, so the batch is also stashed synchronously; the next load picks it up.
+    const flushJournal = () => {
+      settleDrag();
+      journal.stashUnflushed();
+      void journal.flush().catch(() => {});
+    };
     const onHidden = () => document.visibilityState === "hidden" && flushJournal();
     window.addEventListener("pagehide", flushJournal);
+    window.addEventListener("beforeunload", flushJournal);
     document.addEventListener("visibilitychange", onHidden);
     return () => {
       window.removeEventListener("pagehide", flushJournal);
+      window.removeEventListener("beforeunload", flushJournal);
       document.removeEventListener("visibilitychange", onHidden);
       whileClosing(doc.fileId, detach());
     };
-  }, [doc, journal, viewOnly]);
+  }, [doc, journal, viewOnly, settleDrag]);
 
   // Autosave. It runs while the recovery banner is undecided too: the journal keeps the recovered
   // lines through its saves (only Keep or Discard removes them), so editing first loses nothing.
@@ -129,7 +146,10 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
     const saver = new Autosaver(doc, backend, unsaved ? { journal, unsaved } : { journal });
     saverRef.current = saver;
     setAutosaver(saver);
-    const flush = () => (saver.status.state !== "saved" ? saver.flushNow() : Promise.resolve());
+    const flush = () => {
+      settleDrag();
+      return saver.status.state !== "saved" ? saver.flushNow() : Promise.resolve();
+    };
     const onHide = () => void flush();
     const onHidden = () => document.visibilityState === "hidden" && onHide();
     window.addEventListener("pagehide", onHide);
@@ -142,7 +162,7 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
       saver.dispose();
       if (saverRef.current === saver) saverRef.current = null;
     };
-  }, [doc, backend, journal, viewOnly, saverGeneration]);
+  }, [doc, backend, journal, viewOnly, saverGeneration, settleDrag]);
 
   const save = useSaveDisplay(autosaver, backend);
   // Retrying every 30 seconds is the Autosaver's job (save-states.md rule 3).
@@ -151,10 +171,11 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
   useEffect(() => {
     if (viewOnly) return;
     return onBeforeUpdate(async () => {
+      settleDrag();
       await journal.flush();
       await saverRef.current?.flushNow();
     });
-  }, [journal, viewOnly]);
+  }, [journal, viewOnly, settleDrag]);
 
   // Changes on disk (rule 4). Every save checks first; a file in a folder is also checked now and then and on focus,
   // so a synced change shows up before the next edit. No unsaved edits: reload quietly. Otherwise hold saving.
@@ -264,6 +285,7 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
   };
 
   const keep = async () => {
+    settleDrag(); // the kept copy is made from the document as it is: half a drag would be saved without being an edit
     setRecovery({ busy: "keep", error: null });
     // Stop autosaving this document: after the kept copy is saved, a late save of this one would overwrite it.
     const old = saverRef.current;
@@ -291,6 +313,7 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
   };
 
   const goHome = async () => {
+    settleDrag();
     setClosing(true);
     let journalOk = true;
     try {
@@ -315,6 +338,26 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
   const keys = useRef({ autosaver, selection, tool, locked, pageId });
   keys.current = { autosaver, selection, tool, locked, pageId };
   useEffect(() => {
+    /** Undo or redo. Layers it brings back (an undone delete, a redone duplicate) are selected again, as in Figma. */
+    const step = (which: "undo" | "redo") => {
+      let created: NodeId[] = [];
+      const stop = doc.subscribe((c) => {
+        if (c.origin === which) created = createdLayers(c.ops);
+      });
+      try {
+        if (which === "undo") doc.undo();
+        else doc.redo();
+      } finally {
+        stop();
+      }
+      const page = keys.current.pageId;
+      const onPage = created.filter((id) => {
+        let n = doc.get(id);
+        while (n?.parentId) n = doc.get(n.parentId);
+        return n?.id === page;
+      });
+      if (onPage.length) setSelection(onPage);
+    };
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
       const k = e.key.toLowerCase();
@@ -334,6 +377,8 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
         canvas.current?.zoomOut();
         return;
       }
+      // ⌘D is the browser's bookmark shortcut: never let it through, even from a field (where it duplicates nothing).
+      if (mod && k === "d") e.preventDefault();
       if (isTyping(e.target)) return;
       // A drag on the canvas is running: it owns the document until it ends (Escape cancels it there).
       if (doc.live) {
@@ -357,14 +402,12 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
       }
       if (mod && k === "z") {
         e.preventDefault();
-        if (noEdits) return;
-        if (e.shiftKey) doc.redo();
-        else doc.undo();
+        if (!noEdits) step(e.shiftKey ? "redo" : "undo");
         return;
       }
       if (mod && k === "y") {
         e.preventDefault();
-        if (!noEdits) doc.redo();
+        if (!noEdits) step("redo");
         return;
       }
       if (mod && e.key === "0") {
@@ -462,7 +505,7 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
             setPageId(id);
             setSelection([]);
           }}
-          onSelect={(id, toggle) => setSelection((cur) => (toggle ? (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]) : [id]))}
+          onSelect={setSelection}
         />
 
         <main className="canvas-area" aria-label="Canvas area">

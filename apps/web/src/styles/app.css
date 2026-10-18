@@ -589,6 +589,13 @@ ul {
 .selection-box[data-handles="off"] .handle {
   display: none;
 }
+/* A tiny selection shows its corners only: edge handles would cover them (the edges still resize). */
+.selection-box[data-small="on"] .handle.n,
+.selection-box[data-small="on"] .handle.e,
+.selection-box[data-small="on"] .handle.s,
+.selection-box[data-small="on"] .handle.w {
+  display: none;
+}
 .handle.nw,
 .handle.w,
 .handle.sw {

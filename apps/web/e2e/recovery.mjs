@@ -202,4 +202,48 @@ await runE2E("recovery", {}, async ({ browser, url, log, check, outDir, errors }
     }
     await context.close();
   }
+  // ---------- Closed within 250 ms of the last edits ----------
+  {
+    const context = await newContext(browser);
+    const page = await context.newPage();
+    watchErrors(page, errors);
+    await page.addInitScript(failWritesInit);
+    log("last edits: 20 quick nudges, then reload while the journal's append can't finish");
+    const fileId = await createFile(page, url);
+    await layerRow(page, "Hero").click();
+    await waitSaved(page);
+    // Package writes fail and journal appends never commit: only the synchronous stash can keep these edits.
+    await page.evaluate(() => (globalThis.__e2eFail = ({ journal }) => (journal ? "hold" : "fail")));
+    await page.locator("canvas.canvas").focus();
+    for (let i = 0; i < 20; i++) await page.keyboard.press("ArrowLeft");
+    await poll(async () => (await field(page, "X position")) === 100, "20 nudges should move Hero to X 100", 2_000);
+    await page.reload();
+    await canvasReady(page);
+    await banner(page).waitFor({ timeout: T(5_000) });
+    const text = await banner(page).innerText();
+    check(/20 edits from your last session/.test(text), `the banner should offer the 20 nudges made just before the reload, got "${text}"`);
+    check(!(await page.evaluate((id) => localStorage.getItem(`illigma.journal-stash.${id}`), fileId)), "the stash should be moved into the journal on load");
+    await banner(page).getByRole("button", { name: "Keep" }).click();
+    await banner(page).waitFor({ state: "detached", timeout: T(5_000) });
+    await canvasReady(page);
+    check((await heroX(page)) === 100, `Keep should restore all 20 nudges (X 100), got ${await heroX(page)}`);
+    await waitSaved(page);
+
+    log("last edits: the same with nothing failing never loses them");
+    await layerRow(page, "Hero").click();
+    await page.locator("canvas.canvas").focus();
+    for (let i = 0; i < 20; i++) await page.keyboard.press("ArrowLeft");
+    await page.reload();
+    await canvasReady(page);
+    await page.waitForTimeout(300);
+    let x = await heroX(page);
+    if ((await banner(page).count()) === 1) {
+      await banner(page).getByRole("button", { name: "Keep" }).click();
+      await banner(page).waitFor({ state: "detached", timeout: T(5_000) });
+      await canvasReady(page);
+      x = await heroX(page);
+    }
+    check(x === 80, `after a reload right after 20 nudges, Hero should be at X 80 (saved, or offered for recovery), got ${x}`);
+    await context.close();
+  }
 });

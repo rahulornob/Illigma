@@ -28,7 +28,7 @@ export {
   TEMP_SUFFIX,
 } from "./backend.js";
 export { Autosaver, describeSaveError, saveErrorReason, RETRY_MS, type AutosaverOptions, type SaveState, type SaveStatus } from "./autosaver.js";
-export { RecoveryJournal, JOURNAL_FLUSH_MS } from "./journal.js";
+export { RecoveryJournal, JOURNAL_FLUSH_MS, STASH_MAX_CHARS, stashKey, type JournalOptions, type StashStorage } from "./journal.js";
 export { listRecentFiles, type RecentFile } from "./recent.js";
 export { acquireFileLock, type FileLock } from "./lock.js";
 export { idbLocationStore, isCopyOfAnother, memoryLocationStore, type LocationStore } from "./locations.js";
