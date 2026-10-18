@@ -32,6 +32,8 @@ After v1.0: a Tauri desktop app in v1.x, then optional multiplayer (CRDT over LA
 - `@illigma/core`: `Document.beginLive()` returns a `LiveEdit` (`update`, `commit`, `cancel`): a drag shows every step live and is recorded as one undo step. The recovery journal skips live steps and the autosaver never writes a drag halfway.
 
 ### Added (2026-10-18, development Phase 0)
+- `@illigma/layout` (MPL-2.0), milestone 0.7: Figma-compatible auto layout (horizontal, vertical, wrap, padding, fixed, negative and Auto gaps, alignment, Fixed/Hug/Fill sizing, min and max, ignore auto layout, nested frames) and constraints (left, right, left and right, centre, scale; through groups). `relayout` and `resize` return field changes to apply in the same transaction, so one undo reverts an edit and its layout. Every geometry case of the prototype's auto layout and constraints specs is ported as a unit test; 10,000 nested nodes lay out in about 30 ms.
+- Format v0: optional auto layout and constraints fields named after Figma's Plugin API (`layoutMode`, `itemSpacing`, `padding*`, `primaryAxisAlignItems`, `layoutSizingHorizontal`, `constraints`, `minWidth` and others), validated and in the JSON Schema. Files without them are unchanged byte for byte.
 - Design approved: all 15 areas signed off.
 - Monorepo: npm workspaces, strict TypeScript, Vitest; MPL-2.0 and MIT licence files.
 - `@illigma/format` (MIT): `.illigma` format v0 (package form, canonical output, fractional-index ordering, validation, migrations, JSON Schema).

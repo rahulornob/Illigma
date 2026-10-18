@@ -96,7 +96,87 @@ export interface TextFields {
   lineHeight?: number;
 }
 
-export type Node = NodeBase & TextFields;
+/** Auto layout direction. "NONE" is a plain frame whose children keep their own positions. */
+export type LayoutMode = "NONE" | "HORIZONTAL" | "VERTICAL";
+/** Placement along the stack. The SPACE_* values are Figma's "Auto" gap (Between, Around, Evenly). */
+export type PrimaryAxisAlign = "MIN" | "CENTER" | "MAX" | "SPACE_BETWEEN" | "SPACE_AROUND" | "SPACE_EVENLY";
+export type CounterAxisAlign = "MIN" | "CENTER" | "MAX";
+/** How wrapped rows (or columns) share the frame's spare space across the stack. */
+export type CounterAxisAlignContent = "AUTO" | "SPACE_BETWEEN";
+/** "AUTO" hugs the content; "FIXED" keeps the stored size. */
+export type AxisSizingMode = "FIXED" | "AUTO";
+export type LayoutWrap = "NO_WRAP" | "WRAP";
+/** "ABSOLUTE" takes a child out of its auto layout parent's flow ("Ignore auto layout"). */
+export type LayoutPositioning = "AUTO" | "ABSOLUTE";
+export type LayoutSizing = "FIXED" | "HUG" | "FILL";
+/** MIN = left or top, MAX = right or bottom, STRETCH = both edges, SCALE = proportional. */
+export type ConstraintType = "MIN" | "CENTER" | "MAX" | "STRETCH" | "SCALE";
+
+export interface Constraints {
+  horizontal: ConstraintType;
+  vertical: ConstraintType;
+}
+
+export const LAYOUT_MODES: readonly LayoutMode[] = ["NONE", "HORIZONTAL", "VERTICAL"];
+export const PRIMARY_AXIS_ALIGNS: readonly PrimaryAxisAlign[] = ["MIN", "CENTER", "MAX", "SPACE_BETWEEN", "SPACE_AROUND", "SPACE_EVENLY"];
+export const COUNTER_AXIS_ALIGNS: readonly CounterAxisAlign[] = ["MIN", "CENTER", "MAX"];
+export const COUNTER_AXIS_ALIGN_CONTENTS: readonly CounterAxisAlignContent[] = ["AUTO", "SPACE_BETWEEN"];
+export const AXIS_SIZING_MODES: readonly AxisSizingMode[] = ["FIXED", "AUTO"];
+export const LAYOUT_WRAPS: readonly LayoutWrap[] = ["NO_WRAP", "WRAP"];
+export const LAYOUT_POSITIONINGS: readonly LayoutPositioning[] = ["AUTO", "ABSOLUTE"];
+export const LAYOUT_SIZINGS: readonly LayoutSizing[] = ["FIXED", "HUG", "FILL"];
+export const CONSTRAINT_TYPES: readonly ConstraintType[] = ["MIN", "CENTER", "MAX", "STRETCH", "SCALE"];
+
+/**
+ * Auto layout and constraints, named after Figma's Plugin API. Every field is
+ * optional and an absent field means Figma's default (noted on each), so files
+ * written before these fields existed read, and save, exactly as before.
+ */
+export interface LayoutFields {
+  // ---- on a frame: its own auto layout ----
+  /** Default "NONE". */
+  layoutMode?: LayoutMode;
+  /** Gap between children along the stack. May be negative, for overlapping stacks. Default 0. */
+  itemSpacing?: number;
+  /** Gap between wrapped rows or columns, 0 or more. Default: the same as `itemSpacing`, but never negative. */
+  counterAxisSpacing?: number;
+  /** Inner padding, 0 or more. Default 0 each. */
+  paddingLeft?: number;
+  paddingRight?: number;
+  paddingTop?: number;
+  paddingBottom?: number;
+  /** Default "MIN". */
+  primaryAxisAlignItems?: PrimaryAxisAlign;
+  /** Default "MIN". */
+  counterAxisAlignItems?: CounterAxisAlign;
+  /** Wrapped frames only. Default "AUTO". */
+  counterAxisAlignContent?: CounterAxisAlignContent;
+  /** Sizing along the stack. Default "AUTO" (hug), as in Figma's file format. */
+  primaryAxisSizingMode?: AxisSizingMode;
+  /** Sizing across the stack. Default "AUTO" (hug). */
+  counterAxisSizingMode?: AxisSizingMode;
+  /** Default "NO_WRAP". */
+  layoutWrap?: LayoutWrap;
+
+  // ---- on any node: how it sits in its parent ----
+  /** Default "AUTO". */
+  layoutPositioning?: LayoutPositioning;
+  /**
+   * Fixed, Hug contents or Fill container, per axis. When set, it wins over the
+   * sizing modes above. Absent: "HUG" on an auto layout frame's AUTO axes, else "FIXED".
+   */
+  layoutSizingHorizontal?: LayoutSizing;
+  layoutSizingVertical?: LayoutSizing;
+  /** How the node follows its parent frame when that frame is resized. Default left and top (both "MIN"). */
+  constraints?: Constraints;
+  /** Size limits applied by auto layout, 0 or more. Default: no limit. */
+  minWidth?: number;
+  maxWidth?: number;
+  minHeight?: number;
+  maxHeight?: number;
+}
+
+export type Node = NodeBase & TextFields & LayoutFields;
 
 /** The node fields an operation may change. `id` and `type` never change. */
 export type NodeKey = Exclude<keyof Node, "id" | "type">;
