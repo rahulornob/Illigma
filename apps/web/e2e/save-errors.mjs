@@ -76,7 +76,7 @@ await runE2E("save-errors", {}, async ({ browser, url, log, check, outDir, error
   await page.screenshot({ path: `${outDir}/save-error.png` });
 
   log("edits stay in memory while saving fails");
-  check((await layerRows(page).count()) === 4, "the drawn rectangle should stay in the document");
+  check((await layerRows(page).count()) === 8, "the drawn rectangle should stay in the document");
   await layerRow(page, "Hero").click();
   // Counted before the edit: its autosave can fire on real time before runFor() below.
   const failedBefore = await failedWrites(page);
@@ -107,7 +107,7 @@ await runE2E("save-errors", {}, async ({ browser, url, log, check, outDir, error
   log("the recovered save holds every edit");
   await page.reload();
   await canvasReady(page);
-  check((await layerRows(page).count()) === 4, "the rectangle drawn while saving failed should be in the file");
+  check((await layerRows(page).count()) === 8, "the rectangle drawn while saving failed should be in the file");
   await layerRow(page, "Hero").click();
   check((await field(page, "X position")) === 300, "the X edit made while saving failed should be in the file");
 

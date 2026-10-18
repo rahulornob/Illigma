@@ -33,9 +33,26 @@ export interface Change {
 
 export type Listener = (change: Change) => void;
 
+/**
+ * A hook that completes every edit before it is kept, such as layout filling
+ * in positions and sizes. It gets the document (already showing the edit),
+ * the edit's transaction and the operations made so far, and may record more
+ * with `tx`; they become part of the same undo step. It runs:
+ *
+ * - at the end of each top-level `transact`, before the step is committed;
+ * - at the end of each `LiveEdit.update` (each step of a drag);
+ * - after `replay`, so replayed edits are completed too (without history).
+ *
+ * It never runs on undo or redo: their operations already hold what it added,
+ * so they restore exact values. If it throws, the whole edit is rolled back.
+ */
+export type Normalizer = (doc: Document, tx: Transaction, ops: readonly Operation[]) => void;
+
 export interface DocumentOptions {
   /** Maximum undo steps kept. PRD minimum is 100. */
   historyLimit?: number;
+  /** Completes every edit before it is kept: see `Normalizer`. */
+  normalize?: Normalizer | undefined;
 }
 
 export class DocumentError extends Error {
@@ -88,6 +105,7 @@ export class Document {
   #redoStack: Change[] = [];
   #listeners = new Set<Listener>();
   readonly #historyLimit: number;
+  readonly #normalize: Normalizer | undefined;
   #tx: Transaction | null = null;
   #live: LiveEdit | null = null;
 
@@ -105,6 +123,18 @@ export class Document {
     this.name = name;
     this.created = new Date().toISOString();
     this.#historyLimit = Math.max(100, options.historyLimit ?? 200);
+    this.#normalize = options.normalize;
+  }
+
+  /** The hook that completes every edit, if any (pass it on to a copy: `Document.fromFile(doc.toFile(), { normalize: doc.normalizer })`). */
+  get normalizer(): Normalizer | undefined {
+    return this.#normalize;
+  }
+
+  /** Let the normalizer complete what `tx` holds, recording with `tx`. Runs while `tx` is the open transaction. */
+  #normalized(tx: Transaction): void {
+    const ops = txOps(tx);
+    if (this.#normalize && ops.length) this.#normalize(this, tx, ops.slice());
   }
 
   // ---- reading ----
@@ -217,6 +247,7 @@ export class Document {
     let result: T;
     try {
       result = fn(tx);
+      this.#normalized(tx);
     } catch (err) {
       this.#rollback(txOps(tx), 0);
       throw err;
@@ -268,6 +299,7 @@ export class Document {
     this.#tx = tx;
     try {
       fn(tx);
+      this.#normalized(tx);
     } catch (err) {
       // Back to where the previous update left it, as if this one never ran.
       this.#rollback(ops, 0);
@@ -314,6 +346,20 @@ export class Document {
       // Checked at the end: a move sets parentId before index, so siblings may share an index in between.
       const shared = this.#sharedIndex(parents);
       if (shared !== undefined) throw new DocumentError(`Can't replay: two children of ${shared ?? "the file"} would share a position.`);
+      if (this.#normalize && done.length) {
+        // Replayed edits are completed like new ones: they may come from before the normalizer existed, or from elsewhere.
+        const tx = new Transaction(this);
+        this.#tx = tx;
+        try {
+          this.#normalize(this, tx, done.slice());
+        } catch (err) {
+          this.#rollback(txOps(tx), 0);
+          throw err;
+        } finally {
+          this.#tx = null;
+        }
+        done.push(...txOps(tx));
+      }
     } catch (err) {
       this.#rollback(done, 0);
       throw err;
