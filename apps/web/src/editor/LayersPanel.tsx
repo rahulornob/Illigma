@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type ReactElement } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FocusEvent, type KeyboardEvent, type MouseEvent, type ReactElement } from "react";
 import type { Document, Operation } from "@illigma/core";
 import type { Node, NodeId } from "@illigma/format";
 import { Icon, type IconName } from "../ui/Icon";
@@ -87,6 +87,13 @@ function useLayerRows(doc: Document, pageId: NodeId): LayerRowData[] {
   return useMemo(() => layerRows(doc, pageId), [doc, pageId, v]);
 }
 
+/** Whether two selections hold the same layers (in any order). */
+function sameIds(a: readonly NodeId[], b: readonly NodeId[]): boolean {
+  if (a.length !== b.length) return false;
+  const s = new Set(a);
+  return b.every((id) => s.has(id));
+}
+
 /** Rows drawn above and below the visible ones, so short lists render whole and scrolling shows no gaps. */
 const OVERSCAN = 24;
 const ROW_FALLBACK = 32;
@@ -114,7 +121,7 @@ const LayerRow = memo(function LayerRow({ row, index, selected, tabbable, height
       aria-level={row.depth + 1}
       aria-setsize={row.setsize}
       aria-posinset={row.posinset}
-      aria-expanded={row.hasChildren ? true : undefined}
+      // No aria-expanded: rows can't collapse yet, and an always-"true" state would promise a toggle that isn't there.
       aria-label={`${row.name}, ${row.type.toLowerCase()}`}
       style={{ position: "absolute", top: index * height, left: 0, paddingLeft: 8 + row.depth * 16 }}
       onClick={(e) => onRowClick(e, index)}
@@ -139,8 +146,8 @@ export function LayersPanel({ doc, pageId, selection, onPage, onSelect }: Layers
   const tree = useRef<HTMLDivElement>(null);
   const [rowHeight, setRowHeight] = useState(ROW_FALLBACK);
   const [view, setView] = useState({ top: 0, height: 900 });
-  /** Move DOM focus to the focus row after the next render (it may not be rendered yet). */
-  const wantFocus = useRef(false);
+  /** A row to move DOM focus to once it is rendered (it may not be yet), or null. */
+  const wantFocus = useRef<NodeId | null>(null);
 
   const indexOf = useMemo(() => {
     const m = new Map<NodeId, number>();
@@ -192,11 +199,28 @@ export function LayersPanel({ doc, pageId, selection, onPage, onSelect }: Layers
     [rowHeight, measure],
   );
 
-  // A selection made elsewhere (canvas, undo, ⌘D) scrolls its row into view, as in Figma.
+  /**
+   * The selection this list last asked for (a click or a key in the list), until the selection effect sees it.
+   * A selection made here keeps the row the user is on in view; only one made elsewhere scrolls to the selection.
+   */
+  const fromList = useRef<readonly NodeId[] | null>(null);
+
   const lastSelected = selection[selection.length - 1];
+  const focusRow = focusId !== null && indexOf.has(focusId) ? focusId : lastSelected !== undefined && indexOf.has(lastSelected) ? lastSelected : rows[0]?.id;
+
   useEffect(() => {
-    // Unless the list has focus (the change came from it), Tab into the list lands on the new selection.
-    if (!tree.current?.contains(document.activeElement)) setFocusId(null);
+    const asked = fromList.current;
+    fromList.current = null;
+    if (asked !== null && sameIds(asked, selection)) {
+      // Made in the list: the row the user clicked or moved to stays in view. Not the selection's last row: a
+      // range is in list order, so after Shift+↑ or Shift+Home that is the anchor, which may be far away.
+      const i = focusRow === undefined ? -1 : (indexOf.get(focusRow) ?? -1);
+      if (i >= 0) reveal(i);
+      return;
+    }
+    // Made elsewhere (canvas, undo, ⌘D): its row scrolls into view, as in Figma. Unless the list has focus or is
+    // about to take it back, Tab into the list lands on the new selection.
+    if (wantFocus.current === null && !tree.current?.contains(document.activeElement)) setFocusId(null);
     if (lastSelected === undefined) return;
     const i = indexOf.get(lastSelected);
     if (i !== undefined) reveal(i);
@@ -204,12 +228,51 @@ export function LayersPanel({ doc, pageId, selection, onPage, onSelect }: Layers
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selection]);
 
-  const focusRow = focusId !== null && indexOf.has(focusId) ? focusId : lastSelected !== undefined && indexOf.has(lastSelected) ? lastSelected : rows[0]?.id;
+  /** The row that had DOM focus while the list had it; kept when that row is removed (a Delete), so focus can move on. */
+  const hadFocus = useRef<NodeId | null>(null);
+  const prevRows = useRef(rows);
+  useLayoutEffect(() => {
+    const before = prevRows.current;
+    prevRows.current = rows;
+    const gone = hadFocus.current;
+    if (before === rows || gone === null || indexOf.has(gone)) return;
+    hadFocus.current = null;
+    const active = document.activeElement;
+    if (active !== null && active !== document.body) return;
+    // The focused row was deleted and focus fell to <body>: move it to the next row that is left, else the previous.
+    const at = before.findIndex((r) => r.id === gone);
+    let next: NodeId | undefined;
+    for (let i = at + 1; at >= 0 && i < before.length && next === undefined; i++) if (indexOf.has(before[i]!.id)) next = before[i]!.id;
+    for (let i = at - 1; i >= 0 && next === undefined; i--) if (indexOf.has(before[i]!.id)) next = before[i]!.id;
+    if (next === undefined) return;
+    wantFocus.current = next;
+    setFocusId(next);
+    reveal(indexOf.get(next)!);
+  }, [rows, indexOf, reveal]);
+
+  const onTreeFocus = useCallback((e: FocusEvent<HTMLDivElement>) => {
+    hadFocus.current = (e.target as HTMLElement).dataset["id"] ?? null;
+  }, []);
+  const onTreeBlur = useCallback((e: FocusEvent<HTMLDivElement>) => {
+    const t = e.target as HTMLElement;
+    // Focus leaving for good (a click elsewhere, Tab) forgets the row; a row removed from the DOM keeps it.
+    queueMicrotask(() => {
+      if (t.isConnected && hadFocus.current === (t.dataset["id"] ?? null) && !tree.current?.contains(document.activeElement)) hadFocus.current = null;
+    });
+  }, []);
 
   useEffect(() => {
-    if (!wantFocus.current || focusRow === undefined) return;
-    wantFocus.current = false;
-    document.getElementById(`layer-row-${focusRow}`)?.focus({ preventScroll: true });
+    // The row named when focus was asked for, not this render's focus row: a render that hasn't seen the
+    // new focus row yet (focus moving on from a deleted row) would send focus elsewhere.
+    const id = wantFocus.current;
+    if (id === null) return;
+    const el = document.getElementById(`layer-row-${id}`);
+    if (!el) {
+      if (!indexOf.has(id)) wantFocus.current = null; // gone: nothing to wait for
+      return;
+    }
+    wantFocus.current = null;
+    el.focus({ preventScroll: true });
   });
 
   // As in Figma: a click selects the layer, ⌘/Ctrl-click adds or removes it, Shift-click selects the range from the last click.
@@ -218,18 +281,29 @@ export function LayersPanel({ doc, pageId, selection, onPage, onSelect }: Layers
     const id = rows[index]?.id;
     if (id === undefined) return;
     setFocusId(id);
+    const ask = (ids: NodeId[]) => {
+      fromList.current = ids;
+      onSelect(ids);
+    };
     if (mods.shift) {
       const order = rows.map((r) => r.id);
       const from = anchor.current !== null && order.includes(anchor.current) ? anchor.current : (selection[selection.length - 1] ?? null);
-      onSelect(layerRange(order, from, id));
+      ask(layerRange(order, from, id));
       return;
     }
     anchor.current = id;
-    if (mods.toggle) onSelect(selection.includes(id) ? selection.filter((x) => x !== id) : [...selection, id]);
-    else onSelect([id]);
+    if (mods.toggle) ask(selection.includes(id) ? selection.filter((x) => x !== id) : [...selection, id]);
+    else ask([id]);
   }, []);
 
-  const onRowClick = useCallback((e: MouseEvent, index: number) => choose(index, { shift: e.shiftKey, toggle: e.metaKey || e.ctrlKey }), [choose]);
+  const onRowClick = useCallback(
+    (e: MouseEvent, index: number) => {
+      // The click focused its row: an earlier request to focus another one is over.
+      wantFocus.current = null;
+      choose(index, { shift: e.shiftKey, toggle: e.metaKey || e.ctrlKey });
+    },
+    [choose],
+  );
 
   /** Tree keyboard navigation (WAI-ARIA tree view): selection follows focus, Shift extends the range, ⌘/Ctrl moves focus only. */
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -277,7 +351,7 @@ export function LayersPanel({ doc, pageId, selection, onPage, onSelect }: Layers
     if (to === null || !rows.length) return;
     const i = Math.min(rows.length - 1, Math.max(0, to));
     const id = rows[i]!.id;
-    wantFocus.current = true;
+    wantFocus.current = id;
     setFocusId(id);
     reveal(i);
     if (e.metaKey || e.ctrlKey) return;
@@ -335,6 +409,8 @@ export function LayersPanel({ doc, pageId, selection, onPage, onSelect }: Layers
             data-rows={rows.length}
             style={{ position: "relative", height: rows.length * rowHeight, flex: "none" }}
             onKeyDown={onKeyDown}
+            onFocus={onTreeFocus}
+            onBlur={onTreeBlur}
           >
             {visible}
           </div>

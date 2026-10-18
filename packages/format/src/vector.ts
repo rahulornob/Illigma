@@ -293,16 +293,93 @@ export interface SvgPathOptions {
 
 const COMMANDS = new Set("MLHVCSQTAZ");
 
+/** An axis-aligned box: left, top, right, bottom. */
+type Bounds = [number, number, number, number];
+
+/** Points per curve when measuring a run's area. */
+const CURVE_STEPS = 8;
+
+/**
+ * Segments `from` to `to` (one run, end to end): whether they enclose an area
+ * when closed by a straight line (the shoelace formula over the vertices and
+ * points along the curves, beyond float noise), and their box with control
+ * points.
+ */
+function runShape(net: VectorNetwork, from: number, to: number): { area: boolean; box: Bounds } {
+  const first = net.vertices[(net.segments[from] as VectorNetwork["segments"][number]).start] as { x: number; y: number };
+  const box: Bounds = [first.x, first.y, first.x, first.y];
+  const grow = (x: number, y: number) => {
+    if (x < box[0]) box[0] = x;
+    if (y < box[1]) box[1] = y;
+    if (x > box[2]) box[2] = x;
+    if (y > box[3]) box[3] = y;
+  };
+  // Relative to the first point, so large coordinates don't drown the area in rounding.
+  let twice = 0;
+  let px = 0;
+  let py = 0;
+  let points = 1;
+  const to2 = (x: number, y: number) => {
+    const rx = x - first.x;
+    const ry = y - first.y;
+    twice += px * ry - rx * py;
+    px = rx;
+    py = ry;
+    points++;
+  };
+  for (let s = from; s < to; s++) {
+    const seg = net.segments[s] as VectorNetwork["segments"][number];
+    const a = net.vertices[seg.start] as { x: number; y: number };
+    const b = net.vertices[seg.end] as { x: number; y: number };
+    grow(b.x, b.y);
+    if (isStraight(seg)) {
+      to2(b.x, b.y);
+      continue;
+    }
+    const c1x = a.x + seg.tangentStart.x, c1y = a.y + seg.tangentStart.y;
+    const c2x = b.x + seg.tangentEnd.x, c2y = b.y + seg.tangentEnd.y;
+    grow(c1x, c1y);
+    grow(c2x, c2y);
+    for (let k = 1; k <= CURVE_STEPS; k++) {
+      const t = k / CURVE_STEPS;
+      const u = 1 - t;
+      const w0 = u * u * u, w1 = 3 * u * u * t, w2 = 3 * u * t * t, w3 = t * t * t;
+      if (k === CURVE_STEPS) to2(b.x, b.y);
+      else to2(w0 * a.x + w1 * c1x + w2 * c2x + w3 * b.x, w0 * a.y + w1 * c1y + w2 * c2y + w3 * b.y);
+    }
+  }
+  // Closing back to the first point adds px * 0 - 0 * py: nothing.
+  const extent = Math.max(box[2] - box[0], box[3] - box[1]);
+  return { area: Math.abs(twice) > 1e-12 * extent * extent * points, box };
+}
+
+/** Whether any two boxes overlap (more than touching). Many boxes count as overlapping, rather than comparing every pair. */
+function anyOverlap(boxes: readonly Bounds[]): boolean {
+  if (boxes.length > 2_000) return true;
+  const sorted = [...boxes].sort((a, b) => a[0] - b[0]);
+  for (let i = 0; i < sorted.length; i++) {
+    const a = sorted[i] as Bounds;
+    for (let j = i + 1; j < sorted.length; j++) {
+      const b = sorted[j] as Bounds;
+      if (b[0] >= a[2]) break;
+      if (b[1] < a[3] && a[1] < b[3]) return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Reads SVG path data (`d`) into a vector network: every command (M, L, H,
  * V, C, S, Q, T, A, Z, absolute and relative), with quadratics raised to
  * cubics and elliptical arcs split into cubics of at most 90°. Each subpath
  * becomes a run of segments; the closed ones (Z) form one region with
  * `options.windingRule`. When an open subpath encloses an area (SVG fills it
- * as if closed, without stroking the closing line), there is no region
- * instead, and every run fills as if closed with the nonzero rule: a region
- * can't close a subpath without adding a stroked segment, so this is the
- * closest the network can come. Throws `FormatError` on unreadable data
+ * as if closed, without stroking the closing line), a region can't close it
+ * without adding a stroked segment, so the network comes as close as it can:
+ * with the nonzero rule, or even-odd subpaths that don't overlap, there is no
+ * region and every run fills as if closed with the nonzero rule (as in SVG);
+ * with even-odd subpaths that overlap, the closed subpaths keep their region
+ * (holes stay open) and the open ones go unfilled. Throws `FormatError` on unreadable data
  * (including coordinates or handles too large to be numbers) or more than
  * `VECTOR_LIMITS` allows.
  */
@@ -382,7 +459,9 @@ export function vectorNetworkFromSvgPath(d: string, options: SvgPathOptions = {}
   let open = false; // a subpath is started and not yet closed
   let lastCubic: [number, number] | null = null; // second control point, for S
   let lastQuad: [number, number] | null = null; // control point, for T
-  let openArea = false; // an open subpath encloses an area (see the end)
+  /** Bounding boxes (with control points) of the closed subpaths and of the open subpaths that enclose an area (see the end). */
+  const closedBoxes: Bounds[] = [];
+  const openBoxes: Bounds[] = [];
 
   const check = (...vs: number[]) => {
     for (const v of vs) if (!Number.isFinite(v)) fail("a coordinate is too large");
@@ -395,13 +474,18 @@ export function vectorNetworkFromSvgPath(d: string, options: SvgPathOptions = {}
   /**
    * Ends an open subpath (one not closed by Z). Drops it if it drew nothing (a
    * lone M), so it leaves no stray vertex; notes whether it encloses an area
-   * that SVG fills as if closed (two or more segments, or one curve).
+   * that SVG fills as if closed: a run whose area, closed by a straight line,
+   * isn't zero. Lines along one line (M0 0 h10 h10) or going back over
+   * themselves enclose nothing.
    */
   const dropEmptySubpath = () => {
     if (open) {
       const made = net.segments.length - firstSegment;
       if (made === 0 && curVertex === net.vertices.length - 1) net.vertices.pop();
-      else if (made >= 2 || (made === 1 && !isStraight(net.segments[firstSegment] as VectorNetwork["segments"][number]))) openArea = true;
+      else {
+        const shape = runShape(net, firstSegment, net.segments.length);
+        if (shape.area) openBoxes.push(shape.box);
+      }
     }
     open = false;
   };
@@ -449,6 +533,7 @@ export function vectorNetworkFromSvgPath(d: string, options: SvgPathOptions = {}
       const loop: number[] = [];
       for (let s = firstSegment; s < segs.length; s++) loop.push(s);
       loops.push(loop);
+      closedBoxes.push(runShape(net, firstSegment, segs.length).box);
       open = false;
     }
     curVertex = startVertex;
@@ -558,10 +643,15 @@ export function vectorNetworkFromSvgPath(d: string, options: SvgPathOptions = {}
   }
   dropEmptySubpath();
   // SVG fills every subpath, the open ones as if closed by a straight line that isn't stroked. A
-  // region can't close a subpath without a (stroked) segment, so when an open subpath encloses an
-  // area the network gets no region: then every run fills as if closed (and with the nonzero rule),
-  // as it does for paths with no closed subpath. Otherwise the closed subpaths are one region.
-  if (loops.length && !openArea) net.regions.push({ windingRule, loops });
+  // region can't close a subpath without a (stroked) segment, so the network picks what comes closest:
+  // - No open subpath encloses an area: the closed subpaths are one region, with the winding rule.
+  // - One does, and the rule is nonzero, or (even-odd) no two subpaths' boxes overlap so the rules fill
+  //   alike: no region, and every run fills as if closed with the nonzero rule, exactly as SVG does.
+  // - One does, and even-odd subpaths overlap (holes): the closed subpaths keep their even-odd region,
+  //   so the holes stay open, and the open subpaths go unfilled.
+  // (A self-crossing closed subpath alone, such as a pentagram, still fills its centre in the second
+  // case; an open run whose crossing halves cancel out, such as a bow tie, counts as no area.)
+  if (loops.length && (!openBoxes.length || (windingRule === "EVENODD" && anyOverlap([...closedBoxes, ...openBoxes])))) net.regions.push({ windingRule, loops });
   return net;
 
   function quadTo(q: [number, number], ex: number, ey: number) {

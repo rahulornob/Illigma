@@ -25,6 +25,13 @@ After v1.0: a Tauri desktop app in v1.x, then optional multiplayer (CRDT over LA
 - Phase 0 (foundations): renderer spike (CanvasKit, 10,000 layers at 60 fps), offline web app, design tokens in code. See [docs/dev/phase-0.md](docs/dev/phase-0.md).
 - Run the real usability sessions (Phase 5) in parallel; fix what they find.
 
+### Fixed (2026-10-18, QC round 7: layers, resize and vectors)
+- Layers panel: a selection made in the list keeps the row you're on in view; only selections made elsewhere scroll to the selection. Shift+↑, Shift-click upward and ⌘-click to deselect no longer scroll the list away, and Shift+Home from far down keeps keyboard focus in the list (↓ then moves in the list instead of nudging the canvas). Deleting the focused row moves focus to the next row (or the previous one), not to the page. Rows no longer claim `aria-expanded` while they can't collapse.
+- `resizeMany` with a frame and layers inside its groups: constraints work from the document's values, so a layer's (or a group's) own box is no longer scaled a second time. A property test checks the batch against resizing one by one, parents first.
+- Vector networks scale without rounding to a millionth (12 significant digits instead), so scaling far down and back keeps their shape; coordinates that would overflow keep the old network instead of making the whole resize fail.
+- SVG paths: an open subpath counts as enclosing an area only when its area isn't zero (`M0 0 h10 h10` doesn't). With the even-odd rule and overlapping subpaths, the closed subpaths keep their region (holes stay open) and an open subpath that encloses an area goes unfilled; otherwise every run fills as if closed, as in SVG.
+- Tests: 11 unit tests, plus e2e checks in `canvas.mjs` and `perf.mjs`.
+
 ### Added (2026-10-18, paints and effects in export)
 - `@illigma/export` writes gradients, images, blend modes, effects and stroke alignment. PNG and JPG get them from the renderer, with image bytes from the document (`ExportSource.image`). Export bounds include drop shadows and layer blur.
 - SVG: linear and radial gradients in the layer's space; one embedded image per file, used through patterns; `mix-blend-mode`; one `<filter>` per layer for drop shadows, inner shadows and layer blur; inside and outside strokes clipped or masked.
