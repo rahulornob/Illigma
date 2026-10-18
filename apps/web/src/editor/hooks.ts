@@ -19,7 +19,7 @@ export function useDocVersion(doc: Document): number {
 
 export interface SaveDisplay {
   text: string;
-  tone: "quiet" | "busy" | "error";
+  tone: "quiet" | "busy" | "warning" | "error";
   state: SaveStatus["state"];
   message?: string;
   reason?: string;
@@ -59,6 +59,11 @@ export function useSaveDisplay(autosaver: Autosaver | null, backend: Backend): S
       ...(status.reason ? { reason: status.reason } : {}),
     };
   }
+  if (status.state === "changed-on-disk") {
+    return { text: "Changed on disk", tone: "warning", state: status.state, ...(status.message ? { message: status.message } : {}) };
+  }
+  // Unsaved with a reason: edits an earlier autosaver never wrote (e.g. after a failed Keep). Never shown as "Saved".
+  if (status.state === "unsaved" && status.message) return { text: "Not saved yet", tone: "busy", state: status.state, message: status.message };
   if (pending && slow) return { text: "Saving…", tone: "busy", state: status.state };
   return { text: `Saved · ${backend.label}`, tone: "quiet", state: status.state };
 }
