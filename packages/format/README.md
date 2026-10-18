@@ -10,12 +10,14 @@ A file is a folder (the package form):
 Onboarding flow.illigma/
   manifest.json          format, version, fileId, name, page order, created, app
   pages/<page-id>.json   that page's nodes: a JSON array, one node per line, sorted by id
+  images/<sha256>.<ext>  image files (PNG, JPEG, WebP, GIF; at most 32 MB), named by the SHA-256 of their bytes
 ```
 
 - **Nodes are flat.** Each node has a `parentId` (pages have `null`) and an `index`, a fractional key that orders it among its siblings. Keys compare as plain strings, so inserting or moving a node never rewrites its neighbours. They follow rocicorp's `fractional-indexing` scheme (`a0`, `a1` … `az`, `b00` …), so repeated appends stay short. Node ids are 1–64 of `A–Z a–z 0–9 _ -`, because a page id is also its file name.
 - **Output is canonical.** Keys are sorted and spacing is fixed, so saving the same file twice gives identical bytes and Git diffs stay small.
 - **Versions only go forward.** A reader upgrades older files through `MIGRATIONS` and refuses files from a newer version with a clear message. The app never writes an older version.
 - **Validation runs on read and write.** A damaged file is refused with a list of problems; an invalid document is never saved.
+- **Images are content-addressed.** An `IMAGE` paint's `imageHash` is the SHA-256 of the image file, stored once as `images/<hash>.<ext>` and held in memory in `IlligmaFile.images`. Only images some paint uses are written. A damaged, unknown or missing image never stops a file opening: `readPackageWithReport` leaves it out and says so in `warnings`.
 
 The node schema is in [`schema/node.v0.schema.json`](schema/node.v0.schema.json) (JSON Schema 2020-12) and [`src/schema.ts`](src/schema.ts).
 
@@ -30,14 +32,16 @@ For sharing, the same tree can be one `Name.illigma` file: a standard zip archiv
 
 DEFLATE comes from [fflate](https://github.com/101arrowz/fflate) (MIT); the zip container code is ours.
 
-Planned for later versions: `assets/` for images and fonts, `variables.json`, `styles.json`, components, comments and `history/` (PRD section 6.2). Binary entries such as `assets/` will need the tree to carry bytes as well as text.
+Images (`images/…`) are already compressed, so the zip stores them as they are, and `readZip` returns them as bytes (`Uint8Array`); every other entry is UTF-8 text.
+
+Planned for later versions: fonts, `variables.json`, `styles.json`, components, comments and `history/` (PRD section 6.2).
 
 ## Use
 
 ```ts
 import { isZip, readPackage, readZip, writePackage, writeZip } from "@illigma/format";
 
-const tree = writePackage(file);   // Map<path, text>
+const tree = writePackage(file);   // Map<path, text | bytes> (bytes for images/)
 const again = readPackage(tree);   // throws FormatError with plain-language problems
 
 const bytes = writeZip(tree);      // the single-file form, deterministic
@@ -46,7 +50,7 @@ const opened = readPackage(isZip(bytes) ? readZip(bytes, { maxTotalBytes: 512 * 
 
 ## Robustness
 
-`src/fuzz.test.ts` feeds both readers 2,000 seeded random inputs per run (truncated, bit-flipped and spliced archives; damaged JSON; random values in node and manifest fields). Each must open as a valid file or throw a `FormatError`, never another exception. To fuzz longer: `FUZZ_SEED=42 FUZZ_CASES=100000 npx vitest run fuzz`.
+`src/fuzz.test.ts` feeds both readers 4,000 seeded random inputs per run (truncated, bit-flipped and spliced archives; damaged JSON; random values in node and manifest fields; damaged, renamed and missing images in a file with every paint and effect). Each must open as a valid file or throw a `FormatError`, never another exception. To fuzz longer: `FUZZ_SEED=42 FUZZ_CASES=100000 npx vitest run fuzz`.
 
 ## Importing old prototype documents
 

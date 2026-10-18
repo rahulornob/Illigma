@@ -118,7 +118,11 @@ function onGeometry(n: ReadonlyNode, geo: ShapeGeometry, x: number, y: number, t
     for (const f of geo.fills) if (insideFill(flatten(f.commands), x, y, f.evenOdd)) return true;
   }
   if (testStroke && geo.stroke.length) {
-    const reach = Math.max(0, n.strokeWeight) / 2 + tolerance;
+    // Strokes aligned inside or outside a closed shape (strokeAlign) reach the full weight on that side.
+    const closed = n.type === "STAR" || n.type === "POLYGON" || (n.type === "VECTOR" && (n.vectorNetwork?.regions.length ?? 0) > 0);
+    const align = closed ? (n.strokeAlign ?? "CENTER") : "CENTER";
+    const weight = Math.max(0, n.strokeWeight);
+    const reach = (align === "CENTER" ? weight / 2 : align === "OUTSIDE" ? weight : 0) + tolerance;
     if (nearStroke(flatten(geo.stroke), x, y, reach)) return true;
   }
   return false;

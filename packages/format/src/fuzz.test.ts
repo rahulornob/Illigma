@@ -7,6 +7,9 @@
 
 import { describe, expect, it } from "vitest";
 import { FormatError, readPackage, writePackage, type FileTree } from "./package.js";
+import { sha256Hex } from "./images.js";
+import { GIF_HASH, paintsFile, PNG_HASH } from "./paints.fixture.js";
+import type { IlligmaFile } from "./schema.js";
 import { sampleFile } from "./sample.fixture.js";
 import { validateFile } from "./validate.js";
 import { readZip, writeZip } from "./zip.js";
@@ -35,12 +38,21 @@ const NODE_FIELDS = [
   "id", "type", "parentId", "index", "name", "visible", "locked", "x", "y", "width", "height",
   "rotation", "opacity", "fills", "strokes", "strokeWeight", "cornerRadius", "characters", "fontSize",
   "vectorNetwork", "pointCount", "innerRadius", "strokeCap", "strokeJoin", "vertices", "segments", "regions", "loops",
+  "effects", "blendMode", "strokeAlign", "gradientStops", "gradientTransform", "imageHash", "scaleMode", "imageTransform",
+  "scalingFactor", "offset", "radius", "spread", "showShadowBehindNode", "position",
 ];
 const MANIFEST_FIELDS = ["format", "version", "fileId", "name", "pages", "created", "app"];
+const HASHES = [PNG_HASH, GIF_HASH, "0".repeat(64), "A".repeat(64), "../images/x"];
 
 /** A random JSON value, including the nasty ones (prototype keys, objects whose toString isn't callable). */
 function randomJson(r: Rng, depth = 0): unknown {
-  switch (r.int(depth > 2 ? 9 : 13)) {
+  switch (r.int(depth > 2 ? 9 : 16)) {
+    case 12:
+      return [{ type: r.pick(["GRADIENT_LINEAR", "GRADIENT_DIAMOND", "IMAGE", "VIDEO"]), visible: true, gradientStops: randomJson(r, depth + 1), gradientTransform: [[r.next(), 0, 0], [0, randomJson(r, depth + 1), 0]] }];
+    case 13:
+      return [{ type: "IMAGE", visible: true, imageHash: r.pick(HASHES), scaleMode: r.pick(["FILL", "FIT", "CROP", "TILE", "x"]), scalingFactor: randomJson(r, depth + 1) }];
+    case 14:
+      return [{ type: r.pick(["DROP_SHADOW", "INNER_SHADOW", "LAYER_BLUR", "BACKGROUND_BLUR"]), visible: true, radius: randomJson(r, depth + 1), color: { r: 0, g: 0, b: 0, a: 1 }, offset: { x: 0, y: randomJson(r, depth + 1) } }];
     case 0: return null;
     case 1: return r.next() < 0.5;
     case 2: return r.pick([0, -1, 1, 0.5, 1e308, -1e308, 2 ** 53, -0, 255, 4294967295]);
@@ -107,7 +119,17 @@ function mutateTree(r: Rng, base: FileTree): FileTree {
   for (let i = 0; i < rounds; i++) {
     const paths = [...tree.keys()];
     const path = r.pick(paths);
-    const before = tree.get(path) as string;
+    const value = tree.get(path);
+    if (value instanceof Uint8Array) {
+      // An image: damage its bytes, move it to another name, turn it into text, or drop it.
+      const op = r.int(4);
+      if (op === 0) tree.delete(path);
+      else if (op === 1) tree.set(path, mutateBytes(r, value));
+      else if (op === 2) tree.set(`images/${r.pick(HASHES)}.${r.pick(["png", "gif", "jpg", "bmp"])}`, value);
+      else tree.set(path, mutateText(r, "\u0089PNG"));
+      continue;
+    }
+    const before = value as string;
     const op = r.int(10);
     if (op === 0) tree.delete(path);
     else if (op === 1) tree.set(`pages/${String(r.int(5))}.json`, mutateText(r, before));
@@ -194,6 +216,44 @@ describe("reader robustness (seeded fuzz)", () => {
       const mutated = i % 5 === 0 ? mutateTree(r, tree) : null;
       const input = mutated?.has("manifest.json") ? writeZip(mutated) : mutateBytes(r, zip);
       outcomes[expectSafe(() => readPackage(readZip(input, { maxTotalBytes: 1_000_000 })), `seed ${SEED + 1} zip case ${i}`)]++;
+    }
+    expect(outcomes.refused).toBeGreaterThan(CASES / 2);
+    expect(outcomes.opened).toBeGreaterThan(0);
+  });
+
+  const rich = writePackage(paintsFile());
+  /** Opened files may only hold images that match their hash. */
+  const imagesIntact = (read: () => IlligmaFile) => () => {
+    const file = read();
+    for (const [hash, bytes] of file.images ?? []) if (sha256Hex(bytes) !== hash) throw new Error(`image ${hash} doesn't match its bytes`);
+    return file;
+  };
+
+  it(`readPackage: ${CASES} mutated trees with gradients, images and effects`, () => {
+    const r = prng(SEED + 2);
+    const outcomes = { opened: 0, refused: 0 };
+    for (let i = 0; i < CASES; i++) {
+      const input = mutateTree(r, rich);
+      outcomes[expectSafe(imagesIntact(() => readPackage(input)), `seed ${SEED + 2} rich package case ${i}`)]++;
+    }
+    expect(outcomes.refused).toBeGreaterThan(CASES / 4);
+    expect(outcomes.opened).toBeGreaterThan(CASES / 10); // damaged images alone never stop a file opening
+  });
+
+  it(`readZip + readPackage: ${CASES} mutated archives with images`, () => {
+    const r = prng(SEED + 3);
+    const richZip = writeZip(rich);
+    const outcomes = { opened: 0, refused: 0 };
+    for (let i = 0; i < CASES; i++) {
+      const mutated = i % 3 === 0 ? mutateTree(r, rich) : null;
+      let input: Uint8Array;
+      try {
+        input = mutated?.has("manifest.json") ? writeZip(mutated) : mutateBytes(r, richZip);
+      } catch (e) {
+        if (!(e instanceof FormatError)) throw e;
+        input = mutateBytes(r, richZip); // the mutation made a path writeZip refuses, e.g. "images/../x"
+      }
+      outcomes[expectSafe(imagesIntact(() => readPackage(readZip(input, { maxTotalBytes: 1_000_000 }))), `seed ${SEED + 3} rich zip case ${i}`)]++;
     }
     expect(outcomes.refused).toBeGreaterThan(CASES / 2);
     expect(outcomes.opened).toBeGreaterThan(0);

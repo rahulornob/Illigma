@@ -24,9 +24,11 @@ import {
   defaultNode,
   FORMAT_NAME,
   FORMAT_VERSION,
+  PAINT_LIMITS,
   type Color,
   type ConstraintType,
   type CounterAxisAlign,
+  type Effect,
   type IlligmaFile,
   type LayoutFields,
   type LayoutSizing,
@@ -185,9 +187,9 @@ class Notes {
         const names = EFFECT_NAMES[type] ?? ["effect", "effects"];
         return plural(count, names[0], names[1]);
       });
-      w.push(`Left out ${plural(total, "effect", "effects")} (${parts.join(", ")}) on ${plural(n("effectLayers"), "layer", "layers")}: format v0 has no effects yet.`);
+      w.push(`Left out ${plural(total, "effect", "effects")} (${parts.join(", ")}) on ${plural(n("effectLayers"), "layer", "layers")} that couldn't be read.`);
     }
-    if (n("gradients")) w.push(`Left out ${plural(n("gradients"), "gradient", "gradients")}: format v0 holds solid colours only.`);
+    if (n("gradients")) w.push(`Left out ${plural(n("gradients"), "gradient", "gradients")}: the prototype never saved gradient fills, so CSS gradients aren't read.`);
     if (n("badColors")) w.push(`Left out ${plural(n("badColors"), "colour", "colours")} that couldn't be read.`);
     if (n("letterSpacing")) w.push(`Left out letter spacing on ${plural(n("letterSpacing"), "text layer", "text layers")}: format v0 has no letter spacing yet.`);
     if (n("stretchedText")) w.push(`${plural(n("stretchedText"), "text layer was", "text layers were")} stretched unevenly; the font size now matches the height, so ${n("stretchedText") === 1 ? "it" : "they"} may look narrower or wider.`);
@@ -560,15 +562,6 @@ function paints(v: unknown, notes: Notes): Paint[] {
 }
 
 function noteCommon(raw: Obj, known: Set<string>, notes: Notes, extraUnknown: string[] = []): void {
-  const effects = get(raw, "effects");
-  if (Array.isArray(effects) && effects.length) {
-    notes.add("effectLayers");
-    for (const e of effects) {
-      const type = isObj(e) && typeof get(e, "type") === "string" ? (get(e, "type") as string) : "";
-      const key = Object.prototype.hasOwnProperty.call(EFFECT_NAMES, type) ? type : "other";
-      notes.effects.set(key, (notes.effects.get(key) ?? 0) + 1);
-    }
-  }
   const unknown = [...Object.keys(raw).filter((k) => !known.has(k)), ...extraUnknown];
   if (unknown.length) {
     notes.add("unknownLayers");
@@ -609,7 +602,62 @@ function frameNode(f: FrameIn, parentId: string, index: string, originX: number,
     height: f.height,
     fills: paints(get(raw, "fill"), notes),
     ...frameLayout(raw, notes),
+    ...withEffects(effectsOf(raw, 0, notes)),
   };
+}
+
+/** `{ effects }` when there are any, so files without effects stay as they were. */
+function withEffects(effects: Effect[]): { effects?: Effect[] } {
+  return effects.length ? { effects } : {};
+}
+
+/**
+ * The prototype's effects (`{ type, visible, x, y, blur, spread, color,
+ * opacity }`, with its defaults) as Illigma effects. The prototype kept
+ * shadow offsets on the page and turned them against the layer's rotation;
+ * Illigma's are in the layer's own space, so they are turned here instead.
+ * Effects it can't read are counted and left out.
+ */
+function effectsOf(raw: Obj, rotation: number, notes: Notes): Effect[] {
+  const list = get(raw, "effects");
+  if (!Array.isArray(list)) return [];
+  const out: Effect[] = [];
+  let skipped = false;
+  const a = (-rotation * Math.PI) / 180;
+  for (const e of list) {
+    const type = isObj(e) && typeof get(e, "type") === "string" ? (get(e, "type") as string) : "";
+    const num = (key: string, fallback: number) => {
+      const v = isObj(e) ? get(e, key) : undefined;
+      return finite(v) ? v : fallback;
+    };
+    const visible = isObj(e) ? get(e, "visible") !== false : true;
+    if (type === "drop-shadow" || type === "inner-shadow") {
+      const colorText = isObj(e) && typeof get(e, "color") === "string" ? (get(e, "color") as string) : "#000000";
+      const color = parsePrototypeColor(colorText);
+      if (!color) {
+        notes.effects.set(type, (notes.effects.get(type) ?? 0) + 1);
+        skipped = true;
+        continue;
+      }
+      const x = num("x", 0), y = num("y", 4);
+      const lim = PAINT_LIMITS.maxEffectRadius;
+      out.push({
+        type: type === "drop-shadow" ? "DROP_SHADOW" : "INNER_SHADOW",
+        color: { ...color, a: clamp(color.a * num("opacity", 0.25), 0, 1) },
+        offset: { x: round(clamp(x * Math.cos(a) - y * Math.sin(a), -lim, lim)), y: round(clamp(x * Math.sin(a) + y * Math.cos(a), -lim, lim)) },
+        radius: clamp(num("blur", 4), 0, lim),
+        spread: clamp(num("spread", 0), -lim, lim),
+        visible,
+      });
+    } else if (type === "layer-blur" || type === "background-blur") {
+      out.push({ type: type === "layer-blur" ? "LAYER_BLUR" : "BACKGROUND_BLUR", radius: clamp(num("blur", 4), 0, PAINT_LIMITS.maxEffectRadius), visible });
+    } else {
+      notes.effects.set("other", (notes.effects.get("other") ?? 0) + 1);
+      skipped = true;
+    }
+  }
+  if (skipped) notes.add("effectLayers");
+  return out.slice(0, PAINT_LIMITS.maxEffects);
 }
 
 /** The prototype rotates about the box centre; Illigma (like Figma) rotates about the top-left corner, so move that corner to where the rotation put it. */
@@ -662,6 +710,7 @@ function layerNode(l: LayerIn, id: string, parentId: string, index: string, orig
     strokes,
     strokeWeight: strokes.length ? Math.min(strokeWidth, MAX_SIZE) : 1,
     ...itemLayout(raw, notes),
+    ...withEffects(effectsOf(raw, l.rotation, notes)),
   };
   for (const axis of ["width", "height"] as const) {
     // Text "Hug contents" is Figma's auto height (or width); other layers can only be Fixed or Fill.

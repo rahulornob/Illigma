@@ -14,6 +14,8 @@ import { ExportError, type ExportSettings } from "./settings.js";
 export interface ExportSource {
   get(id: NodeId): ReadonlyNode | undefined;
   children(parentId: NodeId): readonly ReadonlyNode[];
+  /** Image files by `imageHash` (`Document.image`), for image paints. Without it, image paints are left out with a warning. */
+  image?(hash: string): Uint8Array | undefined;
 }
 
 /** 2D affine transform, as in SVG: x' = a·x + c·y + e, y' = b·x + d·y + f. */
@@ -133,9 +135,9 @@ export function boxBounds(n: ReadonlyNode, m: Matrix): Rect {
 
 /**
  * The bounds of what `n` and its children draw, under `m` (the transform
- * from `n`'s own space), or null when it draws nothing. Strokes are centred,
- * so they reach half their weight past the outline (mitred corners of paths
- * can reach a little further). Text counts as its box.
+ * from `n`'s own space), or null when it draws nothing. Strokes reach past
+ * the outline by their alignment (mitred corners of paths can reach a little
+ * further); drop shadows and layer blur count. Text counts as its box.
  */
 export function subtreeBounds(source: ExportSource, n: ReadonlyNode, m: Matrix): Rect | null {
   const b = new Box();
@@ -146,7 +148,36 @@ export function subtreeBounds(source: ExportSource, n: ReadonlyNode, m: Matrix):
   }
   const kidRect = kids.rect();
   if (kidRect) b.addBox(CLIPPING.has(n.type) ? intersect(kidRect, boxBounds(n, m)) : kidRect);
-  return b.rect();
+  return withEffects(n, m, b.rect());
+}
+
+/**
+ * `r` (what `n` draws, under `m`) grown by its drop shadows and layer blur,
+ * as Figma's export bounds include them: each shadow is the shape moved by
+ * its offset and grown by its spread and three blur deviations.
+ */
+function withEffects(n: ReadonlyNode, m: Matrix, r: Rect | null): Rect | null {
+  if (!r || !n.effects?.length) return r;
+  const scale = Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2]));
+  const b = new Box();
+  b.addBox(r);
+  for (const e of n.effects) {
+    if (!e.visible || e.type !== "DROP_SHADOW") continue;
+    const dx = m[0] * e.offset.x + m[2] * e.offset.y;
+    const dy = m[1] * e.offset.x + m[3] * e.offset.y;
+    const pad = (1.5 * e.radius + Math.max(0, e.spread ?? 0)) * scale;
+    b.addBox({ x: r.x + dx - pad, y: r.y + dy - pad, width: r.width + 2 * pad, height: r.height + 2 * pad });
+  }
+  const blur = Math.max(0, ...n.effects.filter((e) => e.visible && e.type === "LAYER_BLUR").map((e) => e.radius)) * 1.5 * scale;
+  const out = b.rect() as Rect;
+  return blur > 0 ? { x: out.x - blur, y: out.y - blur, width: out.width + 2 * blur, height: out.height + 2 * blur } : out;
+}
+
+/** How far a layer's strokes reach past its outline, as drawn: half the weight centred, all of it outside, none inside. */
+function strokeReach(n: ReadonlyNode): number {
+  const closed = n.type !== "LINE" && n.type !== "TEXT" && !(n.type === "VECTOR" && !(n.vectorNetwork?.regions.length ?? 0));
+  const align = closed ? (n.strokeAlign ?? "CENTER") : "CENTER";
+  return align === "CENTER" ? n.strokeWeight / 2 : align === "OUTSIDE" ? n.strokeWeight : 0;
 }
 
 /** The bounds of what `n` draws, in its parent's space under `parent`. */
@@ -157,7 +188,7 @@ export function renderBounds(source: ExportSource, n: ReadonlyNode, parent: Matr
 function ownBounds(n: ReadonlyNode, m: Matrix, b: Box): void {
   const fill = hasVisibleFill(n);
   const stroke = hasVisibleStroke(n);
-  const half = stroke ? n.strokeWeight / 2 : 0;
+  const half = stroke ? strokeReach(n) : 0;
   const geo = shapeGeometry(n);
   if (geo) {
     if (n.type === "LINE") {

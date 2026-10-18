@@ -9,9 +9,9 @@ import type { NodeId } from "@illigma/format";
 import type { FontSource } from "@illigma/renderer";
 import type { CanvasKit } from "canvaskit-wasm";
 import { exportFilename, uniqueFilename } from "./filename.js";
-import { writePdf, type RasterText } from "./pdf.js";
+import { writePdf, type PdfWriterOptions, type RasterText } from "./pdf.js";
 import { exportRaster, rasterizeLeaf, rasterSize, RasterContext } from "./raster.js";
-import { exportScene, hasText, type ExportScene, type ExportSource } from "./scene.js";
+import { exportScene, hasText, type ExportScene, type ExportSource, type Rect } from "./scene.js";
 import { checkSettings, DEFAULT_EXPORT_LIMITS, ExportError, MIME_TYPES, type ExportLimits, type ExportSettings, type ExportSettingsPDF } from "./settings.js";
 import { writeSvg } from "./svg.js";
 
@@ -94,6 +94,43 @@ class Session {
 
   textLayout = (n: ReadonlyNode) => (this.hasTextEngine ? this.context().pageRenderer.layoutText(n.id) : null);
 
+  /** A layer with shadows or blurs, drawn by the renderer for PDF (4 px per pt, at most 4,096 on a side). */
+  rasterNode = (n: ReadonlyNode, area: Rect): RasterText | null => {
+    if (!this.deps.canvasKit) return null;
+    // Without fonts, text would come out as placeholder bars: draw it as vectors instead.
+    if (!this.hasTextEngine && hasText(this.source, [n])) return null;
+    const k = Math.min(4, 4096 / Math.max(area.width, area.height, 1));
+    const width = Math.max(1, Math.ceil(area.width * k));
+    const height = Math.max(1, Math.ceil(area.height * k));
+    const rgba = rasterizeLeaf(this.context(), n, width, height, area);
+    return rgba ? { width, height, rgba, area } : null;
+  };
+
+  /** An image file as RGBA pixels, decoded by CanvasKit, for PDF. */
+  decodeImage = (bytes: Uint8Array): { width: number; height: number; rgba: Uint8Array } | null => {
+    const ck = this.deps.canvasKit;
+    const image = ck?.MakeImageFromEncoded(bytes);
+    if (!ck || !image) return null;
+    try {
+      const width = image.width();
+      const height = image.height();
+      const px = image.readPixels(0, 0, { width, height, colorType: ck.ColorType.RGBA_8888, alphaType: ck.AlphaType.Unpremul, colorSpace: ck.ColorSpace.SRGB });
+      return px ? { width, height, rgba: Uint8Array.from(px as Uint8Array) } : null;
+    } finally {
+      image.delete();
+    }
+  };
+
+  /** What the PDF writer gets from this session. */
+  pdfOptions(warn: (message: string) => void, title: string): PdfWriterOptions {
+    return {
+      ...(this.hasTextEngine ? { rasterText: this.rasterText } : {}),
+      ...(this.deps.canvasKit ? { rasterNode: this.rasterNode, decodeImage: this.decodeImage } : {}),
+      warn,
+      title,
+    };
+  }
+
   rasterText = (n: ReadonlyNode): RasterText | null => {
     if (!this.hasTextEngine) return null;
     // The box, and below it if the text runs past its bottom (as it draws on the canvas).
@@ -137,7 +174,7 @@ function exportWith(session: Session, nodeId: NodeId, settings: ExportSettings, 
       break;
     }
     case "PDF": {
-      bytes = writePdf(source, [scene], { ...(session.hasTextEngine ? { rasterText: session.rasterText } : {}), warn, title: scene.node.name });
+      bytes = writePdf(source, [scene], session.pdfOptions(warn, scene.node.name));
       width = Math.max(1, width);
       height = Math.max(1, height);
       break;
@@ -225,11 +262,7 @@ export async function exportPdf(
     const warnings = new Set<string>();
     const first = scenes[0] as ExportScene;
     const docTitle = first.node.name;
-    const bytes = writePdf(source, scenes, {
-      ...(session.hasTextEngine ? { rasterText: session.rasterText } : {}),
-      warn: (m) => void warnings.add(m),
-      title: docTitle,
-    });
+    const bytes = writePdf(source, scenes, session.pdfOptions((m) => void warnings.add(m), docTitle));
     const full: ExportSettingsPDF = { ...settings, format: "PDF" };
     return {
       nodeId: first.node.id,

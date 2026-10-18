@@ -44,11 +44,15 @@ export async function readText(handle: FileSystemFileHandle): Promise<string> {
   return (await handle.getFile()).text();
 }
 
-/** Replace a file's contents. The browser applies the stream on close(), so a failure keeps the old contents. */
-export async function writeText(handle: FileSystemFileHandle, text: string): Promise<void> {
+export async function readBytes(handle: FileSystemFileHandle): Promise<Uint8Array> {
+  return new Uint8Array(await (await handle.getFile()).arrayBuffer());
+}
+
+/** Replace a file's contents (text, or bytes). The browser applies the stream on close(), so a failure keeps the old contents. */
+export async function writeText(handle: FileSystemFileHandle, text: string | Uint8Array): Promise<void> {
   const stream = await handle.createWritable();
   try {
-    await stream.write(text);
+    await stream.write(text as string | Uint8Array<ArrayBuffer>);
   } catch (err) {
     await stream.abort().catch(() => {});
     throw err;

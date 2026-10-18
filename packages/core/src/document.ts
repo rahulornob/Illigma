@@ -1,6 +1,7 @@
 import {
   compareOrder,
   defaultNode,
+  hashImage,
   FORMAT_NAME,
   FORMAT_VERSION,
   keyBetween,
@@ -108,6 +109,8 @@ export class Document {
   readonly #normalize: Normalizer | undefined;
   #tx: Transaction | null = null;
   #live: LiveEdit | null = null;
+  /** Image files by hash (content-addressed, never changed). */
+  #images = new Map<string, Uint8Array>();
 
   static {
     applyOp = (doc, o) => doc.#apply(o);
@@ -149,6 +152,26 @@ export class Document {
 
   get size(): number {
     return this.#nodes.size;
+  }
+
+  // ---- images ----
+
+  /**
+   * Add an image file (PNG, JPEG, WebP or GIF, at most 32 MB) and return its
+   * `imageHash`, for IMAGE paints. Images are stored once per hash and are not
+   * part of undo history: adding one changes nothing on the canvas until a
+   * paint uses it, and saving writes only images some paint uses. Throws
+   * `FormatError` for anything else. Don't change `bytes` afterwards.
+   */
+  addImage(bytes: Uint8Array): string {
+    const hash = hashImage(bytes);
+    if (!this.#images.has(hash)) this.#images.set(hash, bytes);
+    return hash;
+  }
+
+  /** The image file for an `imageHash`, if this document has it. */
+  image(hash: string): Uint8Array | undefined {
+    return this.#images.get(hash);
   }
 
   pages(): ReadonlyNode[] {
@@ -540,6 +563,8 @@ export class Document {
         app,
       },
       nodes: [...this.#nodes.values()].map((n) => clone(n) as Node),
+      // Every image, used or not (undo may bring a paint back); writePackage keeps only those in use. The bytes are shared, never changed.
+      ...(this.#images.size ? { images: new Map(this.#images) } : {}),
     };
   }
 
@@ -550,6 +575,7 @@ export class Document {
     const doc = new Document(file.manifest.name, options);
     (doc as { fileId: string }).fileId = file.manifest.fileId;
     (doc as { created: string }).created = file.manifest.created;
+    if (file.images) doc.#images = new Map(file.images);
     for (const n of file.nodes) {
       const node = frozenCopy(n);
       doc.#nodes.set(node.id, node);

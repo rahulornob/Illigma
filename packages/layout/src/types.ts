@@ -14,10 +14,10 @@ export interface Box extends Size {
 
 /**
  * The node fields layout reads. A `@illigma/core` document's frozen nodes fit
- * this type. Paints and vector geometry are left out: layout never reads them,
+ * this type. Paints, effects and vector geometry are left out: layout never reads them,
  * and core freezes them deeply.
  */
-export type LayoutNode = Readonly<Omit<Node, "fills" | "strokes" | "constraints" | "vectorNetwork">> & {
+export type LayoutNode = Readonly<Omit<Node, "fills" | "strokes" | "constraints" | "vectorNetwork" | "effects">> & {
   readonly constraints?: Readonly<Constraints>;
 };
 
