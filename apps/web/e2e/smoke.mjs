@@ -6,52 +6,18 @@
 // worker cache. Exits non-zero on the first failure.
 //
 // Usage (from the repo root):  node apps/web/e2e/smoke.mjs [--headed] [--no-build]
-// Screenshots go to apps/web/e2e/out/ (or $SMOKE_OUT).
+// Screenshots go to apps/web/e2e/out/ (or $SMOKE_OUT). Helpers live in lib.mjs.
 
-import { mkdirSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { chromium } from "playwright";
-import { build, preview } from "vite";
+import { canvasReady, layerRows, newContext, runE2E, waitSaved as waitSavedOn, watchErrors } from "./lib.mjs";
 
-const root = fileURLToPath(new URL("../", import.meta.url));
-const outDir = process.env.SMOKE_OUT ?? fileURLToPath(new URL("./out/", import.meta.url));
-const headed = process.argv.includes("--headed");
-const PORT = 5192;
-const URL_ = `http://localhost:${PORT}/`;
+await runE2E("smoke", { port: 5192 }, async ({ browser, url: URL_, log, check, outDir, errors }) => {
+  const context = await newContext(browser);
+  const page = await context.newPage();
+  watchErrors(page, errors);
+  const rectangleRows = () => page.locator(".layer-list .layer-row", { hasText: /^Rectangle \d+$/ });
+  const waitSaved = () => waitSavedOn(page);
+  const layerRowsHere = () => layerRows(page);
 
-mkdirSync(outDir, { recursive: true });
-
-let step = "start";
-const check = (cond, message) => {
-  if (!cond) throw new Error(message);
-};
-const log = (s) => {
-  step = s;
-  console.log(`· ${s}`);
-};
-
-if (!process.argv.includes("--no-build")) {
-  log("build");
-  await build({ root, configFile: `${root}vite.config.ts`, logLevel: "error" });
-}
-const server = await preview({ root, configFile: `${root}vite.config.ts`, preview: { port: PORT, strictPort: true }, logLevel: "error" });
-const browser = await chromium.launch({ headless: !headed, args: ["--enable-gpu", "--ignore-gpu-blocklist"] });
-const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
-const page = await context.newPage();
-const errors = [];
-page.on("pageerror", (e) => errors.push(e.message));
-page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
-
-const layerRows = () => page.locator(".layer-list .layer-row");
-const rectangleRows = () => page.locator(".layer-list .layer-row", { hasText: /^Rectangle \d+$/ });
-const canvasReady = async () => {
-  await page.locator(".title-bar").waitFor({ timeout: 30_000 });
-  await page.waitForSelector(".canvas-status", { state: "detached", timeout: 30_000 });
-};
-const waitSaved = () => page.waitForSelector('.save-status[data-save-state="saved"]', { timeout: 15_000 });
-
-let code = 0;
-try {
   log("open home");
   await page.goto(URL_);
   await page.getByRole("button", { name: "New design file" }).waitFor();
@@ -60,9 +26,9 @@ try {
   log("create a file");
   await page.getByRole("button", { name: "New design file" }).click();
   await page.locator(".title-bar").waitFor();
-  await canvasReady();
+  await canvasReady(page);
   check(/#\/file\/\w+/.test(page.url()), `the URL should name the file, got ${page.url()}`);
-  const before = await layerRows().count();
+  const before = await layerRowsHere().count();
   check(before === 3, `the sample file should have 3 layers, found ${before}`);
   await page.screenshot({ path: `${outDir}/editor-new.png` });
 
@@ -79,7 +45,7 @@ try {
   await page.mouse.move(cx + 60, cy + 160, { steps: 5 });
   await page.mouse.up();
   await rectangleRows().first().waitFor();
-  check((await layerRows().count()) === before + 1, "drawing should add one layer");
+  check((await layerRowsHere().count()) === before + 1, "drawing should add one layer");
   check((await page.getByRole("button", { name: "Move (V)" }).getAttribute("aria-pressed")) === "true", "the tool should return to Move after drawing");
   const w = Number(await page.getByLabel("Width").inputValue());
   const h = Number(await page.getByLabel("Height").inputValue());
@@ -116,8 +82,8 @@ try {
   log("reload reopens the file");
   await page.reload();
   await page.locator(".title-bar").waitFor();
-  await canvasReady();
-  check((await layerRows().count()) === before + 1, "the drawn rectangle should survive a reload");
+  await canvasReady(page);
+  check((await layerRowsHere().count()) === before + 1, "the drawn rectangle should survive a reload");
   await rectangleRows().first().click();
   check((await page.getByLabel("X position").inputValue()) === "40", "the X edit should survive a reload");
 
@@ -128,32 +94,19 @@ try {
   check((await card.count()) === 1, "the file should appear once in Recents");
   await page.screenshot({ path: `${outDir}/home.png` });
   await card.first().click();
-  await canvasReady();
-  check((await layerRows().count()) === before + 1, "reopening from Recents should show every layer");
+  await canvasReady(page);
+  check((await layerRowsHere().count()) === before + 1, "reopening from Recents should show every layer");
 
   log("works offline from the service worker cache");
   await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
   if (!(await page.evaluate(() => !!navigator.serviceWorker.controller))) {
     await page.reload();
-    await canvasReady();
+    await canvasReady(page);
   }
   check(await page.evaluate(() => !!navigator.serviceWorker.controller), "the service worker should control the page");
   await context.setOffline(true);
   await page.reload();
-  await canvasReady();
-  check((await layerRows().count()) === before + 1, "the file should open offline");
+  await canvasReady(page);
+  check((await layerRowsHere().count()) === before + 1, "the file should open offline");
   await context.setOffline(false);
-
-  const real = errors.filter((e) => !/favicon/i.test(e));
-  check(real.length === 0, `the page logged errors:\n${real.join("\n")}`);
-  console.log(`✓ smoke test passed. Screenshots in ${outDir}`);
-} catch (e) {
-  code = 1;
-  console.error(`✗ smoke test failed at "${step}": ${e instanceof Error ? e.message : e}`);
-  if (errors.length) console.error(`page errors:\n${errors.join("\n")}`);
-  await page.screenshot({ path: `${outDir}/failure.png` }).catch(() => undefined);
-} finally {
-  await browser.close();
-  await new Promise((r) => server.httpServer.close(r));
-}
-process.exit(code);
+});
