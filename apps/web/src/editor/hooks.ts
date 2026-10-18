@@ -1,18 +1,20 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { Document } from "@illigma/core";
 import type { Autosaver, Backend, SaveStatus } from "@illigma/host-web";
 
 /** Re-render whenever the document changes (edits, undo, redo). Returns a change counter. */
 export function useDocVersion(doc: Document): number {
   const version = useRef(0);
-  return useSyncExternalStore(
-    (notify) =>
+  // A stable subscribe function: a new one each render would make React resubscribe on every render.
+  const subscribe = useCallback(
+    (notify: () => void) =>
       doc.subscribe(() => {
         version.current++;
         notify();
       }),
-    () => version.current,
+    [doc],
   );
+  return useSyncExternalStore(subscribe, () => version.current);
 }
 
 export interface SaveDisplay {
@@ -20,6 +22,7 @@ export interface SaveDisplay {
   tone: "quiet" | "busy" | "error";
   state: SaveStatus["state"];
   message?: string;
+  reason?: string;
 }
 
 /**
@@ -48,7 +51,13 @@ export function useSaveDisplay(autosaver: Autosaver | null, backend: Backend): S
   }, [pending]);
 
   if (status.state === "error") {
-    return { text: "Couldn't save", tone: "error", state: status.state, ...(status.message ? { message: status.message } : {}) };
+    return {
+      text: "Couldn't save",
+      tone: "error",
+      state: status.state,
+      ...(status.message ? { message: status.message } : {}),
+      ...(status.reason ? { reason: status.reason } : {}),
+    };
   }
   if (pending && slow) return { text: "Saving…", tone: "busy", state: status.state };
   return { text: `Saved · ${backend.label}`, tone: "quiet", state: status.state };

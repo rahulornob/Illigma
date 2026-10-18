@@ -10,7 +10,7 @@
 
 import { createFile, drag, field, layerRow, layerRows, newContext, poll, runE2E, selectedRows, setField, watchErrors } from "./lib.mjs";
 
-await runE2E("canvas", { port: 5195 }, async ({ browser, url, log, check, knownBug, outDir, errors }) => {
+await runE2E("canvas", { port: 5195 }, async ({ browser, url, log, check, outDir, errors }) => {
   const context = await newContext(browser);
   const page = await context.newPage();
   watchErrors(page, errors);
@@ -81,10 +81,9 @@ await runE2E("canvas", { port: 5195 }, async ({ browser, url, log, check, knownB
     await clickWorld(wx, wy);
     directPicks.push(`${name} → ${await selectedName()}`);
   }
-  knownBug(
+  check(
     directPicks.every((p) => p.split(" → ")[0] === p.split(" → ")[1]),
-    `clicking a layer inside a top-level frame selects the frame, not the layer (${directPicks.join(", ")}); Figma selects the frame's child on first click. ` +
-      "hitTest() returns the page's direct child unless { deep: true }, and there is no deep-select (⌘-click / double-click) yet",
+    `clicking a layer inside a top-level frame should select that layer, as in Figma (${directPicks.join(", ")})`,
   );
 
   log("clicking empty canvas deselects");
@@ -103,7 +102,7 @@ await runE2E("canvas", { port: 5195 }, async ({ browser, url, log, check, knownB
   await clickSelects(ellipse.x + ellipse.w / 2, ellipse.y + ellipse.h / 2, ellipseName, "(ellipse centre)");
   await clickSelects(ellipse.x + 6, ellipse.y + 6, null, "(ellipse bounding-box corner, outside the curve)");
   await clickSelects(ellipse.x + ellipse.w / 2, ellipse.y + 4, ellipseName, "(just inside the ellipse's top)");
-  await clickSelects(400, 320, "Desktop", "(Hero, inside Desktop)");
+  await clickSelects(400, 320, "Hero", "(Hero, inside Desktop)");
   await clickSelects(ellipse.x + ellipse.w / 2, ellipse.y + ellipse.h + 10, null, "(just below the ellipse)");
 
   log("move Desktop off the origin so parent-relative coordinates are tested");
@@ -208,10 +207,7 @@ await runE2E("canvas", { port: 5195 }, async ({ browser, url, log, check, knownB
   const after2 = await selectionRect();
   const panned = after2 && near(after2.x - before2.x, 60) && near(after2.y - before2.y, 40);
   const drew = (await layerRows(page).count()) !== count;
-  knownBug(
-    panned && !drew,
-    `Space-drag draws instead of panning when a button (tool dock, layer row) has focus: Canvas.tsx's Space handler ignores BUTTON targets (drew a layer: ${drew})`,
-  );
+  check(panned && !drew, `Space-drag should pan, not draw, when a button (tool dock, layer row) has focus (drew a layer: ${drew})`);
   if (drew) {
     await canvas.focus();
     await page.keyboard.press("ControlOrMeta+z");
@@ -261,10 +257,6 @@ await runE2E("canvas", { port: 5195 }, async ({ browser, url, log, check, knownB
   await page.keyboard.press("Escape");
   await page.waitForTimeout(150);
   const afterEscape = Number(await ax.inputValue());
-  knownBug(
-    afterEscape === original,
-    `Escape in a Properties field commits the typed value instead of reverting it (X ${original} → ${afterEscape}): ` +
-      "Escape calls setDraft(old) then blur(), and onBlur's commit() still sees the typed draft",
-  );
+  check(afterEscape === original, `Escape in a Properties field should revert the typed value (X ${original} → ${afterEscape})`);
   await context.close();
 });

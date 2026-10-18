@@ -7,7 +7,7 @@
 
 import { canvasReady, createFile, drag, failWritesInit, field, layerRow, layerRows, newContext, poll, runE2E, saveState, setField, waitSaved, watchErrors } from "./lib.mjs";
 
-await runE2E("save-errors", { port: 5194 }, async ({ browser, url, log, check, knownBug, outDir, errors }) => {
+await runE2E("save-errors", { port: 5194 }, async ({ browser, url, log, check, outDir, errors }) => {
   const context = await newContext(browser);
   const page = await context.newPage();
   watchErrors(page, errors);
@@ -39,17 +39,13 @@ await runE2E("save-errors", { port: 5194 }, async ({ browser, url, log, check, k
   check(bannerText.includes("there isn't enough storage space left."), `the banner should say why (quota), got "${bannerText}"`);
   check(bannerText.includes("Your changes are safe"), "the banner should say what is safe");
   const count = (re) => (bannerText.match(re) ?? []).length;
-  knownBug(
+  check(
     count(/Couldn't save/g) === 1 && count(/changes are safe/g) === 1 && count(/30 seconds/g) === 1,
-    `the save-error banner repeats itself ("Couldn't save" ×${count(/Couldn't save/g)}, "changes are safe" ×${count(/changes are safe/g)}, "30 seconds" ×${count(/30 seconds/g)}): ` +
-      "Editor.tsx wraps describeSaveError()'s full sentence, which already says it, in its own copy",
+    `the save-error banner should say each thing once ("Couldn't save" ×${count(/Couldn't save/g)}, "changes are safe" ×${count(/changes are safe/g)}, "30 seconds" ×${count(/30 seconds/g)})`,
   );
   const bannerButtons = await errorBanner.getByRole("button").allInnerTexts();
   check(!bannerButtons.some((b) => /dismiss|close|×/i.test(b)), `the error banner must not be dismissible, buttons: ${bannerButtons.join(", ")}`);
-  knownBug(
-    bannerButtons.some((b) => /save a copy/i.test(b)),
-    'the save-error banner has no "Save a copy elsewhere…" action (save-states.md rule 3); its only action is Retry',
-  );
+  check(bannerButtons.some((b) => /save a copy elsewhere/i.test(b)), `the save-error banner should offer "Save a copy elsewhere…" (save-states.md rule 3), buttons: ${bannerButtons.join(", ")}`);
   await page.screenshot({ path: `${outDir}/save-error.png` });
 
   log("edits stay in memory while saving fails");

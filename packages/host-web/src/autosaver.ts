@@ -10,7 +10,7 @@
 
 import type { Document } from "@illigma/core";
 import { writePackage, type FileTree } from "@illigma/format";
-import type { Backend } from "./backend.js";
+import { newSaveId, type Backend } from "./backend.js";
 import type { RecoveryJournal } from "./journal.js";
 
 export type SaveState = "saved" | "saving" | "unsaved" | "error";
@@ -19,6 +19,8 @@ export interface SaveStatus {
   state: SaveState;
   /** Why the last save failed, in plain words. Only with "error". */
   message?: string;
+  /** Just the cause, e.g. "there isn't enough storage space left.", for UI that words the rest itself. Only with "error". */
+  reason?: string;
   /** When the file was last saved (ms since epoch), once it has been. */
   savedAt?: number;
 }
@@ -28,7 +30,11 @@ export interface AutosaverOptions {
   delayMs?: number;
   /** Default: writePackage(doc.toFile()). */
   serialize?: (doc: Document) => FileTree;
-  /** Cleared up to the saved state after each successful save. */
+  /**
+   * Marked before and cleared up to the saved state after each successful
+   * save. Safe while recovered changes are undecided: clearing never drops
+   * them (only Keep or Discard does), and the save marker doesn't cover them.
+   */
   journal?: RecoveryJournal;
 }
 
@@ -112,14 +118,19 @@ export class Autosaver {
   }
 
   private async write(): Promise<void> {
+    // Snapshot the document, its version and the journal checkpoint together, so they describe the same state.
     const version = this.version;
-    const mark = this.journal?.checkpoint();
+    const mark = this.journal?.checkpoint() ?? 0;
+    const saveId = newSaveId();
     this.setStatus("saving");
     try {
-      await this.backend.write(this.serialize(this.doc));
+      const tree = this.serialize(this.doc);
+      // Marks which journal lines this save holds; if marking fails they are only offered again later, never lost.
+      await this.journal?.markSave(saveId, mark).catch(() => {});
+      await this.backend.write(tree, { saveId });
     } catch (err) {
       if (this.disposed) return;
-      this.setStatus("error", describeSaveError(err));
+      this.setStatus("error", describeSaveError(err), saveErrorReason(err));
       this.retryTimer = setTimeout(() => void this.save(), RETRY_MS);
       return;
     }
@@ -131,9 +142,10 @@ export class Autosaver {
     this.setStatus(this.dirty ? "unsaved" : "saved");
   }
 
-  private setStatus(state: SaveState, message?: string): void {
+  private setStatus(state: SaveState, message?: string, reason?: string): void {
     const next: SaveStatus = { state };
     if (message !== undefined) next.message = message;
+    if (reason !== undefined) next.reason = reason;
     if (this.savedAt !== undefined) next.savedAt = this.savedAt;
     this.current = next;
     for (const cb of [...this.listeners]) cb(next);
@@ -146,8 +158,8 @@ export class Autosaver {
   }
 }
 
-/** A plain sentence for the error banner. */
-export function describeSaveError(err: unknown): string {
+/** Why a save failed, as the end of a sentence: "there isn't enough storage space left." */
+export function saveErrorReason(err: unknown): string {
   const name = (err as { name?: unknown })?.name;
   const detail = (err instanceof Error && err.message ? err.message : String(err)).split("\n")[0]!.replace(/^Can't save: /, "");
   const reason =
@@ -160,5 +172,10 @@ export function describeSaveError(err: unknown): string {
           : name === "NoModificationAllowedError"
             ? "the file is locked by another tab or app."
             : detail;
-  return `Couldn't save: ${reason.replace(/\.?$/, ".")} Your changes are safe in this window. Retrying in 30 seconds.`;
+  return reason.replace(/\.?$/, ".");
+}
+
+/** A plain sentence for the error banner. */
+export function describeSaveError(err: unknown): string {
+  return `Couldn't save: ${saveErrorReason(err)} Your changes are safe in this window. Retrying in 30 seconds.`;
 }

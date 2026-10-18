@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { listRecentFiles } from "@illigma/host-web";
 import { Editor } from "./editor/Editor";
-import { createFile, discardRecovered, keepRecovered, openFolder, openStoredFile, type Session } from "./files";
+import { closeSession, createFile, openFolder, openStoredFile, type Session } from "./files";
 import { Home } from "./home/Home";
+import { applyUpdate, subscribeUpdate, updateReady } from "./sw-update";
+import { Icon } from "./ui/Icon";
 
 const FILE_HASH = /^#\/file\/([A-Za-z0-9_-]+)$/;
 
@@ -17,6 +19,7 @@ export function App() {
   const [generation, setGeneration] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const update = useSyncExternalStore(subscribeUpdate, updateReady);
 
   const open = useCallback(async (load: () => Promise<Session | null>) => {
     setBusy(true);
@@ -35,10 +38,13 @@ export function App() {
     }
   }, []);
 
-  // Reopen the file named in the URL after a reload.
+  // Reopen the file named in the URL after a reload. Once only: in development StrictMode runs effects
+  // twice, and a second open would find the first one's editing lock and open read-only.
+  const reopened = useRef(false);
   useEffect(() => {
     const m = FILE_HASH.exec(location.hash);
-    if (!m) return;
+    if (!m || reopened.current) return;
+    reopened.current = true;
     const fileId = m[1] as string;
     void open(async () => {
       const recent = (await listRecentFiles()).find((f) => f.fileId === fileId);
@@ -46,29 +52,52 @@ export function App() {
     });
   }, [open]);
 
+  const updateToast = update && (
+    <div className="banner update-toast" role="status">
+      <Icon name="refresh-cw" />
+      <span className="banner-text">
+        <strong>Update ready</strong>
+      </span>
+      <span aria-hidden="true">·</span>
+      <button type="button" className="btn btn-primary" onClick={applyUpdate}>
+        Reload
+      </button>
+    </div>
+  );
+
   if (session) {
     return (
-      <Editor
-        key={generation}
-        session={session}
-        onClose={() => {
-          setSession(null);
-          setFileHash(null);
-        }}
-        onKeepRecovered={() => void open(() => keepRecovered(session))}
-        onDiscardRecovered={() => void discardRecovered(session).then(setSession)}
-      />
+      <>
+        <Editor
+          key={generation}
+          session={session}
+          onClose={() => {
+            closeSession(session);
+            setSession(null);
+            setFileHash(null);
+          }}
+          onSession={(next) => {
+            // A new document (after Keep) needs a fresh editor; the same one only re-renders.
+            if (next.doc !== session.doc) setGeneration((g) => g + 1);
+            setSession(next);
+          }}
+        />
+        {updateToast}
+      </>
     );
   }
 
   return (
-    <Home
-      busy={busy}
-      error={error}
-      onDismissError={() => setError(null)}
-      onNew={() => void open(createFile)}
-      onOpenFolder={() => void open(openFolder)}
-      onOpenRecent={(f) => void open(() => openStoredFile(f.fileId, f.name))}
-    />
+    <>
+      <Home
+        busy={busy}
+        error={error}
+        onDismissError={() => setError(null)}
+        onNew={() => void open(createFile)}
+        onOpenFolder={() => void open(openFolder)}
+        onOpenRecent={(f) => void open(() => openStoredFile(f.fileId, f.name))}
+      />
+      {updateToast}
+    </>
   );
 }

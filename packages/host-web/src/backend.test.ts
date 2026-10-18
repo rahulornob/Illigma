@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Document } from "@illigma/core";
 import { readPackage, writePackage } from "@illigma/format";
-import { folderBackend, opfsBackend, pickFolderBackend, supportsFolderAccess, TEMP_SUFFIX } from "./index.js";
+import { COMMIT_FILE, folderBackend, opfsBackend, pickFolderBackend, REV_FILE, supportsFolderAccess, TEMP_SUFFIX } from "./index.js";
 import { FakeFileSystem } from "./testing/fake-fs.js";
 import { normalized, sampleDoc } from "./test-helpers.js";
 
@@ -18,7 +18,7 @@ describe("opfsBackend", () => {
     expect(backend.kind).toBe("opfs");
 
     await backend.write(writePackage(doc.toFile()));
-    expect(fs.paths()).toEqual([`files/${doc.fileId}/manifest.json`, `files/${doc.fileId}/pages/${doc.pages()[0]!.id}.json`]);
+    expect(fs.paths()).toEqual([`files/${doc.fileId}/${REV_FILE}`, `files/${doc.fileId}/manifest.json`, `files/${doc.fileId}/pages/${doc.pages()[0]!.id}.json`]);
 
     const reopened = Document.fromFile(readPackage(await opfsBackend(doc.fileId, doc.name, fs.root).read()));
     expect(normalized(reopened.toFile())).toEqual(normalized(doc.toFile()));

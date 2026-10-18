@@ -43,3 +43,34 @@ jobs:
       - run: npm ci
       - run: npx vite build
         working-directory: apps/bench
+
+  web-e2e:
+    name: Build apps/web and run end-to-end tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx vite build
+        working-directory: apps/web
+      # Each script serves dist/ with `vite preview` and drives headless Chromium.
+      - name: Smoke test
+        run: node apps/web/e2e/smoke.mjs --no-build
+      # bash -e: the first failing script fails the step.
+      - name: Regression scripts (recovery, save errors, canvas, offline and updates, accessibility)
+        run: |
+          for s in recovery save-errors canvas offline-update a11y; do
+            node "apps/web/e2e/$s.mjs" --no-build
+          done
+      - name: Keep screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-e2e-screenshots
+          path: apps/web/e2e/out/*.png
+          if-no-files-found: ignore

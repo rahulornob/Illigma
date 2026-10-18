@@ -24,7 +24,7 @@ import {
   watchErrors,
 } from "./lib.mjs";
 
-await runE2E("recovery", { port: 5193 }, async ({ browser, url, log, check, knownBug, outDir, errors }) => {
+await runE2E("recovery", { port: 5193 }, async ({ browser, url, log, check, outDir, errors }) => {
   const banner = (page) => page.locator(".banner", { hasText: "Recovered unsaved changes." });
   const rectangles = (page) => page.locator(".layer-list .layer-row", { hasText: /^Rectangle \d+$/ });
 
@@ -159,11 +159,8 @@ await runE2E("recovery", { port: 5193 }, async ({ browser, url, log, check, know
     await page.waitForTimeout(300);
     const offered = (await banner(page).count()) === 1;
     const inFile = (await layerRows(page).count()) === 4;
-    knownBug(
-      offered || inFile,
-      "recovered edits are lost if you edit before choosing Keep/Discard: the first autosave rewrites the journal without them, " +
-        "so after a reload there is no banner and the crash edits are gone (journal.clear keeps only entries this tab wrote)",
-    );
+    check(offered || inFile, "recovered edits must survive editing (and an autosave) before choosing Keep/Discard");
+    check(offered, "the recovery banner should come back after a reload while the person hasn't chosen");
     await context.close();
   }
 
@@ -193,7 +190,7 @@ await runE2E("recovery", { port: 5193 }, async ({ browser, url, log, check, know
     const ellipses = () => next.locator(".layer-list .layer-row", { hasText: /^Ellipse \d+$/ });
     check((await ellipses().count()) === 1, "the saved ellipse should be in the file");
     const stale = (await banner(next).count()) === 1;
-    knownBug(!stale, "a save that landed is offered again as \"Recovered unsaved changes … didn't reach the file\" when the journal couldn't be cleared");
+    check(!stale, "a save that landed must not be offered again as recovered when the journal couldn't be cleared");
     if (stale) {
       log("stale journal: Keep must not apply the saved edit twice");
       await banner(next).getByRole("button", { name: "Keep" }).click();
