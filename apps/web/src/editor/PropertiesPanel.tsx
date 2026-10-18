@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Document } from "@illigma/core";
 import type { NodeId } from "@illigma/format";
+import { setBoxField } from "./layout";
 
 type Field = "x" | "y" | "width" | "height";
 
@@ -49,7 +50,8 @@ function NumberField({
     // Never during a canvas drag: it owns the document until it ends.
     if (doc.live) return;
     const changes = ids.map((id, i) => [id, clamp(next(values[i] ?? 0))] as const).filter(([, v], i) => v !== values[i]);
-    if (changes.length) doc.transact(`Change ${label.toLowerCase()}`, (tx) => changes.forEach(([id, v]) => tx.set(id, field, v)));
+    // Through layout: W and H resize (constraints, Hug or Fill becomes Fixed); X and Y of a layer in auto layout stay its parent's.
+    if (changes.length) doc.transact(`Change ${label.toLowerCase()}`, (tx) => changes.forEach(([id, v]) => setBoxField(tx, doc, id, field, v)));
   };
 
   const commit = () => {
@@ -60,7 +62,9 @@ function NumberField({
       return;
     }
     apply(() => parsed);
-    setDraft(fmt(clamp(parsed)));
+    // What the document holds now: layout may have kept a value (X of a layer in auto layout).
+    const now = ids.map((id) => doc.get(id)?.[field] ?? 0);
+    setDraft(now.every((v) => v === now[0]) ? fmt(now[0] ?? 0) : "");
   };
 
   const inputId = `prop-${field}`;

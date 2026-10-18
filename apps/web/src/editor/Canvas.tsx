@@ -6,7 +6,22 @@ import wasmUrl from "canvaskit-wasm/bin/canvaskit.wasm?url";
 import type { Document, LiveEdit } from "@illigma/core";
 import type { NodeId, NodeType } from "@illigma/format";
 import { GpuCanvas, PageRenderer, type Camera, type FontSource } from "@illigma/renderer";
-import { movable, moveBy, resizeBy, selectionFrame, snapDelta, snapshot, startBounds, type SelectionFrame, type Start } from "./edit";
+import {
+  freeLayers,
+  movable,
+  moveBy,
+  reorderLayers,
+  reorderSlot,
+  resizeBy,
+  selectionFrame,
+  sharedFlowParent,
+  snapDelta,
+  snapshot,
+  startBounds,
+  type ReorderSlot,
+  type SelectionFrame,
+  type Start,
+} from "./edit";
 import {
   absoluteRect,
   boundsOf,
@@ -82,7 +97,15 @@ const sameIds = (a: readonly NodeId[], b: readonly NodeId[]) => a.length === b.l
 const plural = (n: number, verb: string) => (n === 1 ? `${verb} layer` : `${verb} ${n} layers`);
 
 /** Where the pointer is during a drag, and which modifiers are held (they can change without the pointer moving). */
-type Pointer = { sx: number; sy: number; shift: boolean; alt: boolean };
+type Pointer = { sx: number; sy: number; shift: boolean; alt: boolean; /** ⌘ or Ctrl: resize without constraints. */ meta: boolean };
+
+const pointerOf = (sx: number, sy: number, e: { shiftKey: boolean; altKey: boolean; metaKey: boolean; ctrlKey: boolean }): Pointer => ({
+  sx,
+  sy,
+  shift: e.shiftKey,
+  alt: e.altKey,
+  meta: e.metaKey || e.ctrlKey,
+});
 
 /**
  * What the pointer is doing. A press on the canvas waits until the pointer
@@ -112,6 +135,11 @@ type Gesture =
     }
   | { kind: "move"; wx: number; wy: number; starts: Start[]; box: Rect; edit: LiveEdit; last: Pointer }
   | { kind: "resize"; wx: number; wy: number; starts: Start[]; handle: Handle; edit: LiveEdit; last: Pointer }
+  /**
+   * Dragging layers in an auto layout flow reorders them (interactions.md §5): the selection box
+   * follows the pointer, an insertion line shows the slot, and the order changes on release.
+   */
+  | { kind: "reorder"; wx: number; wy: number; parent: NodeId; ids: NodeId[]; edit: LiveEdit; last: Pointer; dx: number; dy: number; slot: ReorderSlot | null }
   | { kind: "marquee"; wx: number; wy: number; scope: NodeId; additive: boolean; base: NodeId[]; rect: Rect | null }
   | { kind: "draw"; tool: Exclude<Tool, "move">; wx: number; wy: number; sx: number; sy: number };
 
@@ -124,6 +152,7 @@ export function Canvas(props: CanvasProps) {
   const draftRef = useRef<HTMLDivElement>(null);
   const outlinesRef = useRef<HTMLDivElement>(null);
   const marqueeRef = useRef<HTMLDivElement>(null);
+  const insertRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [errorText, setErrorText] = useState("");
   const [spaceHeld, setSpaceHeld] = useState(false);
@@ -218,11 +247,13 @@ export function Canvas(props: CanvasProps) {
     const ids = pageSelection();
     // With handles, the box is the one they resize; otherwise it's around everything selected.
     const resizable = handleFrame();
-    const frame = resizable ?? selectionFrame(p.doc, ids);
+    const still = resizable ?? selectionFrame(p.doc, ids);
+    // While reordering, the box follows the pointer (the layers move on release).
+    const frame = still && gesture?.kind === "reorder" ? { ...still, x: still.x + gesture.dx, y: still.y + gesture.dy } : still;
     if (sel && label) {
       if (frame) {
         place(sel, frame);
-        sel.dataset.handles = resizable && gesture?.kind !== "move" ? "on" : "off";
+        sel.dataset.handles = resizable && gesture?.kind !== "move" && gesture?.kind !== "reorder" ? "on" : "off";
         const z = live.current.camera.zoom;
         // On a tiny selection the edge handles would cover the corners: show the corners only.
         sel.dataset.small = frame.width * z < SMALL_SELECTION || frame.height * z < SMALL_SELECTION ? "on" : "off";
@@ -258,6 +289,13 @@ export function Canvas(props: CanvasProps) {
         }
         place(el, f);
       });
+    }
+    const line = insertRef.current;
+    if (line) {
+      if (gesture?.kind === "reorder" && gesture.slot) {
+        place(line, gesture.slot.line);
+        line.style.height = ""; // its thickness comes from CSS: 2 px at any zoom
+      } else line.style.display = "none";
     }
     const m = marqueeRef.current;
     if (m) {
@@ -564,7 +602,7 @@ export function Canvas(props: CanvasProps) {
     const w = toWorld(p.sx, p.sy);
     let dx = w.x - (g.kind === "pan" ? 0 : g.wx);
     let dy = w.y - (g.kind === "pan" ? 0 : g.wy);
-    if ((g.kind === "move" || g.kind === "resize") && !g.edit.open) {
+    if ((g.kind === "move" || g.kind === "resize" || g.kind === "reorder") && !g.edit.open) {
       // Ended elsewhere (committed before a save the page needed): the drag is over.
       l.gesture = null;
       l.pointerId = null;
@@ -582,7 +620,14 @@ export function Canvas(props: CanvasProps) {
       g.edit.update((tx) => moveBy(tx, g.starts, mx, my));
     } else if (g.kind === "resize") {
       g.last = p;
-      g.edit.update((tx) => resizeBy(tx, g.starts, g.handle, dx, dy, { keepRatio: p.shift, fromCenter: p.alt }));
+      const d = l.props.doc;
+      g.edit.update((tx) => resizeBy(tx, d, g.starts, g.handle, dx, dy, { keepRatio: p.shift, fromCenter: p.alt, constraints: !p.meta }));
+    } else if (g.kind === "reorder") {
+      g.last = p;
+      g.dx = dx;
+      g.dy = dy;
+      g.slot = reorderSlot(l.props.doc, g.parent, g.ids, w.x, w.y);
+      requestDraw();
     } else if (g.kind === "marquee") {
       g.rect = rectFromPoints(g.wx, g.wy, w.x, w.y);
       const d = l.props.doc;
@@ -602,7 +647,7 @@ export function Canvas(props: CanvasProps) {
     const l = live.current;
     const g = l.gesture;
     if (!g) return false;
-    if (g.kind === "move" || g.kind === "resize") {
+    if (g.kind === "move" || g.kind === "resize" || g.kind === "reorder") {
       if (g.edit.open) g.edit.cancel();
     } else if (g.kind === "marquee") {
       select(g.base);
@@ -628,7 +673,15 @@ export function Canvas(props: CanvasProps) {
       l.gesture = null;
       return;
     }
-    const starts = snapshot(d, g.ids);
+    const last: Pointer = { sx: g.sx, sy: g.sy, shift: false, alt: false, meta: false };
+    // Layers in an auto layout flow are reordered, not moved (a mix moves only the free ones).
+    const flow = g.then === "move" ? sharedFlowParent(d, g.ids) : null;
+    if (flow) {
+      const edit = d.beginLive(plural(g.ids.length, "Reorder"));
+      l.gesture = { kind: "reorder", wx: g.wx, wy: g.wy, parent: flow, ids: g.ids, edit, last, dx: 0, dy: 0, slot: null };
+      return;
+    }
+    const starts = snapshot(d, g.then === "move" ? freeLayers(d, g.ids) : g.ids);
     const box = startBounds(starts);
     if (!box) {
       l.gesture = null;
@@ -636,10 +689,10 @@ export function Canvas(props: CanvasProps) {
     }
     if (g.then === "resize" && g.handle) {
       const edit = d.beginLive(plural(starts.length, "Resize"));
-      l.gesture = { kind: "resize", wx: g.wx, wy: g.wy, starts, handle: g.handle, edit, last: { sx: g.sx, sy: g.sy, shift: false, alt: false } };
+      l.gesture = { kind: "resize", wx: g.wx, wy: g.wy, starts, handle: g.handle, edit, last };
     } else {
       const edit = d.beginLive(plural(starts.length, "Move"));
-      l.gesture = { kind: "move", wx: g.wx, wy: g.wy, starts, box, edit, last: { sx: g.sx, sy: g.sy, shift: false, alt: false } };
+      l.gesture = { kind: "move", wx: g.wx, wy: g.wy, starts, box, edit, last };
     }
   };
 
@@ -663,8 +716,8 @@ export function Canvas(props: CanvasProps) {
         }
         return;
       }
-      if ((e.key === "Shift" || e.key === "Alt") && (g.kind === "move" || g.kind === "resize")) {
-        applyDrag({ ...g.last, shift: e.shiftKey, alt: e.altKey });
+      if ((e.key === "Shift" || e.key === "Alt" || e.key === "Meta" || e.key === "Control") && (g.kind === "move" || g.kind === "resize")) {
+        applyDrag(pointerOf(g.last.sx, g.last.sy, e));
       }
     };
     window.addEventListener("keydown", onKey, true);
@@ -713,7 +766,18 @@ export function Canvas(props: CanvasProps) {
       setResizeCursor(handleCursor(handle, handleFrame()?.rotation ?? 0));
       return;
     }
-    const hit = p.hitTest?.(w.x, w.y, { deep: e.metaKey || e.ctrlKey }) ?? null;
+    const deep = e.metaKey || e.ctrlKey;
+    const top = p.hitTest?.(w.x, w.y, { deep }) ?? null;
+    // A selected layer nested inside the one a click would pick (a child of an auto layout card) keeps the press, as in Figma.
+    let hit = top;
+    if (top && !deep && current.length) {
+      for (let id = p.hitTest?.(w.x, w.y, { deep: true }) ?? null; id && id !== top; id = p.doc.get(id)?.parentId ?? null) {
+        if (current.includes(id)) {
+          hit = id;
+          break;
+        }
+      }
+    }
     if (e.shiftKey) {
       if (!hit) {
         l.gesture = { ...base, then: "marquee", ids: [], additive: true };
@@ -838,7 +902,7 @@ export function Canvas(props: CanvasProps) {
       l.draft = { x: Math.min(cur.wx, cur.wx + dx), y: Math.min(cur.wy, cur.wy + dy), width: Math.abs(dx), height: Math.abs(dy) };
       requestDraw();
     } else if (cur) {
-      applyDrag({ sx, sy, shift: e.shiftKey, alt: e.altKey });
+      applyDrag(pointerOf(sx, sy, e));
     }
   };
 
@@ -868,6 +932,17 @@ export function Canvas(props: CanvasProps) {
     }
     if (g.kind === "move" || g.kind === "resize") {
       if (g.edit.open) g.edit.commit();
+      requestDraw();
+      return;
+    }
+    if (g.kind === "reorder") {
+      if (g.edit.open) {
+        // The slot the insertion line showed (where the last pointer move put it); layout reflows inside the same step.
+        const { doc: d } = l.props;
+        const slot = g.slot;
+        if (slot) g.edit.update((tx) => void reorderLayers(tx, d, g.parent, g.ids, slot.before));
+        g.edit.commit();
+      }
       requestDraw();
       return;
     }
@@ -954,6 +1029,7 @@ export function Canvas(props: CanvasProps) {
       <div className="canvas-overlay" aria-hidden="true">
         <div ref={outlinesRef} />
         <div ref={marqueeRef} className="marquee-box" />
+        <div ref={insertRef} className="insert-line" />
         <div ref={selRef} className="selection-box">
           {HANDLE_NAMES.map((h) => (
             <span key={h} className={`handle ${h}`} />

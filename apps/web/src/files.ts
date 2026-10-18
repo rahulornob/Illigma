@@ -20,6 +20,7 @@ import {
   type FolderBackend,
   type LocationStore,
 } from "@illigma/host-web";
+import { DOCUMENT_OPTIONS } from "./editor/layout";
 
 /** An open file: the document, where it is saved, and any recovered edits. */
 export interface Session {
@@ -42,17 +43,46 @@ export interface Session {
 
 const solid = (r: number, g: number, b: number) => ({ type: "SOLID" as const, visible: true, color: { r, g, b, a: 1 } });
 
-/** A new document with one page and a sample frame. Its undo history starts empty. */
+/**
+ * A document read from a file, laid out on every edit: the editor's documents
+ * all come through here (or `sampleDocument`), so layout never misses one.
+ */
+export function loadDocument(file: IlligmaFile): Document {
+  return Document.fromFile(file, DOCUMENT_OPTIONS);
+}
+
+/**
+ * A new document with one page and a sample frame: a hero, an avatar pinned
+ * to the top right (it follows the frame's right edge), and a card with
+ * vertical auto layout. Its undo history starts empty.
+ */
 export function sampleDocument(name = "Untitled"): Document {
-  const draft = new Document(name);
+  const draft = new Document(name, DOCUMENT_OPTIONS);
   draft.transact("Create file", (tx) => {
     const page = tx.addPage("Page 1");
     const frame = tx.create("FRAME", page, { name: "Desktop", x: 0, y: 0, width: 1440, height: 900, fills: [solid(1, 1, 1)] });
+    // Laid out by the document's normalizer at the end of this transaction: 320 × 264 at (120, 560).
+    const card = tx.create("FRAME", frame, {
+      name: "Card",
+      x: 120,
+      y: 560,
+      cornerRadius: 16,
+      fills: [solid(0.96, 0.96, 0.96)],
+      layoutMode: "VERTICAL",
+      itemSpacing: 16,
+      paddingLeft: 24,
+      paddingRight: 24,
+      paddingTop: 24,
+      paddingBottom: 24,
+    });
+    tx.create("RECTANGLE", card, { name: "Image", width: 272, height: 120, cornerRadius: 8, fills: [solid(0.85, 0.85, 0.85)] });
+    tx.create("RECTANGLE", card, { name: "Title", width: 200, height: 24, cornerRadius: 4, fills: [solid(0.7, 0.7, 0.7)] });
+    tx.create("RECTANGLE", card, { name: "Button", width: 120, height: 40, cornerRadius: 8, fills: [solid(1, 0.357, 0.18)] });
     tx.create("RECTANGLE", frame, { name: "Hero", x: 120, y: 160, width: 560, height: 320, cornerRadius: 16, fills: [solid(0.85, 0.85, 0.85)] });
-    tx.create("ELLIPSE", frame, { name: "Avatar", x: 1200, y: 40, width: 96, height: 96, fills: [solid(1, 0.357, 0.18)] });
+    tx.create("ELLIPSE", frame, { name: "Avatar", x: 1200, y: 40, width: 96, height: 96, fills: [solid(1, 0.357, 0.18)], constraints: { horizontal: "MAX", vertical: "MIN" } });
   });
   // Re-reading the file drops the "Create file" step, so undo can't remove the only page.
-  return Document.fromFile(draft.toFile());
+  return loadDocument(draft.toFile());
 }
 
 function isEmpty(tree: FileTree): boolean {
@@ -110,7 +140,7 @@ export async function openStoredFile(fileId: string, name: string): Promise<Sess
     // Without the lock, leave any save in progress alone: it belongs to the other tab.
     const tree = await backend.read({ repair: lock !== null });
     if (isEmpty(tree)) throw new Error(`"${name}" is empty or was removed from this browser's storage.`);
-    return startSession(Document.fromFile(readPackage(tree)), backend, lock);
+    return startSession(loadDocument(readPackage(tree)), backend, lock);
   });
 }
 
@@ -139,9 +169,9 @@ export async function openFolder(locations: LocationStore = (locationStore ??= i
       return startSession(doc, backend, lock);
     });
   }
-  let doc = Document.fromFile(readPackage(tree));
+  let doc = loadDocument(readPackage(tree));
   const copy = await isCopyOfAnother(doc.fileId, backend.dir, locations).catch(() => false);
-  if (copy) doc = Document.fromFile(withNewFileId(doc.toFile()));
+  if (copy) doc = loadDocument(withNewFileId(doc.toFile()));
   const lock = await acquireFileLock(doc.fileId);
   return holding(lock, async () => {
     if (copy && lock) {
@@ -277,7 +307,7 @@ function reposition(doc: Document, ops: readonly Operation[]): Operation[] {
  * `skippedChanges` holds the index of every edit skipped in whole or part.
  */
 export function replayRecovered(base: Document, changes: readonly (readonly Operation[])[]): { doc: Document; skipped: number; skippedChanges: number[] } {
-  const doc = Document.fromFile(base.toFile());
+  const doc = loadDocument(base.toFile());
   const dropped = new Set<NodeId>(); // creations skipped, so their children are too
   const skippedChanges: number[] = [];
   changes.forEach((change, i) => {
@@ -383,7 +413,7 @@ export function exportSkippedEdits(session: Session): string {
  */
 export async function reloadFromDisk(session: Session): Promise<Session> {
   const tree = await session.backend.read({ repair: false });
-  const doc = Document.fromFile(readPackage(tree));
+  const doc = loadDocument(readPackage(tree));
   if (doc.fileId !== session.doc.fileId) throw new Error("The folder now holds a different file.");
   return { ...session, doc, notice: undefined, skipped: undefined, reloadedFrom: session.doc };
 }
@@ -414,7 +444,7 @@ export async function openCompareSnapshot(id: string): Promise<Session> {
   const backend = opfsBackend(id, "Disk version", { area: "compare" });
   const tree = await backend.read();
   if (isEmpty(tree)) throw new Error("This comparison copy is no longer available. Use Compare… again.");
-  const doc = Document.fromFile(readPackage(tree));
+  const doc = loadDocument(readPackage(tree));
   return { doc, backend, journal: new RecoveryJournal(doc.fileId), recovered: [], lock: null, compare: true };
 }
 

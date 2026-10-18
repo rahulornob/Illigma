@@ -77,6 +77,7 @@ export default defineConfig({
     alias: {
       "@illigma/format": src("format"),
       "@illigma/core": src("core"),
+      "@illigma/layout": src("layout"),
       "@illigma/renderer": src("renderer"),
       "@illigma/host-web": src("host-web"),
     },

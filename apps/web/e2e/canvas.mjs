@@ -614,5 +614,110 @@ await runE2E("canvas", {}, async ({ browser, url, log, check, outDir, errors }) 
   await layerRow(page, "Avatar").click({ modifiers: ["ControlOrMeta"] });
   check((await selectedName()) === "Desktop,Hero", `⌘-click should remove Avatar, got ${await selectedName()}`);
   await page.keyboard.press("Escape");
+
+  // ---- layout wired into editing: constraints, auto layout reorder, ⌘D, delete ----
+
+  log("layout: a fresh file with an auto layout card");
+  await createFile(page, url);
+  m = await mapping(); // Desktop at (0, 0); Card (vertical auto layout) at 120, 560: Image 24, Title 160, Button 200
+  const card = await box4("Card");
+  check(card.x === 120 && card.y === 560 && card.w === 320 && card.h === 264, `the sample card should be laid out at 120, 560, 320 × 264, got ${JSON.stringify(card)}`);
+  check((await box4("Title")).y === 160 && (await box4("Button")).y === 200, "the card's children should be stacked by auto layout");
+  const lt = Math.max(1, 1.5 / m.z);
+
+  log("resizing a frame: a child pinned right follows; ⌘/Ctrl-resize leaves it");
+  await layerRow(page, "Desktop").click();
+  let eh2 = await handlePoint("e");
+  await drag(page, eh2.x, eh2.y, eh2.x + 80, eh2.y);
+  const grown = await field(page, "Width");
+  check(near(grown, 1440 + 80 / m.z, lt), `Desktop should grow by ${80 / m.z}, got W ${grown}`);
+  check(near((await box4("Avatar")).x, 1200 + (grown - 1440), 0.01), `Avatar (pinned right) should move with the right edge to ${1200 + (grown - 1440)}, got ${await field(page, "X position")}`);
+  check((await box4("Hero")).x === 120, "Hero (pinned left) stays");
+  await undo();
+  check(await eventually(async () => (await box4("Avatar")).x === 1200, 2_000), "one undo puts Avatar back with the frame");
+  check((await box4("Desktop")).w === 1440, "…and Desktop's width");
+  eh2 = await handlePoint("e");
+  await page.keyboard.down("ControlOrMeta");
+  await drag(page, eh2.x, eh2.y, eh2.x + 80, eh2.y);
+  await page.keyboard.up("ControlOrMeta");
+  check(near(await field(page, "Width"), 1440 + 80 / m.z, lt), "⌘-resize still resizes the frame");
+  check((await box4("Avatar")).x === 1200, `⌘-resize ignores constraints: Avatar stays at 1200, got ${await field(page, "X position")}`);
+  await undo();
+  check(await eventually(async () => (await box4("Desktop")).w === 1440, 2_000), "undo the ⌘-resize");
+
+  log("dragging a child of the auto layout card reorders it, with an insertion line");
+  await layerRow(page, "Title").click();
+  const titleAt = m.toScreen(244, 732);
+  const dropAt = m.toScreen(244, 820); // below the Button's centre (780)
+  await page.mouse.move(titleAt.x, titleAt.y);
+  await page.mouse.down();
+  await page.mouse.move((titleAt.x + dropAt.x) / 2, (titleAt.y + dropAt.y) / 2, { steps: 6 });
+  await page.mouse.move(dropAt.x, dropAt.y, { steps: 6 });
+  check(await eventually(() => page.locator(".insert-line").isVisible(), 2_000), "an insertion line should show while dragging");
+  await page.screenshot({ path: `${outDir}/canvas-reorder.png` });
+  check((await field(page, "Y position")) === 160, "nothing moves in the document until the drop");
+  await page.mouse.up();
+  check(await eventually(async () => (await field(page, "Y position")) === 216, 2_000), `Title should land after Button (Y 216), got ${await field(page, "Y position")}`);
+  check(await eventually(async () => !(await page.locator(".insert-line").isVisible()), 2_000), "the insertion line hides after the drop");
+  const cardRows = async () => {
+    const all = (await layerRows(page).allInnerTexts()).map((t) => t.trim());
+    return all.slice(all.indexOf("Card") + 1, all.indexOf("Card") + 4).join(",");
+  };
+  check((await cardRows()) === "Title,Button,Image", `the Layers panel should show the new order (top = last), got ${await cardRows()}`);
+  check((await box4("Button")).y === 160, "Button moves up into Title's place");
+  check((await box4("Title")).x === 24, "Title keeps the card's padding: it was reordered, not moved freely");
+  await undo();
+  check(await eventually(async () => (await box4("Title")).y === 160, 2_000), "one undo restores the order");
+  check((await cardRows()) === "Button,Title,Image", `…and the Layers panel order, got ${await cardRows()}`);
+
+  log("Escape during a reorder drag cancels it");
+  await layerRow(page, "Title").click();
+  await page.mouse.move(titleAt.x, titleAt.y);
+  await page.mouse.down();
+  await page.mouse.move(dropAt.x, dropAt.y, { steps: 8 });
+  check(await eventually(() => page.locator(".insert-line").isVisible(), 2_000), "the insertion line shows");
+  await page.keyboard.press("Escape");
+  await page.mouse.up();
+  check((await cardRows()) === "Button,Title,Image", `Escape keeps the order, got ${await cardRows()}`);
+  check(await eventually(async () => !(await page.locator(".insert-line").isVisible()), 2_000), "the insertion line hides on Escape");
+
+  log("⌘D inside auto layout puts the copy right after the original");
+  await layerRow(page, "Title").click();
+  await canvas.focus();
+  await page.keyboard.press("ControlOrMeta+d");
+  check(await eventually(async () => (await field(page, "Y position")) === 200, 2_000), `the copy should sit right after Title (Y 200), got ${await field(page, "Y position")}`);
+  check((await box4("Button")).y === 240, "Button moves down to make room");
+  check((await box4("Card")).h === 304, "the card grows (Hug)");
+  await undo();
+  check(await eventually(async () => (await box4("Card")).h === 264, 2_000), "one undo removes the copy and shrinks the card");
+
+  log("resizing a child's edge in auto layout reflows the card");
+  await layerRow(page, "Image").click();
+  const sh = await handlePoint("s");
+  await drag(page, sh.x, sh.y, sh.x, sh.y + 40);
+  const imageH = await field(page, "Height");
+  check(near(imageH, 120 + 40 / m.z, lt), `Image should get taller by ${40 / m.z}, got ${imageH}`);
+  check((await box4("Title")).y === 160 + (imageH - 120), `Title moves down with it, got ${await field(page, "Y position")}`);
+  check((await box4("Card")).h === 264 + (imageH - 120), "the card grows with it");
+  await undo();
+  check(await eventually(async () => (await box4("Card")).h === 264, 2_000), "one undo restores the card");
+
+  log("Delete inside auto layout closes the gap");
+  await layerRow(page, "Title").click();
+  await canvas.focus();
+  await page.keyboard.press("Delete");
+  check(await eventually(async () => (await box4("Button")).y === 160, 2_000), `Button should move up to Y 160, got ${await field(page, "Y position")}`);
+  await undo();
+  check(await eventually(async () => (await box4("Button")).y === 200, 2_000), "undo brings Title back and the layout with it");
+  await page.screenshot({ path: `${outDir}/canvas-layout.png` });
+
+  log("arrow keys reorder a child of the auto layout card");
+  await layerRow(page, "Image").click();
+  await canvas.focus();
+  await page.keyboard.press("ArrowDown");
+  check(await eventually(async () => (await field(page, "Y position")) === 64, 2_000), `↓ should move Image after Title (Y 64), got ${await field(page, "Y position")}`);
+  check((await field(page, "X position")) === 24, "the arrow reorders instead of nudging");
+  await undo();
+  check(await eventually(async () => (await field(page, "Y position")) === 24, 2_000), "undo the reorder");
   await context.close();
 });

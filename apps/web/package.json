@@ -16,6 +16,7 @@
     "@illigma/core": "0.0.0",
     "@illigma/format": "0.0.0",
     "@illigma/host-web": "0.0.0",
+    "@illigma/layout": "0.0.0",
     "@illigma/renderer": "0.0.0",
     "canvaskit-wasm": "0.42.0",
     "react": "19.3.1",
