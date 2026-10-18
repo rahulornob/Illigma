@@ -4,18 +4,19 @@
  * transforms (x, y, then rotation about the node's top-left) and clipping.
  */
 
-import type { Node, NodeId } from "@illigma/format";
+import type { ReadonlyNode } from "@illigma/core";
+import type { NodeId, NodeType } from "@illigma/format";
 
 /** The part of `Document` hit-testing needs. */
 export interface NodeSource {
-  children(parentId: NodeId): readonly Readonly<Node>[];
+  children(parentId: NodeId): readonly ReadonlyNode[];
 }
 
 /** Node types that clip their children. Must match the renderer. */
-export const CLIPPING: ReadonlySet<Node["type"]> = new Set(["FRAME", "COMPONENT", "INSTANCE"]);
+export const CLIPPING: ReadonlySet<NodeType> = new Set(["FRAME", "COMPONENT", "INSTANCE"]);
 
 /** Types with no area of their own: they are hit only through their children. */
-const NO_AREA: ReadonlySet<Node["type"]> = new Set(["GROUP", "PAGE"]);
+const NO_AREA: ReadonlySet<NodeType> = new Set(["GROUP", "PAGE"]);
 
 export interface HitTestOptions {
   /** Return the deepest node under the point instead of its top-level ancestor. */
@@ -31,7 +32,7 @@ export function hitTest(doc: NodeSource, pageId: NodeId, x: number, y: number, o
   const top = doc.children(pageId);
   // Later siblings draw on top, so test them first.
   for (let i = top.length - 1; i >= 0; i--) {
-    const n = top[i] as Readonly<Node>;
+    const n = top[i] as ReadonlyNode;
     const hit = hitNode(doc, n, x, y);
     if (hit) return options.deep ? hit : n.id;
   }
@@ -39,7 +40,7 @@ export function hitTest(doc: NodeSource, pageId: NodeId, x: number, y: number, o
 }
 
 /** Deepest node hit in `n`'s subtree, with (`px`, `py`) in `n`'s parent space. */
-function hitNode(doc: NodeSource, n: Readonly<Node>, px: number, py: number): NodeId | null {
+function hitNode(doc: NodeSource, n: ReadonlyNode, px: number, py: number): NodeId | null {
   // Hidden and locked layers can't be picked on the canvas, and neither can anything inside them.
   if (!n.visible || n.locked) return null;
   const [lx, ly] = toLocal(n, px, py);
@@ -48,14 +49,14 @@ function hitNode(doc: NodeSource, n: Readonly<Node>, px: number, py: number): No
   if (CLIPPING.has(n.type) && !inside) return null;
   const kids = doc.children(n.id);
   for (let i = kids.length - 1; i >= 0; i--) {
-    const hit = hitNode(doc, kids[i] as Readonly<Node>, lx, ly);
+    const hit = hitNode(doc, kids[i] as ReadonlyNode, lx, ly);
     if (hit) return hit;
   }
   return inside && !NO_AREA.has(n.type) ? n.id : null;
 }
 
 /** Parent space to `n`'s local space: undo the translate, then the rotation. */
-export function toLocal(n: Readonly<Node>, px: number, py: number): [number, number] {
+export function toLocal(n: ReadonlyNode, px: number, py: number): [number, number] {
   const dx = px - n.x;
   const dy = py - n.y;
   if (!n.rotation) return [dx, dy];
@@ -66,7 +67,7 @@ export function toLocal(n: Readonly<Node>, px: number, py: number): [number, num
 }
 
 /** Whether the local point is inside `n`'s fill shape: rectangle, rounded rectangle or ellipse. */
-export function insideShape(n: Readonly<Node>, x: number, y: number): boolean {
+export function insideShape(n: ReadonlyNode, x: number, y: number): boolean {
   const w = n.width;
   const h = n.height;
   if (x < 0 || y < 0 || x > w || y > h) return false;

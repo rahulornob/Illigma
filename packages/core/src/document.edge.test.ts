@@ -75,43 +75,46 @@ describe("isolation: inputs are copied", () => {
 });
 
 describe("isolation: outputs must not alias the store", () => {
-  // BUG: get()/children()/pages()/subtree() return the live stored objects.
-  // `Readonly<Node>` is shallow, so `doc.get(id)!.fills.push(...)` type-checks
-  // and silently edits the document without an operation, undo step or event.
-  it.fails("mutating a node returned by get() does not change the document", () => {
+  // Fixed: get()/children()/pages()/subtree() used to return the live stored
+  // objects, so `doc.get(id)!.fills.push(...)` silently edited the document.
+  // Stored nodes are now deeply frozen (and typed DeepReadonly), so such
+  // writes throw a TypeError and change nothing.
+  it("mutating a node returned by get() does not change the document", () => {
     const { doc, frame } = setup();
     const seen: Change[] = [];
     doc.subscribe((c) => seen.push(c));
-    doc.get(frame)?.fills.push(BLUE); // compiles: Readonly<Node> does not freeze arrays
-    ((doc.get(frame) as Node).fills[0] as Paint).color.g = 1;
-    (doc.get(frame) as Node).name = "Hacked";
+    // @ts-expect-error fills is a readonly array
+    expect(() => doc.get(frame)?.fills.push(BLUE)).toThrow(TypeError);
+    expect(() => (((doc.get(frame) as Node).fills[0] as Paint).color.g = 1)).toThrow(TypeError);
+    expect(() => ((doc.get(frame) as Node).name = "Hacked")).toThrow(TypeError);
     expect(doc.get(frame)).toMatchObject({ name: "Card", fills: [RED] });
     expect(seen).toEqual([]);
   });
 
-  it.fails("mutating nodes returned by children(), pages() and subtree() does not change the document", () => {
+  it("mutating nodes returned by children(), pages() and subtree() does not change the document", () => {
     const { doc, page, frame } = setup();
-    (doc.children(page)[0] as Node).name = "via children";
-    (doc.pages()[0] as Node).name = "via pages";
-    (doc.subtree(frame)[0] as Node).x = 999;
+    expect(() => ((doc.children(page)[0] as Node).name = "via children")).toThrow(TypeError);
+    expect(() => ((doc.pages()[0] as Node).name = "via pages")).toThrow(TypeError);
+    expect(() => ((doc.subtree(frame)[0] as Node).x = 999)).toThrow(TypeError);
     expect(doc.get(frame)).toMatchObject({ name: "Card", x: 0 });
     expect(doc.get(page)?.name).toBe("Page 1");
   });
 
-  it.fails("mutating a node's index through get() cannot break sibling order", () => {
+  it("mutating a node's index through get() cannot break sibling order", () => {
     const { doc, page } = setup();
     const [a, b] = doc.transact("Add", (tx) => [tx.create("RECTANGLE", page), tx.create("RECTANGLE", page)]) as [string, string];
-    (doc.get(b) as Node).index = (doc.get(a) as Node).index; // now two siblings share a key
+    expect(() => ((doc.get(b) as Node).index = (doc.get(a) as Node).index)).toThrow(TypeError);
     expect(validateFile(doc.toFile())).toEqual([]);
   });
 
-  // BUG: the Change passed to listeners holds the same op objects as the undo
-  // stack (and undo's inverted ops share `node` with them), so a listener can
-  // rewrite history.
-  it.fails("a listener that mutates its Change cannot rewrite undo/redo history", () => {
+  // Fixed: the Change passed to listeners used to hold the same op objects as
+  // the undo stack, so a listener could rewrite history. Each listener now
+  // gets its own copy.
+  it("a listener that mutates its Change cannot rewrite undo/redo history", () => {
     const { doc, page } = setup();
     doc.subscribe((c) => {
-      for (const o of c.ops as Operation[]) {
+      // Operations are typed readonly; this listener misbehaves on purpose.
+      for (const o of c.ops as unknown as { op: Operation["op"]; node: { name: string }; value: unknown }[]) {
         if (o.op === "create" || o.op === "delete") o.node.name = "Rewritten";
         else o.value = "Rewritten";
       }
@@ -167,18 +170,18 @@ describe("edge cases that already behave", () => {
 });
 
 describe("known bugs", () => {
-  // BUG: move() never checks that the new parent exists. The node is linked
+  // Fixed; was: move() never checks that the new parent exists. The node is linked
   // under a missing id and the document can no longer be saved.
-  it.fails("move into a missing parent is refused", () => {
+  it("move into a missing parent is refused", () => {
     const { doc, frame } = setup();
     expect(() => doc.transact("Move", (tx) => tx.move(frame, "missing"))).toThrow();
     expect(validateFile(doc.toFile())).toEqual([]);
   });
 
-  // BUG: set() deep-copies through JSON, so NaN, Infinity and -Infinity are
+  // Fixed; was: set() deep-copies through JSON, so NaN, Infinity and -Infinity are
   // stored as null. The call type-checks, nothing throws, and the next save
   // fails validation.
-  it.fails("set refuses non-finite numbers instead of storing null", () => {
+  it("set refuses non-finite numbers instead of storing null", () => {
     for (const bad of [NaN, Infinity, -Infinity]) {
       const { doc, frame } = setup();
       let threw = false;
@@ -192,7 +195,7 @@ describe("known bugs", () => {
     }
   });
 
-  it.fails("set refuses paints with non-finite channels instead of storing null", () => {
+  it("set refuses paints with non-finite channels instead of storing null", () => {
     const { doc, frame } = setup();
     const bad: Paint = { type: "SOLID", visible: true, color: { r: NaN, g: 0, b: 0, a: 1 } };
     try {
@@ -203,11 +206,11 @@ describe("known bugs", () => {
     expect(validateFile(doc.toFile())).toEqual([]);
   });
 
-  // BUG: a nested transact() joins the outer one. If the inner callback
+  // Fixed; was: a nested transact() joins the outer one. If the inner callback
   // throws and the outer callback catches it, the inner operations stay
   // applied, although transact() promises "every operation it made is
   // rolled back".
-  it.fails("an inner transaction that throws is rolled back even when the outer one catches", () => {
+  it("an inner transaction that throws is rolled back even when the outer one catches", () => {
     const { doc, page } = setup();
     doc.transact("Outer", () => {
       try {
@@ -222,10 +225,10 @@ describe("known bugs", () => {
     expect(doc.children(page).some((n) => n.name === "inner")).toBe(false);
   });
 
-  // BUG: create() spreads `fields` over the defaults, so at runtime (plugins,
+  // Fixed; was: create() spreads `fields` over the defaults, so at runtime (plugins,
   // MCP, JS callers) fields can override id, type, parentId and index. The
   // returned id then names no node, and a PAGE can be created under a frame.
-  it.fails("create ignores id, type, parentId and index smuggled in through fields", () => {
+  it("create ignores id, type, parentId and index smuggled in through fields", () => {
     const { doc, page, frame } = setup();
     const fields = { id: "forced", type: "PAGE", parentId: frame, index: "V" } as unknown as Partial<Node>;
     const id = doc.transact("Add", (tx) => tx.create("RECTANGLE", page, fields));
@@ -234,20 +237,20 @@ describe("known bugs", () => {
     expect(validateFile(doc.toFile())).toEqual([]);
   });
 
-  // BUG: set() only blocks "parentId" and "index" at runtime; "id" and "type"
+  // Fixed; was: set() only blocks "parentId" and "index" at runtime; "id" and "type"
   // are blocked by TypeScript alone. Changing "id" desynchronises the map key.
-  it.fails("set refuses id and type at runtime", () => {
+  it("set refuses id and type at runtime", () => {
     const { doc, frame } = setup();
     expect(() => doc.transact("Id", (tx) => tx.set(frame, "id" as "name", "other"))).toThrow();
     expect(() => doc.transact("Type", (tx) => tx.set(frame, "type" as "name", "PAGE"))).toThrow();
     expect(validateFile(doc.toFile())).toEqual([]);
   });
 
-  // BUG: undo() and redo() can run inside an active transaction. Undoing the
+  // Fixed; was: undo() and redo() can run inside an active transaction. Undoing the
   // step that created the page deletes it under the new child (apply("delete")
   // does not check for children), and committing then clears the redo stack,
   // so the page can never come back: the document is left with an orphan.
-  it.fails("undo inside an active transaction is refused or leaves a valid document", () => {
+  it("undo inside an active transaction is refused or leaves a valid document", () => {
     const doc = new Document("Edge");
     doc.transact("Page 1", (tx) => tx.addPage("Page 1"));
     const p2 = doc.transact("Page 2", (tx) => tx.addPage("Page 2"));
@@ -262,12 +265,12 @@ describe("known bugs", () => {
     expect(validateFile(doc.toFile())).toEqual([]);
   });
 
-  // BUG: Document.fromFile takes page order from the manifest, but new page
+  // Fixed; was: Document.fromFile takes page order from the manifest, but new page
   // keys are computed from neighbours in that order. When the manifest order
   // disagrees with the page nodes' index keys (validateFile accepts this),
   // addPage("last") can reuse an existing key and addPage({ after }) throws
   // "must sort before".
-  it.fails("a file whose manifest page order disagrees with page indexes still gets valid page keys", () => {
+  it("a file whose manifest page order disagrees with page indexes still gets valid page keys", () => {
     const d = new Document("Order");
     const [p1, p2] = d.transact("Pages", (tx) => [tx.addPage("One"), tx.addPage("Two")]) as [string, string];
     const file = d.toFile();
@@ -282,11 +285,11 @@ describe("known bugs", () => {
     expect(validateFile(doc.toFile())).toEqual([]);
   });
 
-  // BUG: subtree() collects with out.push(...children), which spreads the
+  // Fixed; was: subtree() collects with out.push(...children), which spreads the
   // whole sibling list as call arguments. With 200,000 direct children this
   // throws "RangeError: Maximum call stack size exceeded", so such a page
   // can't be deleted, and a frame with that many children can't be moved or deleted.
-  it.fails("subtree and delete work with 200,000 direct children", () => {
+  it("subtree and delete work with 200,000 direct children", () => {
     const seed = new Document("Big");
     const [p1] = seed.transact("Pages", (tx) => [tx.addPage("Big"), tx.addPage("Other")]) as [string, string];
     const file = seed.toFile();

@@ -65,8 +65,8 @@ describe("validateFile", () => {
     const nodes = file.nodes as Node[];
     nodes.push({ ...(nodes[3] as Node) }); // duplicate text1
     (nodes[2] as Node).parentId = "text1"; // frame1 ↔ text1 loop
-    nodes.push({ ...defaultNode("RECTANGLE", "r1", "page1", "V") }); // same position as frame1? frame1 now moved; r1 alone
-    nodes.push({ ...defaultNode("RECTANGLE", "r2", "page1", "V") });
+    nodes.push({ ...defaultNode("RECTANGLE", "r1", "page1", "a0") }); // same position as frame1? frame1 now moved; r1 alone
+    nodes.push({ ...defaultNode("RECTANGLE", "r2", "page1", "a0") });
     (nodes[3] as Node).fills = [{ type: "SOLID", visible: true, color: { r: 2, g: 0, b: 0, a: 1 } }];
     const problems = validateFile(file).join("\n");
     expect(problems).toMatch(/used twice/);

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Document, type Operation } from "@illigma/core";
+import { Document } from "@illigma/core";
 import { readPackage, writePackage } from "@illigma/format";
 import { Autosaver, JOURNAL_FLUSH_MS, opfsBackend, RecoveryJournal } from "./index.js";
 import { FakeFileSystem } from "./testing/fake-fs.js";
@@ -12,10 +12,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
 });
-
-function replay(doc: Document, ops: Operation[]): void {
-  for (const op of ops) doc.apply(op);
-}
 
 describe("RecoveryJournal", () => {
   it("appends committed changes in batches of at most 250 ms", async () => {
@@ -115,7 +111,7 @@ describe("RecoveryJournal", () => {
     // Next launch.
     const reopened = Document.fromFile(readPackage(await opfsBackend(doc.fileId, doc.name, fs.root).read()));
     expect(normalized(reopened.toFile())).not.toEqual(expected);
-    replay(reopened, await new RecoveryJournal(doc.fileId, fs.root).pending());
+    reopened.replay(await new RecoveryJournal(doc.fileId, fs.root).pending());
     expect(normalized(reopened.toFile())).toEqual(expected);
   });
 });

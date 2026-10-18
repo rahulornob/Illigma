@@ -8,14 +8,14 @@ export function sampleFile(): IlligmaFile {
   const page: Node = { ...defaultNode("PAGE", "page1", null, p1), name: "Onboarding" };
   const page2: Node = { ...defaultNode("PAGE", "page2", null, p2), name: "Components 🧩" };
   const frame: Node = {
-    ...defaultNode("FRAME", "frame1", "page1", "V"),
+    ...defaultNode("FRAME", "frame1", "page1", "a0"),
     name: "Sign up",
     width: 393,
     height: 852,
     fills: [{ type: "SOLID", visible: true, color: { r: 1, g: 1, b: 1, a: 1 } }],
   };
   const text: Node = {
-    ...defaultNode("TEXT", "text1", "frame1", "V"),
+    ...defaultNode("TEXT", "text1", "frame1", "a0"),
     characters: "Create account — ১২৩ 日本語",
     fontFamily: "Inter",
     fontSize: 28,

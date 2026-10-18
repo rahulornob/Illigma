@@ -82,6 +82,18 @@ export function writePackage(file: IlligmaFile): FileTree {
 
 /** Read a package. Older format versions are upgraded; newer ones are refused. */
 export function readPackage(tree: FileTree): IlligmaFile {
+  return readPackageWithReport(tree).file;
+}
+
+/** What `readPackageWithReport` found besides the file. */
+export interface ReadReport {
+  file: IlligmaFile;
+  /** Things that didn't stop the file opening but may mean lost work, e.g. page files the manifest doesn't list. */
+  warnings: string[];
+}
+
+/** `readPackage`, plus warnings about content the file ignores. */
+export function readPackageWithReport(tree: FileTree): ReadReport {
   const manifestText = tree.get("manifest.json");
   if (manifestText === undefined) throw new FormatError("This is not an Illigma file: manifest.json is missing.");
 
@@ -110,6 +122,7 @@ export function readPackage(tree: FileTree): IlligmaFile {
   for (const entry of pages) {
     const id = (entry as { id?: unknown })?.id;
     if (typeof id !== "string") throw new FormatError("manifest.json lists a page without an id.");
+    // Checked before the id is used as a path.
     if (!isSafePageId(id)) throw new FormatError(`manifest.json lists a page id that can't be a file name: ${JSON.stringify(id.slice(0, 80))}.`);
     const text = tree.get(`pages/${id}.json`);
     if (text === undefined) throw new FormatError(`Page file pages/${id}.json is missing.`);
@@ -126,5 +139,11 @@ export function readPackage(tree: FileTree): IlligmaFile {
   const file = migrate({ manifest: rawManifest, nodes: rawNodes }, version) as IlligmaFile;
   const problems = validateFile(file);
   if (problems.length) throw new FormatError("The file is damaged and can't be opened safely.", problems);
-  return file;
+
+  const listed = new Set(pages.map((p) => `pages/${(p as { id: string }).id}.json`));
+  const warnings: string[] = [];
+  for (const path of [...tree.keys()].sort()) {
+    if (path.startsWith("pages/") && !listed.has(path)) warnings.push(`${path} is not listed in manifest.json, so it was not opened.`);
+  }
+  return { file, warnings };
 }

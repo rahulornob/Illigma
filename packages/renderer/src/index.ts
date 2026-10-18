@@ -9,8 +9,8 @@
  * Each frame only replays the page picture under the camera transform.
  */
 
-import type { Change, Document } from "@illigma/core";
-import type { Node, NodeId, Paint as FilePaint } from "@illigma/format";
+import type { Change, DeepReadonly, Document, ReadonlyNode } from "@illigma/core";
+import type { NodeId, Paint as FilePaint } from "@illigma/format";
 import type { Canvas, CanvasKit, FontWeight, Paint, SkPicture, Surface, TypefaceFontProvider } from "canvaskit-wasm";
 import { CLIPPING, hitTest } from "./hit-test.js";
 
@@ -240,7 +240,7 @@ export class PageRenderer {
     return recorded;
   }
 
-  private recordChild(n: Readonly<Node>): ChildPicture {
+  private recordChild(n: ReadonlyNode): ChildPicture {
     if (!n.visible || n.opacity <= 0) return { picture: null, nodes: 0 };
     const recorder = new this.ck.PictureRecorder();
     const canvas = recorder.beginRecording(EVERYWHERE(this.ck), true);
@@ -252,7 +252,7 @@ export class PageRenderer {
     return { picture, nodes };
   }
 
-  private drawNode(canvas: Canvas, n: Readonly<Node>): void {
+  private drawNode(canvas: Canvas, n: ReadonlyNode): void {
     if (!n.visible || n.opacity <= 0) return;
     this.nodeCount++;
     const saved = canvas.save();
@@ -284,7 +284,7 @@ export class PageRenderer {
     canvas.restoreToCount(saved);
   }
 
-  private drawShape(canvas: Canvas, n: Readonly<Node>, rect: Float32Array, paint: FilePaint, stroke: boolean): void {
+  private drawShape(canvas: Canvas, n: ReadonlyNode, rect: Float32Array, paint: DeepReadonly<FilePaint>, stroke: boolean): void {
     if (!paint.visible) return;
     const { r, g, b, a } = paint.color;
     this.paint.setColor(this.ck.Color4f(r, g, b, a));
@@ -300,7 +300,7 @@ export class PageRenderer {
    * Left-aligned text wrapped at the node's width, coloured by its first
    * fill. Text strokes (glyph outlines) come with the full text engine.
    */
-  private drawText(canvas: Canvas, n: Readonly<Node>): void {
+  private drawText(canvas: Canvas, n: ReadonlyNode): void {
     const fill = n.fills[0];
     if (!fill?.visible || !n.characters || !this.fonts) return;
     const { r, g, b, a } = fill.color;

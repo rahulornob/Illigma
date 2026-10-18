@@ -21,16 +21,23 @@ function prng(seed: number) {
   };
 }
 
-/** A random valid key, biased towards edge digits ("0", "1", "y", "z"). */
+/**
+ * A random valid key: an integer part (its head letter sets its length:
+ * "a"–"z" = 1–26 more digits, "Z"–"A" = 1–26) and an optional fraction that
+ * doesn't end in "0". Biased towards short integers and edge digits.
+ */
 function randomKey(rand: () => number): string {
-  const len = 1 + Math.floor(rand() * 6);
-  let k = "";
-  for (let i = 0; i < len; i++) {
-    const edge = rand() < 0.4;
-    k += edge ? "01yz"[Math.floor(rand() * 4)] : DIGITS[Math.floor(rand() * DIGITS.length)];
-  }
-  k = k.replace(/0+$/, "");
-  return k || "1";
+  const digit = () => (rand() < 0.4 ? "01yz"[Math.floor(rand() * 4)] : DIGITS[Math.floor(rand() * DIGITS.length)]) as string;
+  const heads = rand() < 0.9 ? "abcZYX" : "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const head = heads[Math.floor(rand() * heads.length)] as string;
+  const intLen = head >= "a" ? head.charCodeAt(0) - 96 : 91 - head.charCodeAt(0);
+  let k = head;
+  for (let i = 0; i < intLen; i++) k += digit();
+  if (k === "A" + "0".repeat(26)) k = "A" + "0".repeat(25) + "1"; // the one integer that isn't a key on its own
+  const fracLen = rand() < 0.5 ? 0 : Math.floor(rand() * 5);
+  let frac = "";
+  for (let i = 0; i < fracLen; i++) frac += digit();
+  return k + frac.replace(/0+$/, "");
 }
 
 describe("keyBetween properties", () => {
@@ -71,8 +78,8 @@ describe("keyBetween properties", () => {
   });
 
   it("repeatedly inserting between the same two neighbours stays valid", () => {
-    let a = "V";
-    const b = "W";
+    let a = "a0";
+    const b = "a1";
     for (let i = 0; i < 500; i++) {
       const k = keyBetween(a, b);
       expect(a < k && k < b && isValidKey(k)).toBe(true);
@@ -104,17 +111,17 @@ describe("keyBetween properties", () => {
 
   it("rejects invalid and out-of-order input", () => {
     for (const bad of ["", "V0", "a-b", "é", " "]) expect(() => keyBetween(bad, null)).toThrow();
-    expect(() => keyBetween("W", "V")).toThrow(/sort before/);
-    expect(() => keyBetween("V", "V")).toThrow(/sort before/);
+    expect(() => keyBetween("a1", "a0")).toThrow(/sort before/);
+    expect(() => keyBetween("a0", "a0")).toThrow(/sort before/);
   });
 
-  // BUG: keys grow by about one character every 5 appends (or prepends):
+  // Fixed (was: keys grew by about one character every 5 appends or prepends):
   // appending 10,000 siblings one at a time ends with a 2,000-character key.
   // Files bloat (sum of key lengths is quadratic) and every sibling sort
   // compares long shared prefixes. Typical fractional indexing grows keys
   // logarithmically (variable-length integer part, as in rocicorp's
   // fractional-indexing).
-  it.fails("appending or prepending 10,000 keys one at a time keeps keys short", () => {
+  it("appending or prepending 10,000 keys one at a time keeps keys short", () => {
     let last: string | null = null;
     let first: string | null = null;
     for (let i = 0; i < 10_000; i++) {

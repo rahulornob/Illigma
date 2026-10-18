@@ -43,7 +43,7 @@ describe("fractional index", () => {
   it("rejects keys out of order or malformed", () => {
     expect(() => keyBetween("b", "a")).toThrow();
     expect(() => keyBetween("a", "a")).toThrow();
-    expect(() => keyBetween("V0", null)).toThrow();
-    expect(() => keyBetween("V!", null)).toThrow();
+    expect(() => keyBetween("a00", null)).toThrow();
+    expect(() => keyBetween("a!", null)).toThrow();
   });
 });
