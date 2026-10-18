@@ -1,6 +1,7 @@
 import { useEffect, useImperativeHandle, useRef, useState, type PointerEvent as ReactPointerEvent, type Ref } from "react";
 import CanvasKitInit, { type CanvasKit } from "canvaskit-wasm";
 import interUrl from "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url";
+import interExtUrl from "@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2?url";
 import wasmUrl from "canvaskit-wasm/bin/canvaskit.wasm?url";
 import type { Document } from "@illigma/core";
 import type { NodeId, NodeType } from "@illigma/format";
@@ -10,12 +11,11 @@ import { absoluteRect, frameAt } from "./geometry";
 export type Tool = "move" | "frame" | "rectangle" | "ellipse";
 
 /**
- * HOOK for canvas hit-testing (built separately). Given a point in page
- * (world) coordinates on the current page, return the layer to select, or
- * null for empty canvas. Until it is plugged in, layers are selected from the
- * Layers panel and a drag on the canvas with the Move tool pans.
+ * Canvas hit-testing: given a point in page (world) coordinates on the
+ * current page, return the layer to select, or null for empty canvas.
+ * `deep` is ⌘/Ctrl-click: the deepest layer under the pointer.
  */
-export type HitTest = (x: number, y: number) => NodeId | null;
+export type HitTest = (x: number, y: number, opts: { deep: boolean }) => NodeId | null;
 
 export interface CanvasHandle {
   zoomIn(): void;
@@ -30,6 +30,8 @@ interface CanvasProps {
   tool: Tool;
   selection: NodeId | null;
   hitTest?: HitTest | undefined;
+  /** Viewing only: no drawing. */
+  readOnly?: boolean | undefined;
   onSelect(id: NodeId | null): void;
   onCreated(id: NodeId): void;
   onZoom(zoom: number): void;
@@ -78,6 +80,8 @@ export function Canvas(props: CanvasProps) {
     gesture: null as Gesture | null,
     draft: null as { x: number; y: number; width: number; height: number } | null,
     space: false,
+    /** The pointer is over the canvas. */
+    hover: false,
     fitted: false,
   });
   live.current.props = props;
@@ -193,17 +197,40 @@ export function Canvas(props: CanvasProps) {
     let ck: CanvasKit | null = null;
     let gpu: GpuCanvas | null = null;
     let fonts: FontSource[] = [];
-    const dpr = window.devicePixelRatio || 1;
+    let dpr = window.devicePixelRatio || 1;
+    let contextLost = false;
 
     const teardown = () => {
-      live.current.renderer?.dispose();
+      // After a lost context the GPU objects may already be gone; freeing them must not stop the rebuild.
+      try {
+        live.current.renderer?.dispose();
+      } catch {
+        /* already gone */
+      }
       live.current.renderer = null;
-      gpu?.dispose();
+      try {
+        gpu?.dispose();
+      } catch {
+        /* already gone */
+      }
       gpu = null;
+    };
+    const fail = (e: unknown) => {
+      setErrorText(e instanceof Error ? e.message : String(e));
+      setStatus("error");
+    };
+    /** Start over with a new GPU surface and renderer (new pixel ratio, or a restored WebGL context). */
+    const rebuild = () => {
+      teardown();
+      try {
+        build();
+      } catch (e) {
+        fail(e);
+      }
     };
     // One GPU context per canvas: a resize only swaps the surface, and the cached page pictures survive.
     const build = () => {
-      if (!ck || disposed || canvasEl.clientWidth === 0 || canvasEl.clientHeight === 0) return;
+      if (!ck || disposed || contextLost || canvasEl.clientWidth === 0 || canvasEl.clientHeight === 0) return;
       if (gpu && live.current.renderer) {
         live.current.renderer.setSurface(gpu.resize());
         draw();
@@ -226,17 +253,49 @@ export function Canvas(props: CanvasProps) {
         try {
           build();
         } catch (e) {
-          setErrorText(e instanceof Error ? e.message : String(e));
-          setStatus("error");
+          fail(e);
         }
       });
     });
 
-    // The bundled Inter (no font CDN). Without it, text layers fall back to placeholder bars.
-    const loadInter = fetch(interUrl)
-      .then((r) => r.arrayBuffer())
-      .then((data): FontSource[] => [{ family: "Inter", data }])
-      .catch((): FontSource[] => []);
+    // The GPU can drop the WebGL context (driver reset, too many contexts, sleep). Wait for it to come back, then rebuild.
+    const onLost = (e: Event) => {
+      e.preventDefault(); // lets the browser restore the context
+      contextLost = true;
+      cancelAnimationFrame(live.current.frame);
+      live.current.frame = 0;
+    };
+    const onRestored = () => {
+      contextLost = false;
+      rebuild();
+      setStatus((s) => (s === "error" ? s : "ready"));
+    };
+    canvasEl.addEventListener("webglcontextlost", onLost);
+    canvasEl.addEventListener("webglcontextrestored", onRestored);
+
+    // Moving the window to a screen with another pixel ratio (or browser zoom) needs a sharper or smaller surface.
+    let dprQuery: MediaQueryList | null = null;
+    const watchDpr = () => {
+      dprQuery?.removeEventListener("change", onDpr);
+      dprQuery = window.matchMedia?.(`(resolution: ${window.devicePixelRatio || 1}dppx)`) ?? null;
+      dprQuery?.addEventListener("change", onDpr);
+    };
+    const onDpr = () => {
+      watchDpr();
+      const next = window.devicePixelRatio || 1;
+      if (next === dpr) return;
+      dpr = next;
+      rebuild();
+    };
+    watchDpr();
+
+    // The bundled Inter (no font CDN), Latin and Latin Extended. Without it, text layers fall back to placeholder bars.
+    const font = (url: string, family: string) =>
+      fetch(url)
+        .then((r) => r.arrayBuffer())
+        .then((data): FontSource[] => [{ family, data }])
+        .catch((): FontSource[] => []);
+    const loadInter = Promise.all([font(interUrl, "Inter"), font(interExtUrl, "Inter Latin Extended")]).then((sets) => sets.flat());
 
     Promise.all([loadCanvasKit(), loadInter])
       .then(([loaded, loadedFonts]) => {
@@ -257,6 +316,9 @@ export function Canvas(props: CanvasProps) {
     return () => {
       disposed = true;
       observer.disconnect();
+      canvasEl.removeEventListener("webglcontextlost", onLost);
+      canvasEl.removeEventListener("webglcontextrestored", onRestored);
+      dprQuery?.removeEventListener("change", onDpr);
       cancelAnimationFrame(resizeFrame);
       cancelAnimationFrame(live.current.frame);
       live.current.frame = 0;
@@ -292,12 +354,19 @@ export function Canvas(props: CanvasProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Hold Space to pan with any tool.
+  // Hold Space to pan with any tool, wherever focus is (except text fields).
   useEffect(() => {
-    const typing = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(t.tagName));
+    const typing = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+    const isButton = (t: EventTarget | null) => t instanceof HTMLElement && t.closest("button") !== null;
+    let swallowed = false;
     const down = (e: KeyboardEvent) => {
       if (e.code !== "Space" || typing(e.target)) return;
-      e.preventDefault();
+      // On a focused button, Space still presses the button for keyboard users, unless the pointer is
+      // over the canvas (then it's a pan). Pressing on the canvas moves focus there, so the button isn't pressed.
+      if (!isButton(e.target) || live.current.hover) {
+        e.preventDefault();
+        swallowed = true;
+      }
       if (!live.current.space) {
         live.current.space = true;
         setSpaceHeld(true);
@@ -305,6 +374,8 @@ export function Canvas(props: CanvasProps) {
     };
     const up = (e: KeyboardEvent) => {
       if (e.code !== "Space") return;
+      if (swallowed) e.preventDefault();
+      swallowed = false;
       live.current.space = false;
       setSpaceHeld(false);
     };
@@ -340,8 +411,8 @@ export function Canvas(props: CanvasProps) {
     }
     if (e.button !== 0) return;
     const w = toWorld(sx, sy);
-    if (l.props.tool === "move") {
-      const hit = l.props.hitTest?.(w.x, w.y);
+    if (l.props.tool === "move" || l.props.readOnly) {
+      const hit = l.props.hitTest?.(w.x, w.y, { deep: e.metaKey || e.ctrlKey });
       if (hit) {
         l.props.onSelect(hit);
         return;
@@ -417,7 +488,7 @@ export function Canvas(props: CanvasProps) {
     requestDraw();
   };
 
-  const cursor = spaceHeld || panning ? (panning ? "grabbing" : "grab") : tool === "move" ? "default" : "crosshair";
+  const cursor = spaceHeld || panning ? (panning ? "grabbing" : "grab") : tool === "move" || props.readOnly ? "default" : "crosshair";
 
   return (
     <div className="canvas-host" ref={hostRef}>
@@ -432,6 +503,8 @@ export function Canvas(props: CanvasProps) {
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
+        onPointerEnter={() => (live.current.hover = true)}
+        onPointerLeave={() => (live.current.hover = false)}
         onPointerCancel={() => {
           live.current.gesture = null;
           live.current.draft = null;

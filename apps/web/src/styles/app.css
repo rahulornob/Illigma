@@ -597,7 +597,7 @@ ul {
 .size-pill {
   padding: 0 4px;
   border-radius: var(--radius-xs);
-  background: var(--accent-default);
+  background: var(--accent-fill); /* white on accent/fill reaches 4.5:1; accent/default doesn't */
   color: var(--accent-on);
   font: var(--type-ui-value);
   font-variant-numeric: tabular-nums;
@@ -668,4 +668,26 @@ ul {
 .tool-button[aria-pressed="true"] {
   background: var(--tool-active);
   color: var(--tool-on);
+}
+
+/* ---- Update and read-only notices ---- */
+
+.banner-warning {
+  background: var(--state-warning-tint);
+  border-color: transparent;
+}
+.banner-warning .icon {
+  color: var(--state-warning);
+}
+.update-toast {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 10;
+  width: auto;
+  max-width: calc(100% - 32px);
+}
+.banner .btn[disabled] {
+  opacity: 0.6;
+  cursor: progress;
 }

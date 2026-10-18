@@ -3,10 +3,10 @@
 // 1. Build "v1", load it, create a file, go offline and reload: the app and
 //    the file must open from the cache.
 // 2. Rebuild as "v2" (a changed index.html, so a new precache version), go
-//    online and reload: record when the new version actually shows up. The
-//    service worker is cache-first and calls skipWaiting(), so the expected
-//    behaviour is: the first load after a deploy still runs v1 while v2
-//    installs in the background; the next load runs v2.
+//    online and reload. The service worker is cache-first and never takes
+//    over on its own: v1 keeps running (even across reloads) while v2
+//    installs and waits, and the app shows "Update ready · Reload". Only that
+//    click switches to v2; the v1 cache stays until no tab runs v1.
 //
 // Builds into apps/web/e2e/out/offline-dist so the shared dist/ is untouched.
 // Usage (from the repo root):  node apps/web/e2e/offline-update.mjs [--headed]
@@ -80,30 +80,34 @@ await runE2E("offline-update", { port: PORT, build: false, serve: false }, async
     server = await serve(PORT, dist);
     await context.setOffline(false);
 
-    log("first load after the deploy");
+    log("first load after the deploy keeps v1 and offers the update");
     await page.reload();
     await canvasReady(page);
-    const first = await mark(page);
-    console.log(`  first load after deploy runs ${first}`);
-    check(first === "v1" || first === "v2", `unexpected build mark ${first}`);
-    // The browser checks sw.js and its imported precache-manifest.js on navigation; give v2 time to install and activate.
-    const deadline = Date.now() + 20_000;
-    while (Date.now() < deadline) {
-      const keys = await caches(page);
-      if (keys.length === 1 && keys[0] !== v1Caches[0]) break;
-      await page.waitForTimeout(250);
-    }
-    const afterInstall = await caches(page);
-    console.log(`  caches: ${v1Caches.join(", ")} → ${afterInstall.join(", ")}`);
-    check(afterInstall.length === 1 && afterInstall[0] !== v1Caches[0], "v2 should replace the v1 cache once it activates");
+    check((await mark(page)) === "v1", "the first load after a deploy should still run v1 (cache-first)");
+    // The browser checks sw.js and its imported precache-manifest.js on navigation; v2 installs and waits.
+    const toast = page.locator(".update-toast");
+    await toast.waitFor({ timeout: 20_000 });
+    check((await toast.innerText()).replace(/\s+/g, " ").trim() === "Update ready · Reload", `the app should say "Update ready · Reload", got "${await toast.innerText()}"`);
+    check((await swState(page)).waiting, "v2 should wait instead of taking over");
+    const both = await caches(page);
+    check(both.length === 2 && both.includes(v1Caches[0]), `v1's cache should stay while v1 runs, got ${both.join(", ")}`);
 
-    log("next load runs the new version");
+    log("a plain reload doesn't switch versions");
     await page.reload();
     await canvasReady(page);
-    const second = await mark(page);
-    console.log(`  second load after deploy runs ${second}`);
-    check(second === "v2", `the second load after a deploy should run v2, got ${second}`);
+    check((await mark(page)) === "v1", "without the click, the page should keep running v1");
+
+    log("Reload in the update notice switches to v2");
+    await page.locator(".update-toast").getByRole("button", { name: "Reload" }).click();
+    await page.waitForFunction(() => document.querySelector('meta[name="illigma-e2e-build"]')?.getAttribute("content") === "v2", undefined, { timeout: 20_000 });
+    await canvasReady(page);
     check((await layerRows(page).count()) === layers, "the file should survive the app update");
+    check((await page.locator(".update-toast").count()) === 0, "the update notice should be gone after switching");
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline && (await caches(page)).length !== 1) await page.waitForTimeout(250);
+    const afterUpdate = await caches(page);
+    console.log(`  caches: ${v1Caches.join(", ")} → ${afterUpdate.join(", ")}`);
+    check(afterUpdate.length === 1 && afterUpdate[0] !== v1Caches[0], "once no tab runs v1, its cache should be removed");
 
     log("offline again: v2 is what's cached");
     await context.setOffline(true);
@@ -112,9 +116,6 @@ await runE2E("offline-update", { port: PORT, build: false, serve: false }, async
     check((await mark(page)) === "v2", "offline after the update should serve v2");
     check((await layerRows(page).count()) === layers, "the file should open offline after the update");
     await context.setOffline(false);
-    console.log(
-      `  behaviour: ${first === "v1" ? "the first load after a deploy runs the old version (cache-first); v2 installs in the background and the next load runs it" : "the first load after a deploy already runs v2"}. No "update available" prompt is shown.`,
-    );
     await context.close();
   } finally {
     await server.close();

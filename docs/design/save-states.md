@@ -27,3 +27,13 @@ Principle 1 (never lose work) and principle 8 (local-first) decide every rule he
 
 - **Save status** (`96:28888`): Saved, Saving, Error, Changed on disk, Conflict, Waiting for sync, Read-only, Folder unavailable, Recovered. Lives in the Title bar.
 - **Banner** (`96:28940`): Info (neutral surface), Warning, Error; message, up to two actions, Dismissible. Error banners are not dismissible.
+
+## How the web app keeps these rules (18 October 2026)
+
+- **All-or-nothing saves.** A package is several files, so a save is a roll-forward commit: every file is first written as `<name>.illigma-tmp`, then a `.illigma-commit.json` marker lists what to promote, then each file is replaced and the marker removed. A save cut short before the marker leaves the previous save; after the marker, the next read finishes it. A reader never sees half of one save and half of another.
+- **Recovered edits wait for the person.** Edits left in the journal by an earlier session stay there until Keep or Discard, even while the person keeps working and autosave runs. Closing the tab without choosing offers them again next time.
+- **Keep** replays the recovered edits on a copy of the open file, skips any edit whose layer or parent is gone (the editor says how many), checks the result is a valid file and saves it before showing it. Editing is paused for that moment. If it fails, nothing changes and the error shows in the editor.
+- **No false recoveries.** Each save writes an id into the package (`.illigma-rev`) and the same id into the journal, so edits a save already holds are never offered again, even if the tab closed before the journal was trimmed.
+- **One editing tab per file.** A second tab on the same file opens read-only with the banner "Open in another tab — read-only here" (Web Locks). It never saves and never touches the journal.
+- **Lost folder permission.** Retry asks the browser for write access again (it must be asked from the click), then saves. The error banner also offers "Save a copy elsewhere…": a folder of the person's choice where the browser allows it, otherwise a download of the single-file (zip) form.
+- **App updates** never switch versions under an open file: a new version installs in the background and the app shows "Update ready · Reload".

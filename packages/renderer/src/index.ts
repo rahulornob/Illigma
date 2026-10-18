@@ -86,6 +86,8 @@ export class PageRenderer {
   private readonly layerPaint: Paint;
   private readonly fonts: TypefaceFontProvider | null = null;
   private readonly fallbackFamily: string | null = null;
+  /** Every registered family after the first, tried in order for glyphs the others lack (e.g. a Latin Extended subset). */
+  private readonly moreFamilies: string[] = [];
   private readonly unsubscribe: () => void;
 
   constructor(
@@ -103,6 +105,7 @@ export class PageRenderer {
       this.fonts = ck.TypefaceFontProvider.Make();
       for (const f of options.fonts) this.fonts.registerFont(f.data, f.family);
       this.fallbackFamily = options.fonts[0]?.family ?? null;
+      this.moreFamilies = [...new Set(options.fonts.slice(1).map((f) => f.family))].filter((f) => f !== this.fallbackFamily);
     }
     this.unsubscribe = doc.subscribe((change) => this.invalidate(change));
   }
@@ -308,6 +311,7 @@ export class PageRenderer {
     const style = (n.fontStyle ?? "Regular").toLowerCase();
     const families = n.fontFamily && n.fontFamily !== this.fallbackFamily ? [n.fontFamily] : [];
     if (this.fallbackFamily) families.push(this.fallbackFamily);
+    families.push(...this.moreFamilies.filter((f) => !families.includes(f)));
     const builder = this.ck.ParagraphBuilder.MakeFromFontProvider(
       new this.ck.ParagraphStyle({
         textAlign: this.ck.TextAlign.Left,

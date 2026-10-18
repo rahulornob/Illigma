@@ -44,6 +44,14 @@ function precacheManifest(): Plugin {
       for (const name of Object.keys(bundle)) if (!skip.has(name) && !name.endsWith(".map")) files.add(name);
       for (const name of listFiles(config.publicDir)) if (!skip.has(name) && !name.startsWith(".")) files.add(name);
       const list = [...files].sort();
+      // The editor can't open offline without the renderer's wasm and the Inter fonts it draws text with.
+      for (const [what, re] of [
+        ["the CanvasKit wasm", /\.wasm$/],
+        ["the Inter fonts", /^assets\/inter-latin-wght-.*\.woff2$/],
+        ["the Inter Latin Extended fonts", /^assets\/inter-latin-ext-wght-.*\.woff2$/],
+      ] as const) {
+        if (!list.some((f) => re.test(f))) this.error(`The offline cache would miss ${what}.`);
+      }
       const hash = createHash("sha256");
       for (const name of list) {
         const item = bundle[name];

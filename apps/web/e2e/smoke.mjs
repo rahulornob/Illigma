@@ -109,4 +109,45 @@ await runE2E("smoke", { port: 5192 }, async ({ browser, url: URL_, log, check, o
   await canvasReady(page);
   check((await layerRowsHere().count()) === before + 1, "the file should open offline");
   await context.setOffline(false);
+
+  log("a second tab on the same file opens read-only");
+  const second = await context.newPage();
+  watchErrors(second, errors);
+  await second.goto(page.url());
+  await canvasReady(second);
+  const readOnly = second.locator(".banner", { hasText: "Open in another tab — read-only here." });
+  await readOnly.waitFor({ timeout: 5_000 });
+  check((await second.locator(".save-status").innerText()).trim() === "Read-only", "the second tab's title bar should read Read-only");
+  check((await second.locator(".banner", { hasText: "Recovered unsaved changes." }).count()) === 0, "the second tab must not offer the first tab's journal as recovered");
+  await second.locator("canvas.canvas").focus();
+  await second.keyboard.press("r");
+  check((await second.getByRole("button", { name: "Move (V)" }).getAttribute("aria-pressed")) === "true", "drawing tools should stay off in a read-only tab");
+  await rectangleRows().first().click();
+  await second.locator(".layer-list .layer-row", { hasText: /^Rectangle \d+$/ }).first().click();
+  check((await second.getByLabel("X position").getAttribute("readonly")) !== null, "Properties should be read-only in the second tab");
+  check((await page.locator(".banner", { hasText: "read-only here" }).count()) === 0, "the first tab keeps editing");
+  await second.close();
+
+  log("the canvas comes back after the GPU context is lost");
+  await page.locator("canvas.canvas").focus();
+  await page.keyboard.press("Escape"); // no selection overlay in the shots
+  await page.waitForTimeout(100);
+  const shot = () => page.locator("canvas.canvas").screenshot();
+  const drawn = await shot();
+  const lost = await page.evaluate(() => {
+    const ext = document.querySelector("canvas.canvas")?.getContext("webgl2")?.getExtension("WEBGL_lose_context");
+    if (!ext) return false;
+    ext.loseContext();
+    globalThis.__restore = () => ext.restoreContext();
+    return true;
+  });
+  console.log(`  WebGL context loss simulated: ${lost}`);
+  if (lost) {
+    await page.waitForTimeout(200);
+    check(!(await shot()).equals(drawn), "losing the WebGL context should blank the canvas (the simulation worked)");
+    await page.evaluate(() => globalThis.__restore());
+    await page.waitForTimeout(500);
+    check((await page.locator(".canvas-status").count()) === 0, "the canvas should not show an error after the context is restored");
+    check((await shot()).equals(drawn), "the canvas should draw the page again after the WebGL context is restored");
+  }
 });

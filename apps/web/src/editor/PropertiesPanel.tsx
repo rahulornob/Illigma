@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Document } from "@illigma/core";
 import type { NodeId } from "@illigma/format";
 
@@ -13,12 +13,31 @@ const FIELDS: { key: Field; letter: string; label: string; min?: number }[] = [
 
 const fmt = (v: number) => String(Math.round(v * 100) / 100);
 
-function NumberField({ doc, id, field, letter, label, min }: { doc: Document; id: NodeId; field: Field; letter: string; label: string; min?: number | undefined }) {
+function NumberField({
+  doc,
+  id,
+  field,
+  letter,
+  label,
+  min,
+  readOnly,
+}: {
+  doc: Document;
+  id: NodeId;
+  field: Field;
+  letter: string;
+  label: string;
+  min?: number | undefined;
+  readOnly: boolean;
+}) {
   const value = doc.get(id)?.[field] ?? 0;
   const [draft, setDraft] = useState(fmt(value));
   useEffect(() => setDraft(fmt(value)), [value]);
+  // Escape blurs the field; the blur that follows must not commit the draft it just threw away.
+  const cancelled = useRef(false);
 
   const commit = () => {
+    if (readOnly) return;
     const parsed = Number.parseFloat(draft.replace(",", "."));
     if (!Number.isFinite(parsed)) {
       setDraft(fmt(value));
@@ -44,17 +63,25 @@ function NumberField({ doc, id, field, letter, label, min }: { doc: Document; id
         autoComplete="off"
         spellCheck={false}
         value={draft}
+        readOnly={readOnly}
         onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
+        onBlur={() => {
+          if (cancelled.current) {
+            cancelled.current = false;
+            return;
+          }
+          commit();
+        }}
         onFocus={(e) => e.currentTarget.select()}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             commit();
             e.currentTarget.select();
           } else if (e.key === "Escape") {
+            cancelled.current = true;
             setDraft(fmt(value));
             e.currentTarget.blur();
-          } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+          } else if ((e.key === "ArrowUp" || e.key === "ArrowDown") && !readOnly) {
             e.preventDefault();
             const step = (e.shiftKey ? 10 : 1) * (e.key === "ArrowUp" ? 1 : -1);
             const next = min === undefined ? value + step : Math.max(min, value + step);
@@ -66,7 +93,7 @@ function NumberField({ doc, id, field, letter, label, min }: { doc: Document; id
   );
 }
 
-export function PropertiesPanel({ doc, pageId, selection }: { doc: Document; pageId: NodeId; selection: NodeId | null }) {
+export function PropertiesPanel({ doc, pageId, selection, readOnly = false }: { doc: Document; pageId: NodeId; selection: NodeId | null; readOnly?: boolean }) {
   const node = selection ? doc.get(selection) : undefined;
   const page = doc.get(pageId);
 
@@ -85,7 +112,7 @@ export function PropertiesPanel({ doc, pageId, selection }: { doc: Document; pag
           </div>
           <div className="field-grid">
             {FIELDS.map((f) => (
-              <NumberField key={`${node.id}-${f.key}`} doc={doc} id={node.id} field={f.key} letter={f.letter} label={f.label} min={f.min} />
+              <NumberField key={`${node.id}-${f.key}`} doc={doc} id={node.id} field={f.key} letter={f.letter} label={f.label} min={f.min} readOnly={readOnly} />
             ))}
           </div>
         </section>
