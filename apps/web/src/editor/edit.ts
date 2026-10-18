@@ -1,4 +1,4 @@
-import type { Document, ReadonlyNode, Transaction } from "@illigma/core";
+import type { Document, Operation, ReadonlyNode, Transaction } from "@illigma/core";
 import type { NodeId } from "@illigma/format";
 import {
   fromSpace,
@@ -200,6 +200,34 @@ export function duplicateLayers(tx: Transaction, doc: Document, ids: readonly No
     out.push(copy(n, n.parentId, { after: id }, topLevel ? n.width + DUPLICATE_GAP : 0));
   }
   return out;
+}
+
+/**
+ * The layers a change creates, outermost only (no pages, nor layers created
+ * inside another one it creates), in order. Undoing a delete, or redoing a
+ * duplicate or a drawn shape, selects them again, as in Figma.
+ */
+export function createdLayers(ops: readonly Operation[]): NodeId[] {
+  const created = new Set<NodeId>();
+  for (const o of ops) if (o.op === "create" && o.node.type !== "PAGE") created.add(o.node.id);
+  const out: NodeId[] = [];
+  for (const o of ops) {
+    if (o.op !== "create" || !created.has(o.node.id)) continue;
+    if (o.node.parentId !== null && created.has(o.node.parentId)) continue;
+    out.push(o.node.id);
+  }
+  return out;
+}
+
+/**
+ * Shift-click in the layers panel: every row from `anchor` to `target`, in
+ * list order. Without an anchor in the list, just `target`.
+ */
+export function layerRange(rows: readonly NodeId[], anchor: NodeId | null, target: NodeId): NodeId[] {
+  const a = anchor === null ? -1 : rows.indexOf(anchor);
+  const b = rows.indexOf(target);
+  if (a < 0 || b < 0) return [target];
+  return rows.slice(Math.min(a, b), Math.max(a, b) + 1);
 }
 
 /** The page point of a selection-frame corner given in the frame's own space. */

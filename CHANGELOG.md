@@ -25,6 +25,14 @@ After v1.0: a Tauri desktop app in v1.x, then optional multiplayer (CRDT over LA
 - Phase 0 (foundations): renderer spike (CanvasKit, 10,000 layers at 60 fps), offline web app, design tokens in code. See [docs/dev/phase-0.md](docs/dev/phase-0.md).
 - Run the real usability sessions (Phase 5) in parallel; fix what they find.
 
+### Fixed (2026-10-18, canvas QC round 5)
+- Small layers move: inside the selection an edge grabs at most a quarter of the box, so the middle of a tiny layer always moves it; its corners stay reachable from outside and edge handles hide below 24 px. A line's own length has no top/bottom edge.
+- Drags can't get stuck: a move with no button down ends the drag, window blur or a hidden tab cancels it, a second finger or pen is ignored, and right-click never opens the browser menu on the canvas. Closing the tab, going Home, Keep and app updates first keep an open drag instead of saving without it.
+- Clicking a handle without dragging keeps the selection; Escape between press and drag drops the press. Handles and the box sit on the layers a resize changes (not locked layers, nor a selected parent's child). Resizing keeps an unscaled axis as it is (a line stays 0 px high).
+- ⌘D is never passed to the browser (bookmark dialog), even from a field. Undo of Delete (and redo of a duplicate or drawn shape) selects those layers again. Layers panel: Shift-click selects a range, ⌘-click toggles.
+- Recovery: edits made in the last 250 ms before the tab closes are stashed synchronously in localStorage on pagehide and merged into the journal on the next load (matched by session id and seq, so nothing is offered twice or after a save holds it).
+- The 10,000-node layout budget test takes the best of 5 runs after a warm-up, so it no longer fails under parallel test load.
+
 ### Added (2026-10-18, prototype import: auto layout and constraints)
 - `importPrototypeJson` now carries the prototype's auto layout and constraints into the format v0 layout fields: direction, gap (including negative), gap between wrapped lines, padding (with the prototype's 16 px defaults), nine-point alignment, Packed/Between/Around/Evenly spacing, wrap, Hug/Fixed/Fill sizing on frames and layers (text Hug becomes auto height), min and max sizes, "Ignore auto layout", child order, and Left/Right/Left and right/Center/Scale constraints. A `@illigma/layout` relayout of an imported document moves nothing (a test runs it on a document laid out by the prototype's own code). Grid auto layout becomes a plain frame with a warning; grid spans and unclipped frames are still warnings. Known difference: a Fill layer across a hugging frame no longer holds the frame open, as in Figma.
 
