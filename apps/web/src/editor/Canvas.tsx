@@ -3,10 +3,27 @@ import CanvasKitInit, { type CanvasKit } from "canvaskit-wasm";
 import interUrl from "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url";
 import interExtUrl from "@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2?url";
 import wasmUrl from "canvaskit-wasm/bin/canvaskit.wasm?url";
-import type { Document } from "@illigma/core";
+import type { Document, LiveEdit } from "@illigma/core";
 import type { NodeId, NodeType } from "@illigma/format";
 import { GpuCanvas, PageRenderer, type Camera, type FontSource } from "@illigma/renderer";
-import { absoluteRect, frameAt } from "./geometry";
+import { movable, moveBy, resizeBy, selectionFrame, snapDelta, snapshot, startBounds, type SelectionFrame, type Start } from "./edit";
+import {
+  absoluteRect,
+  boundsOf,
+  constrainToAxis,
+  frameAt,
+  fromSpace,
+  handleAt,
+  handleCursor,
+  marqueeHits,
+  placementOf,
+  rectFromPoints,
+  toSpace,
+  worldBounds,
+  worldCorners,
+  type Handle,
+  type Rect,
+} from "./geometry";
 
 export type Tool = "move" | "frame" | "rectangle" | "ellipse";
 
@@ -28,11 +45,11 @@ interface CanvasProps {
   doc: Document;
   pageId: NodeId;
   tool: Tool;
-  selection: NodeId | null;
+  selection: readonly NodeId[];
   hitTest?: HitTest | undefined;
-  /** Viewing only: no drawing. */
+  /** Viewing only: no drawing, moving or resizing. Selecting still works. */
   readOnly?: boolean | undefined;
-  onSelect(id: NodeId | null): void;
+  onSelect(ids: NodeId[]): void;
   onCreated(id: NodeId): void;
   onZoom(zoom: number): void;
   handle: Ref<CanvasHandle>;
@@ -54,9 +71,47 @@ const loadCanvasKit = () => (canvasKit ??= CanvasKitInit({ locateFile: () => was
 
 const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
 
+/** Top-level containers: dragging on their empty area draws a marquee over their children, as in Figma. */
+const CONTAINERS = new Set<NodeType>(["FRAME", "SECTION", "COMPONENT"]);
+/** Grab distance around a handle or an edge, in screen pixels. */
+const HANDLE_GRAB = 6;
+const HANDLE_NAMES: Handle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
+
+const sameIds = (a: readonly NodeId[], b: readonly NodeId[]) => a.length === b.length && a.every((id, i) => id === b[i]);
+const plural = (n: number, verb: string) => (n === 1 ? `${verb} layer` : `${verb} ${n} layers`);
+
+/** Where the pointer is during a drag, and which modifiers are held (they can change without the pointer moving). */
+type Pointer = { sx: number; sy: number; shift: boolean; alt: boolean };
+
+/**
+ * What the pointer is doing. A press on the canvas waits until the pointer
+ * travels past DRAG_THRESHOLD; only then does it become a move, a resize
+ * or a marquee. Releasing before that is a click.
+ */
 type Gesture =
   | { kind: "pan"; lastX: number; lastY: number }
-  | { kind: "press"; startX: number; startY: number; lastX: number; lastY: number }
+  | {
+      kind: "press";
+      sx: number;
+      sy: number;
+      wx: number;
+      wy: number;
+      /** What a drag from here does. */
+      then: "move" | "resize" | "marquee" | "none";
+      /** The layers a move or resize changes. */
+      ids: NodeId[];
+      handle: Handle | null;
+      /** Marquee: whose children it can select (the page, or the frame it started in). */
+      scope: NodeId;
+      /** Marquee with Shift: add to `base` instead of replacing it. */
+      additive: boolean;
+      base: NodeId[];
+      /** The selection after a click (no drag), or null to leave it as is. */
+      click: NodeId[] | null;
+    }
+  | { kind: "move"; wx: number; wy: number; starts: Start[]; box: Rect; edit: LiveEdit; last: Pointer }
+  | { kind: "resize"; wx: number; wy: number; starts: Start[]; handle: Handle; edit: LiveEdit; last: Pointer }
+  | { kind: "marquee"; wx: number; wy: number; scope: NodeId; additive: boolean; base: NodeId[]; rect: Rect | null }
   | { kind: "draw"; tool: Exclude<Tool, "move">; wx: number; wy: number; sx: number; sy: number };
 
 export function Canvas(props: CanvasProps) {
@@ -66,10 +121,14 @@ export function Canvas(props: CanvasProps) {
   const selRef = useRef<HTMLDivElement>(null);
   const sizeRef = useRef<HTMLDivElement>(null);
   const draftRef = useRef<HTMLDivElement>(null);
+  const outlinesRef = useRef<HTMLDivElement>(null);
+  const marqueeRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [errorText, setErrorText] = useState("");
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [panning, setPanning] = useState(false);
+  /** A resize cursor while the pointer is over a handle or a resize is running. */
+  const [resizeCursor, setResizeCursor] = useState<string | null>(null);
 
   // Mutable state the event handlers and render loop share.
   const live = useRef({
@@ -82,6 +141,8 @@ export function Canvas(props: CanvasProps) {
     space: false,
     /** The pointer is over the canvas. */
     hover: false,
+    /** The layer a click would select, outlined on hover. */
+    hoverId: null as NodeId | null,
     fitted: false,
   });
   live.current.props = props;
@@ -96,43 +157,100 @@ export function Canvas(props: CanvasProps) {
     return { x: camera.x + sx / camera.zoom, y: camera.y + sy / camera.zoom };
   };
 
+  const toScreen = (wx: number, wy: number) => {
+    const { camera } = live.current;
+    return { x: (wx - camera.x) * camera.zoom, y: (wy - camera.y) * camera.zoom };
+  };
+
+  /** The selected layers that exist and sit on the page shown. */
+  const pageSelection = (): NodeId[] => {
+    const { doc: d, pageId: page, selection: sel } = live.current.props;
+    return sel.filter((id) => {
+      let cur = d.get(id);
+      while (cur && cur.parentId) cur = d.get(cur.parentId);
+      return cur?.id === page && id !== page;
+    });
+  };
+
+  /** The selected layers a drag may change: none while viewing only or drawing. */
+  const editable = (ids: readonly NodeId[]) => {
+    const p = live.current.props;
+    return p.readOnly || p.tool !== "move" ? [] : movable(p.doc, ids);
+  };
+
+  /** Lay an overlay box over a (possibly turned) box on the page; lines stay 1 px and sharp at any zoom. */
+  const place = (el: HTMLElement, f: SelectionFrame) => {
+    const dpr = window.devicePixelRatio || 1;
+    const snap = (v: number) => Math.round(v * dpr) / dpr;
+    const s = toScreen(f.x, f.y);
+    const z = live.current.camera.zoom;
+    el.style.display = "block";
+    el.style.transform = `translate(${snap(s.x)}px, ${snap(s.y)}px)${f.rotation ? ` rotate(${f.rotation}deg)` : ""}`;
+    el.style.width = `${f.width * z}px`;
+    el.style.height = `${f.height * z}px`;
+  };
+
+  /** A layer's own box on the page. */
+  const layerFrame = (id: NodeId): SelectionFrame | null => {
+    const n = live.current.props.doc.get(id);
+    if (!n || n.type === "PAGE") return null;
+    const p = placementOf(live.current.props.doc, id);
+    return { x: p.x, y: p.y, rotation: p.rotation, width: n.width, height: n.height };
+  };
+
   const updateOverlay = () => {
-    const { camera, props: p, draft } = live.current;
+    const { props: p, draft, gesture, hoverId } = live.current;
     const sel = selRef.current;
     const label = sizeRef.current;
-    const r = p.selection ? absoluteRect(p.doc, p.selection) : null;
-    const node = p.selection ? p.doc.get(p.selection) : undefined;
-    const onPage = (() => {
-      let cur = node;
-      while (cur && cur.parentId) cur = p.doc.get(cur.parentId);
-      return cur?.id === p.pageId;
-    })();
+    const ids = pageSelection();
+    const frame = selectionFrame(p.doc, ids);
     if (sel && label) {
-      if (r && onPage) {
-        const left = (r.x - camera.x) * camera.zoom;
-        const top = (r.y - camera.y) * camera.zoom;
-        const width = r.width * camera.zoom;
-        const height = r.height * camera.zoom;
-        sel.style.display = "block";
-        sel.style.transform = `translate(${left}px, ${top}px)`;
-        sel.style.width = `${width}px`;
-        sel.style.height = `${height}px`;
+      if (frame) {
+        place(sel, frame);
+        sel.dataset.handles = editable(ids).length && gesture?.kind !== "move" ? "on" : "off";
+        // The size label sits under the selection's upright bounds, whatever its rotation.
+        const corners = [fromSpace(frame, 0, 0), fromSpace(frame, frame.width, 0), fromSpace(frame, frame.width, frame.height), fromSpace(frame, 0, frame.height)];
+        const b = boundsOf(corners.map((c) => toScreen(c.x, c.y))) as Rect;
         label.style.display = "block";
-        label.style.transform = `translate(${left + width / 2}px, ${top + height + 8}px) translateX(-50%)`;
-        label.textContent = `${round(r.width)} × ${round(r.height)}`;
+        label.style.transform = `translate(${b.x + b.width / 2}px, ${b.y + b.height + 8}px) translateX(-50%)`;
+        label.textContent = `${round(frame.width)} × ${round(frame.height)}`;
       } else {
         sel.style.display = "none";
         label.style.display = "none";
       }
     }
+    // Thin outlines: each member of a multi-selection, and the layer under the pointer.
+    const outlines = outlinesRef.current;
+    if (outlines) {
+      const boxes: SelectionFrame[] = [];
+      if (ids.length > 1) for (const id of ids) {
+        const f = layerFrame(id);
+        if (f) boxes.push(f);
+      }
+      const showHover = hoverId && !gesture && !ids.includes(hoverId) && p.doc.has(hoverId);
+      const hover = showHover ? layerFrame(hoverId) : null;
+      if (hover) boxes.push(hover);
+      while (outlines.children.length > boxes.length) outlines.lastElementChild?.remove();
+      boxes.forEach((f, i) => {
+        let el = outlines.children[i] as HTMLElement | undefined;
+        if (!el) {
+          el = document.createElement("div");
+          el.className = "layer-outline";
+          outlines.append(el);
+        }
+        place(el, f);
+      });
+    }
+    const m = marqueeRef.current;
+    if (m) {
+      if (gesture?.kind === "marquee" && gesture.rect) place(m, { ...gesture.rect, rotation: 0 });
+      else m.style.display = "none";
+    }
     const d = draftRef.current;
     if (d) {
       if (draft) {
-        d.style.display = "block";
-        d.style.transform = `translate(${(draft.x - camera.x) * camera.zoom}px, ${(draft.y - camera.y) * camera.zoom}px)`;
-        d.style.width = `${draft.width * camera.zoom}px`;
-        d.style.height = `${draft.height * camera.zoom}px`;
-        d.dataset.shape = live.current.gesture?.kind === "draw" ? live.current.gesture.tool : "";
+        place(d, { ...draft, rotation: 0 });
+        d.dataset.shape = gesture?.kind === "draw" ? gesture.tool : "";
       } else d.style.display = "none";
     }
   };
@@ -337,7 +455,8 @@ export function Canvas(props: CanvasProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageId]);
 
-  useEffect(requestDraw, [selection]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(requestDraw, [selection, tool, props.readOnly]);
 
   // Wheel zoom (needs a non-passive listener to stop the browser zooming the page).
   useEffect(() => {
@@ -393,9 +512,197 @@ export function Canvas(props: CanvasProps) {
     };
   }, []);
 
-  const local = (e: ReactPointerEvent) => {
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    return { sx: e.clientX - rect.left, sy: e.clientY - rect.top };
+  const local = (e: { clientX: number; clientY: number }) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    return { sx: e.clientX - (rect?.left ?? 0), sy: e.clientY - (rect?.top ?? 0) };
+  };
+
+  /** The resize handle of the selection under a screen point, if the selection can be resized. */
+  const handleUnder = (sx: number, sy: number): Handle | null => {
+    const ids = editable(pageSelection());
+    if (!ids.length) return null;
+    const f = selectionFrame(live.current.props.doc, pageSelection());
+    if (!f) return null;
+    const z = live.current.camera.zoom;
+    const w = toWorld(sx, sy);
+    const lp = toSpace(f, w.x, w.y);
+    return handleAt(lp.x * z, lp.y * z, f.width * z, f.height * z, HANDLE_GRAB);
+  };
+
+  /** True for a top-level frame with visible children: dragging on its empty area draws a marquee inside it. */
+  const isFrameBackground = (id: NodeId) => {
+    const { doc: d, pageId: page } = live.current.props;
+    const n = d.get(id);
+    return !!n && n.parentId === page && CONTAINERS.has(n.type) && d.children(id).some((c) => c.visible);
+  };
+
+  const select = (ids: NodeId[]) => {
+    if (!sameIds(ids, live.current.props.selection)) live.current.props.onSelect(ids);
+  };
+
+  /** Apply the running move, resize or marquee for the pointer at `p`. */
+  const applyDrag = (p: Pointer) => {
+    const l = live.current;
+    const g = l.gesture;
+    if (!g) return;
+    const w = toWorld(p.sx, p.sy);
+    let dx = w.x - (g.kind === "pan" ? 0 : g.wx);
+    let dy = w.y - (g.kind === "pan" ? 0 : g.wy);
+    if (g.kind === "move") {
+      g.last = p;
+      if (p.shift) ({ x: dx, y: dy } = constrainToAxis(dx, dy));
+      const snapped = snapDelta(g.box, dx, dy);
+      // A held axis stays exactly where it was, even if the box started off the pixel grid.
+      const mx = dx === 0 ? 0 : snapped.x;
+      const my = dy === 0 ? 0 : snapped.y;
+      g.edit.update((tx) => moveBy(tx, g.starts, mx, my));
+    } else if (g.kind === "resize") {
+      g.last = p;
+      g.edit.update((tx) => resizeBy(tx, g.starts, g.handle, dx, dy, { keepRatio: p.shift, fromCenter: p.alt }));
+    } else if (g.kind === "marquee") {
+      g.rect = rectFromPoints(g.wx, g.wy, w.x, w.y);
+      const d = l.props.doc;
+      const candidates = d
+        .children(g.scope)
+        .filter((n) => n.visible && !n.locked)
+        .map((n) => ({ id: n.id, rect: worldBounds(d, n.id) }))
+        .filter((c): c is { id: NodeId; rect: Rect } => c.rect !== null);
+      const hits = marqueeHits(candidates, g.rect);
+      select(g.additive ? [...g.base, ...hits.filter((id) => !g.base.includes(id))] : hits);
+      requestDraw();
+    }
+  };
+
+  /** Stop a move, resize or marquee and put everything back as it was before it. Returns false if nothing was running. */
+  const cancelDrag = (): boolean => {
+    const l = live.current;
+    const g = l.gesture;
+    if (!g) return false;
+    if (g.kind === "move" || g.kind === "resize") {
+      if (g.edit.open) g.edit.cancel();
+    } else if (g.kind === "marquee") {
+      select(g.base);
+    } else if (g.kind === "draw") {
+      l.draft = null;
+    } else return false;
+    l.gesture = null;
+    setResizeCursor(null);
+    requestDraw();
+    return true;
+  };
+
+  /** The press became a drag: start the move, resize or marquee it was waiting for. */
+  const startDrag = (g: Extract<Gesture, { kind: "press" }>) => {
+    const l = live.current;
+    const d = l.props.doc;
+    if (g.then === "marquee") {
+      l.gesture = { kind: "marquee", wx: g.wx, wy: g.wy, scope: g.scope, additive: g.additive, base: g.base, rect: null };
+      return;
+    }
+    if ((g.then !== "move" && g.then !== "resize") || d.live) {
+      l.gesture = null;
+      return;
+    }
+    const starts = snapshot(d, g.ids);
+    const box = startBounds(starts);
+    if (!box) {
+      l.gesture = null;
+      return;
+    }
+    if (g.then === "resize" && g.handle) {
+      const edit = d.beginLive(plural(starts.length, "Resize"));
+      l.gesture = { kind: "resize", wx: g.wx, wy: g.wy, starts, handle: g.handle, edit, last: { sx: g.sx, sy: g.sy, shift: false, alt: false } };
+    } else {
+      const edit = d.beginLive(plural(starts.length, "Move"));
+      l.gesture = { kind: "move", wx: g.wx, wy: g.wy, starts, box, edit, last: { sx: g.sx, sy: g.sy, shift: false, alt: false } };
+    }
+  };
+
+  // Escape cancels a drag (before the editor's Escape clears the selection); Shift and Alt re-apply it at once.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const g = live.current.gesture;
+      if (!g) return;
+      if (e.type === "keydown" && e.key === "Escape") {
+        if (cancelDrag()) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        return;
+      }
+      if ((e.key === "Shift" || e.key === "Alt") && (g.kind === "move" || g.kind === "resize")) {
+        applyDrag({ ...g.last, shift: e.shiftKey, alt: e.altKey });
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("keyup", onKey, true);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("keyup", onKey, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // A drag left open when the page or file changes (or the canvas goes away) is cancelled, never half-kept.
+  useEffect(
+    () => () => {
+      cancelDrag();
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [doc, pageId],
+  );
+
+  /** Press with the Move tool: decide what a drag from here will do, and select as Figma does. */
+  const pressMove = (e: ReactPointerEvent, sx: number, sy: number) => {
+    const l = live.current;
+    const p = l.props;
+    const w = toWorld(sx, sy);
+    const current = pageSelection();
+    const base = { kind: "press" as const, sx, sy, wx: w.x, wy: w.y, handle: null, scope: p.pageId, additive: false, base: current, click: null };
+    // A handle of the selection resizes, even where another layer is on top (Shift then keeps the ratio).
+    const handle = handleUnder(sx, sy);
+    const hit = p.hitTest?.(w.x, w.y, { deep: e.metaKey || e.ctrlKey }) ?? null;
+    if (handle) {
+      // Released without a drag, it's an ordinary click on whatever is under the handle.
+      const click = e.shiftKey ? null : hit ? [hit] : [];
+      l.gesture = { ...base, then: "resize", ids: editable(current), handle, click };
+      setResizeCursor(handleCursor(handle, selectionFrame(p.doc, current)?.rotation ?? 0));
+      return;
+    }
+    if (e.shiftKey) {
+      if (!hit) {
+        l.gesture = { ...base, then: "marquee", ids: [], additive: true };
+        return;
+      }
+      // Shift-click adds the layer at once, or removes a selected one on release; a Shift-drag moves the selection along one axis.
+      if (current.includes(hit)) {
+        l.gesture = { ...base, then: "move", ids: editable(current), click: current.filter((id) => id !== hit) };
+        return;
+      }
+      const next = [...current, hit];
+      select(next);
+      l.gesture = { ...base, then: "move", ids: editable(next) };
+      return;
+    }
+    if (hit && current.includes(hit)) {
+      // Dragging a selected layer moves the whole selection; a plain click narrows it to this layer.
+      l.gesture = { ...base, then: "move", ids: editable(current), click: [hit] };
+      return;
+    }
+    if (hit && isFrameBackground(hit)) {
+      // The empty area of a top-level frame: a click selects the frame, a drag draws a marquee over its children.
+      l.gesture = { ...base, then: "marquee", ids: [], scope: hit, click: [hit] };
+      return;
+    }
+    if (hit) {
+      select([hit]);
+      l.gesture = { ...base, then: "move", ids: editable([hit]) };
+      return;
+    }
+    // Empty canvas inside a multi-selection's box still drags the selection, as in Figma.
+    const f = current.length > 1 ? selectionFrame(p.doc, current) : null;
+    const inside = f && w.x >= f.x && w.y >= f.y && w.x <= f.x + f.width && w.y <= f.y + f.height;
+    l.gesture = inside ? { ...base, then: "move", ids: editable(current), click: [] } : { ...base, then: "marquee", ids: [], click: [] };
   };
 
   const onPointerDown = (e: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -404,33 +711,55 @@ export function Canvas(props: CanvasProps) {
     e.currentTarget.setPointerCapture(e.pointerId);
     const { sx, sy } = local(e);
     const l = live.current;
+    if (l.gesture) return; // a second button during a drag
+    l.hoverId = null;
     if (e.button === 1 || l.space) {
       l.gesture = { kind: "pan", lastX: sx, lastY: sy };
       setPanning(true);
       return;
     }
     if (e.button !== 0) return;
-    const w = toWorld(sx, sy);
     if (l.props.tool === "move" || l.props.readOnly) {
-      const hit = l.props.hitTest?.(w.x, w.y, { deep: e.metaKey || e.ctrlKey });
-      if (hit) {
-        l.props.onSelect(hit);
-        return;
-      }
-      l.gesture = { kind: "press", startX: sx, startY: sy, lastX: sx, lastY: sy };
+      pressMove(e, sx, sy);
+      requestDraw();
       return;
     }
+    const w = toWorld(sx, sy);
     l.gesture = { kind: "draw", tool: l.props.tool, wx: w.x, wy: w.y, sx, sy };
+  };
+
+  /** Hover with the Move tool: outline what a click would select, and show a resize cursor over handles. */
+  const hover = (e: ReactPointerEvent, sx: number, sy: number) => {
+    const l = live.current;
+    const p = l.props;
+    if (l.space || (p.tool !== "move" && !p.readOnly)) {
+      if (l.hoverId) {
+        l.hoverId = null;
+        requestDraw();
+      }
+      return;
+    }
+    const handle = handleUnder(sx, sy);
+    setResizeCursor(handle ? handleCursor(handle, selectionFrame(p.doc, pageSelection())?.rotation ?? 0) : null);
+    const w = toWorld(sx, sy);
+    const next = handle ? null : (p.hitTest?.(w.x, w.y, { deep: e.metaKey || e.ctrlKey }) ?? null);
+    if (next !== l.hoverId) {
+      l.hoverId = next;
+      requestDraw();
+    }
   };
 
   const onPointerMove = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     const l = live.current;
     const g = l.gesture;
-    if (!g) return;
     const { sx, sy } = local(e);
-    if (g.kind === "press" && Math.hypot(sx - g.startX, sy - g.startY) > DRAG_THRESHOLD) {
-      l.gesture = { kind: "pan", lastX: g.lastX, lastY: g.lastY };
-      setPanning(true);
+    if (!g) {
+      hover(e, sx, sy);
+      return;
+    }
+    if (g.kind === "press") {
+      if (Math.hypot(sx - g.sx, sy - g.sy) <= DRAG_THRESHOLD) return;
+      startDrag(g);
     }
     const cur = l.gesture;
     if (cur?.kind === "pan") {
@@ -449,6 +778,8 @@ export function Canvas(props: CanvasProps) {
       }
       l.draft = { x: Math.min(cur.wx, cur.wx + dx), y: Math.min(cur.wy, cur.wy + dy), width: Math.abs(dx), height: Math.abs(dy) };
       requestDraw();
+    } else if (cur) {
+      applyDrag({ sx, sy, shift: e.shiftKey, alt: e.altKey });
     }
   };
 
@@ -457,10 +788,21 @@ export function Canvas(props: CanvasProps) {
     const g = l.gesture;
     l.gesture = null;
     setPanning(false);
+    setResizeCursor(null);
     if (!g) return;
     if (g.kind === "press") {
-      // A click on empty canvas (or anywhere, until hit-testing lands) clears the selection.
-      l.props.onSelect(null);
+      // A click: no drag happened.
+      if (g.click) select(g.click);
+      requestDraw();
+      return;
+    }
+    if (g.kind === "move" || g.kind === "resize") {
+      if (g.edit.open) g.edit.commit();
+      requestDraw();
+      return;
+    }
+    if (g.kind === "marquee") {
+      requestDraw();
       return;
     }
     if (g.kind !== "draw") return;
@@ -488,7 +830,16 @@ export function Canvas(props: CanvasProps) {
     requestDraw();
   };
 
-  const cursor = spaceHeld || panning ? (panning ? "grabbing" : "grab") : tool === "move" || props.readOnly ? "default" : "crosshair";
+  const onPointerCancel = () => {
+    const l = live.current;
+    if (!cancelDrag()) l.gesture = null;
+    l.draft = null;
+    setPanning(false);
+    requestDraw();
+  };
+
+  const cursor =
+    spaceHeld || panning ? (panning ? "grabbing" : "grab") : (resizeCursor ?? (tool === "move" || props.readOnly ? "default" : "crosshair"));
 
   return (
     <div className="canvas-host" ref={hostRef}>
@@ -499,25 +850,28 @@ export function Canvas(props: CanvasProps) {
         tabIndex={0}
         role="application"
         aria-roledescription="design canvas"
-        aria-label="Canvas. Drag to pan, scroll to zoom. Pick a tool in the dock and drag to draw."
+        aria-label="Canvas. Click to select, Shift-click to add, drag to move or to select an area, arrow keys nudge. Hold Space and drag to pan, scroll to zoom. Pick a tool in the dock and drag to draw."
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerEnter={() => (live.current.hover = true)}
-        onPointerLeave={() => (live.current.hover = false)}
-        onPointerCancel={() => {
-          live.current.gesture = null;
-          live.current.draft = null;
-          setPanning(false);
-          requestDraw();
+        onPointerLeave={() => {
+          live.current.hover = false;
+          if (live.current.hoverId && !live.current.gesture) {
+            live.current.hoverId = null;
+            requestDraw();
+          }
         }}
+        onPointerCancel={onPointerCancel}
+        onLostPointerCapture={() => live.current.gesture && live.current.gesture.kind !== "pan" && onPointerCancel()}
       />
       <div className="canvas-overlay" aria-hidden="true">
+        <div ref={outlinesRef} />
+        <div ref={marqueeRef} className="marquee-box" />
         <div ref={selRef} className="selection-box">
-          <span className="handle nw" />
-          <span className="handle ne" />
-          <span className="handle sw" />
-          <span className="handle se" />
+          {HANDLE_NAMES.map((h) => (
+            <span key={h} className={`handle ${h}`} />
+          ))}
         </div>
         <div ref={sizeRef} className="size-pill" />
         <div ref={draftRef} className="draft-box" />

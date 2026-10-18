@@ -55,6 +55,21 @@ describe("Autosaver", () => {
     expect(file.nodes.some((n) => n.name === "C")).toBe(true);
   });
 
+  it("never writes a drag halfway: it waits until the live edit ends", async () => {
+    const { doc, frame, saver, writes, rename, inner } = setup();
+    rename("A");
+    const drag = doc.beginLive("Move layer");
+    drag.update((tx) => tx.set(frame, "x", 40));
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(writes).toHaveLength(0);
+    expect(saver.status.state).toBe("unsaved");
+    drag.cancel();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(writes).toHaveLength(1);
+    const file = readPackage(await inner.read());
+    expect(file.nodes.find((n) => n.id === frame)).toMatchObject({ name: "A", x: 0 });
+  });
+
   it("honours a custom delay", async () => {
     const { writes, rename } = setup({ delayMs: 200 });
     rename("A");

@@ -36,6 +36,27 @@ describe("RecoveryJournal", () => {
     expect(undo).toMatchObject({ origin: "undo", ops: [{ op: "set", key: "width", value: 393, prev: 400 }] });
   });
 
+  it("records a drag once, when it is committed, and nothing for a cancelled one", async () => {
+    const fs = new FakeFileSystem();
+    const { doc, frame } = sampleDoc();
+    const journal = new RecoveryJournal(doc.fileId, fs.root);
+    journal.attach(doc);
+    const path = `journal/${doc.fileId}.ndjson`;
+
+    const drag = doc.beginLive("Move layer");
+    for (let x = 1; x <= 20; x++) drag.update((tx) => tx.set(frame, "x", x));
+    await vi.advanceTimersByTimeAsync(JOURNAL_FLUSH_MS);
+    expect(fs.readText(path)).toBeUndefined();
+    drag.commit();
+    const cancelled = doc.beginLive("Move layer");
+    cancelled.update((tx) => tx.set(frame, "y", 500));
+    cancelled.cancel();
+    await vi.advanceTimersByTimeAsync(JOURNAL_FLUSH_MS);
+    const lines = fs.readText(path)!.trim().split("\n");
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0]!)).toMatchObject({ origin: "edit", label: "Move layer", ops: [{ op: "set", key: "x", value: 20, prev: 0 }] });
+  });
+
   it("includes changes not yet appended in pending()", async () => {
     const fs = new FakeFileSystem();
     const { doc, frame } = sampleDoc();

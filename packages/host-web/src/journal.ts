@@ -195,7 +195,8 @@ export class RecoveryJournal {
 
   private record(change: Change): void {
     // Replayed operations come from the journal or a file already; recording them again would double them.
-    if (!change.ops.length || change.origin === "replay") return;
+    // Live steps of a drag aren't recorded: the whole drag arrives as one "edit" when it is committed.
+    if (change.origin === "replay" || change.origin === "live" || !change.ops.length) return;
     const seq = ++this.seq;
     const ops = change.ops as Operation[];
     this.buffer.push({ seq, ops, line: JSON.stringify({ seq, origin: change.origin, label: change.label, ops }) });

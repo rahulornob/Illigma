@@ -5,9 +5,10 @@ import { Icon, type IconName } from "../ui/Icon";
 interface LayersPanelProps {
   doc: Document;
   pageId: NodeId;
-  selection: NodeId | null;
+  selection: readonly NodeId[];
   onPage(id: NodeId): void;
-  onSelect(id: NodeId): void;
+  /** `toggle`: Shift- or ⌘-click adds the layer to the selection, or removes it. */
+  onSelect(id: NodeId, toggle: boolean): void;
 }
 
 const TYPE_ICON: Partial<Record<Node["type"], IconName>> = {
@@ -69,10 +70,10 @@ export function LayersPanel({ doc, pageId, selection, onPage, onSelect }: Layers
                 <button
                   type="button"
                   className="row layer-row"
-                  aria-pressed={node.id === selection}
+                  aria-pressed={selection.includes(node.id)}
                   aria-label={`${node.name}, ${node.type.toLowerCase()}`}
                   style={{ paddingLeft: 8 + depth * 16 }}
-                  onClick={() => onSelect(node.id)}
+                  onClick={(e) => onSelect(node.id, e.shiftKey || e.metaKey || e.ctrlKey)}
                 >
                   <span className={`row-icon ${typeClass(node.type)}`}>
                     <Icon name={TYPE_ICON[node.type] ?? "square"} />

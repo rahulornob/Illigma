@@ -23,8 +23,12 @@ export interface Change {
   readonly label: string;
   /** A private copy for each listener, so changing it can't rewrite history. */
   readonly ops: readonly Operation[];
-  /** "edit" for new work, "undo" and "redo" for history moves, "replay" for `Document.replay`. */
-  readonly origin: "edit" | "undo" | "redo" | "replay";
+  /**
+   * "edit" for new work, "undo" and "redo" for history moves, "replay" for `Document.replay`.
+   * "live" is an in-between step of a `LiveEdit` (a drag in progress): it is not history and
+   * is not saved on its own; the whole drag arrives once more as one "edit" when it is committed.
+   */
+  readonly origin: "edit" | "undo" | "redo" | "replay" | "live";
 }
 
 export type Listener = (change: Change) => void;
@@ -55,6 +59,8 @@ let siblingIds: (doc: Document, parentId: NodeId | null) => readonly NodeId[];
 let siblingPos: (doc: Document, node: ReadonlyNode) => number;
 let currentTx: (doc: Document) => Transaction | null;
 let txOps: (tx: Transaction) => Operation[];
+let liveUpdate: (doc: Document, edit: LiveEdit, tx: Transaction, fn: (tx: Transaction) => void) => void;
+let liveEnd: (doc: Document, edit: LiveEdit, tx: Transaction, commit: boolean) => void;
 
 /** Deep copy of a caller's value; values JSON can't hold become a DocumentError. */
 function copyIn<T>(value: T): T {
@@ -83,12 +89,15 @@ export class Document {
   #listeners = new Set<Listener>();
   readonly #historyLimit: number;
   #tx: Transaction | null = null;
+  #live: LiveEdit | null = null;
 
   static {
     applyOp = (doc, o) => doc.#apply(o);
     siblingIds = (doc, parentId) => doc.#kids.get(parentId) ?? NO_IDS;
     siblingPos = (doc, node) => doc.#find(doc.#kids.get(node.parentId) ?? NO_IDS, node);
     currentTx = (doc) => doc.#tx;
+    liveUpdate = (doc, edit, tx, fn) => doc.#liveUpdate(edit, tx, fn);
+    liveEnd = (doc, edit, tx, commit) => doc.#liveEnd(edit, tx, commit);
   }
 
   constructor(name = "Untitled", options: DocumentOptions = {}) {
@@ -192,6 +201,7 @@ export class Document {
    */
   transact<T>(label: string, fn: (tx: Transaction) => T): T {
     const outer = this.#tx;
+    if (!outer && this.#live) throw new DocumentError("Can't start a transaction while a live edit is open.");
     if (outer) {
       const ops = txOps(outer);
       const start = ops.length;
@@ -213,15 +223,75 @@ export class Document {
     } finally {
       this.#tx = null;
     }
-    const ops = txOps(tx);
-    if (ops.length) {
-      const change: Change = Object.freeze({ label, ops: Object.freeze(ops), origin: "edit" as const });
-      this.#undoStack.push(change);
-      if (this.#undoStack.length > this.#historyLimit) this.#undoStack.shift();
-      this.#redoStack = [];
-      this.#emit(label, change.ops, "edit");
-    }
+    this.#commit(label, txOps(tx));
     return result;
+  }
+
+  /** Record `ops` (already applied) as one undo step and tell listeners. */
+  #commit(label: string, ops: Operation[]): void {
+    if (!ops.length) return;
+    const change: Change = Object.freeze({ label, ops: Object.freeze(ops), origin: "edit" as const });
+    this.#undoStack.push(change);
+    if (this.#undoStack.length > this.#historyLimit) this.#undoStack.shift();
+    this.#redoStack = [];
+    this.#emit(label, change.ops, "edit");
+  }
+
+  /** The live edit in progress (a drag on the canvas), or null. */
+  get live(): LiveEdit | null {
+    return this.#live;
+  }
+
+  /**
+   * Start a live edit: a change that is redone many times while the person
+   * drags (move, resize), then kept as one undo step with `commit()` or
+   * thrown away with `cancel()`. Each `update(fn)` first undoes what the
+   * previous update did, then runs `fn` from the state the edit started in,
+   * so the document always shows the latest step. Listeners see each step as
+   * a "live" change, and the whole edit once more as an "edit" on commit.
+   * While it is open, `transact`, `undo`, `redo` and `replay` are refused.
+   */
+  beginLive(label: string): LiveEdit {
+    this.#assertIdle("start a live edit");
+    const edit = new LiveEdit(this, label);
+    this.#live = edit;
+    return edit;
+  }
+
+  #liveUpdate(edit: LiveEdit, tx: Transaction, fn: (tx: Transaction) => void): void {
+    if (this.#live !== edit) throw new DocumentError("This live edit has already ended.");
+    if (this.#tx) throw new DocumentError("Can't update a live edit inside a transaction.");
+    const ops = txOps(tx);
+    const before = ops.slice();
+    const undone = before.map(invert).reverse();
+    this.#rollback(ops, 0);
+    this.#tx = tx;
+    try {
+      fn(tx);
+    } catch (err) {
+      // Back to where the previous update left it, as if this one never ran.
+      this.#rollback(ops, 0);
+      this.#applyAll(before);
+      ops.push(...before);
+      throw err;
+    } finally {
+      this.#tx = null;
+    }
+    if (undone.length || ops.length) this.#emit(edit.label, deepFreeze([...undone, ...ops]), "live");
+  }
+
+  #liveEnd(edit: LiveEdit, tx: Transaction, commit: boolean): void {
+    if (this.#live !== edit) throw new DocumentError("This live edit has already ended.");
+    this.#live = null;
+    const ops = txOps(tx);
+    if (commit) {
+      this.#commit(edit.label, ops.slice());
+      ops.length = 0;
+      return;
+    }
+    const undone = deepFreeze(ops.map(invert).reverse());
+    this.#rollback(ops, 0);
+    if (undone.length) this.#emit(edit.label, undone, "live");
   }
 
   /**
@@ -393,6 +463,7 @@ export class Document {
 
   #assertIdle(what: string): void {
     if (this.#tx) throw new DocumentError(`Can't ${what} while a transaction is running.`);
+    if (this.#live) throw new DocumentError(`Can't ${what} while a live edit is open.`);
   }
 
   #emit(label: string, ops: readonly Operation[], origin: Change["origin"]): void {
@@ -445,6 +516,54 @@ export class Document {
     const order = (a: NodeId, b: NodeId) => compareOrder(nodes.get(a) as ReadonlyNode, nodes.get(b) as ReadonlyNode);
     for (const ids of doc.#kids.values()) ids.sort(order);
     return doc;
+  }
+}
+
+/**
+ * A change that follows a drag: see `Document.beginLive`. Call `update` on
+ * every pointer move, then `commit` (one undo step) or `cancel` (as if it
+ * never happened).
+ */
+export class LiveEdit {
+  readonly #doc: Document;
+  readonly #tx: Transaction;
+  #label: string;
+
+  constructor(doc: Document, label: string) {
+    this.#doc = doc;
+    this.#label = label;
+    this.#tx = new Transaction(doc);
+  }
+
+  /** The undo label, e.g. "Move 2 layers". */
+  get label(): string {
+    return this.#label;
+  }
+
+  /** True until `commit` or `cancel`. */
+  get open(): boolean {
+    return this.#doc.live === this;
+  }
+
+  /** The operations the edit holds now, from the state it started in. */
+  get ops(): readonly Operation[] {
+    return this.#tx.ops;
+  }
+
+  /** Replace the previous step with `fn`'s changes. If `fn` throws, the previous step stays and the error is rethrown. */
+  update(fn: (tx: Transaction) => void): void {
+    liveUpdate(this.#doc, this, this.#tx, fn);
+  }
+
+  /** Keep the edit as one undo step (nothing is recorded if it changed nothing). `label` replaces the starting label. */
+  commit(label?: string): void {
+    if (label !== undefined) this.#label = label;
+    liveEnd(this.#doc, this, this.#tx, true);
+  }
+
+  /** Undo every step and end the edit; no history is recorded. */
+  cancel(): void {
+    liveEnd(this.#doc, this, this.#tx, false);
   }
 }
 
