@@ -129,7 +129,7 @@ await runE2E("save-errors", {}, async ({ browser, url, log, check, knownBug, out
   await page.getByRole("button", { name: "Back to files" }).click();
   // Leaving with unsaved edits is never silent (rule 3): a warning asks first.
   const leave = page.getByRole("alertdialog", { name: "Unsaved edits" });
-  await leave.waitFor({ timeout: 5_000 });
+  await leave.waitFor({ timeout: T(5_000) });
   check((await leave.getByRole("button", { name: "Save a copy elsewhere…" }).count()) === 1, "the leave warning should offer Save a copy elsewhere…");
   await leave.getByRole("button", { name: "Leave anyway (edits stay recoverable)" }).click();
   await page.locator(".file-card").first().waitFor();
@@ -148,9 +148,9 @@ await runE2E("save-errors", {}, async ({ browser, url, log, check, knownBug, out
   check((await field(page, "Y position")) === 333, "the edit made before leaving should come back through recovery");
 
   log("a save still running from the closed editor must not break Keep");
-  // Back to files flushes (that attempt fails), then the editor's unmount starts one more
-  // save that nobody awaits. Hold that save mid-write, reopen the file and press Keep:
-  // Keep's save must wait for it (or not collide with it), not fail.
+  // Back to files flushes (that attempt fails); after "Leave anyway" the editor's unmount
+  // starts one more save that nobody awaits. Hold that save mid-write, reopen the file and
+  // press Keep: Keep's save must wait for it (or not collide with it), not fail.
   await failWrites(true);
   await setField(page, "Y position", 444);
   await page.clock.runFor(1500);
@@ -167,6 +167,7 @@ await runE2E("save-errors", {}, async ({ browser, url, log, check, knownBug, out
     };
   });
   await page.getByRole("button", { name: "Back to files" }).click();
+  await leave.getByRole("button", { name: "Leave anyway (edits stay recoverable)" }).click();
   await page.locator(".file-card").first().waitFor();
   await poll(() => page.evaluate(() => (globalThis.__e2eHeld ?? 0) > 0), "the editor's unmount should start another save");
   await page.evaluate(() => (globalThis.__e2eFail = null)); // the disk is back; the held write stays open
@@ -182,7 +183,7 @@ await runE2E("save-errors", {}, async ({ browser, url, log, check, knownBug, out
   const why = kept ? "" : ` (${((await keepError.innerText().catch(() => "")) || "Keep never finished").replace(/\s+/g, " ").trim()})`;
   knownBug(
     kept,
-    `Keep fails while the closed editor's last save is still writing the same file: Editor unmount calls saver.flushNow() without awaiting it after "Back to files" already flushed, and the reopened session's save runs on a new backend, so nothing serializes the two${why}. Repro: save fails, Back to files, reopen, Keep while the unmount save is still in flight (slow disk).`,
+    `Keep fails while the closed editor's last save is still writing the same file: Editor unmount calls saver.flushNow() without awaiting it after "Back to files" already flushed, and the reopened session's save runs on a new backend, so nothing serializes the two${why}. Repro: save fails, Back to files, Leave anyway, reopen, Keep while the unmount save is still in flight (slow disk).`,
   );
   await page.evaluate(() => globalThis.__e2eRelease?.());
   await context.close();
