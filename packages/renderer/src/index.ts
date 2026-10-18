@@ -9,13 +9,13 @@
  * Each frame only replays the page picture under the camera transform.
  */
 
-import type { Change, DeepReadonly, Document, ReadonlyNode } from "@illigma/core";
-import { PATH_CLOSE, PATH_CUBIC, PATH_LINE, PATH_MOVE, type NodeId, type Paint as FilePaint } from "@illigma/format";
-import type { Canvas, CanvasKit, FontWeight, Paint, Path, SkPicture, Surface, TypefaceFontProvider } from "canvaskit-wasm";
+import type { Change, DeepReadonly, ReadonlyNode } from "@illigma/core";
+import { PATH_CLOSE, PATH_CUBIC, PATH_LINE, PATH_MOVE, type Color, type NodeId, type Paint as FilePaint } from "@illigma/format";
+import type { Canvas, CanvasKit, FontWeight, Paint, Paragraph, Path, SkPicture, Surface, TypefaceFontProvider } from "canvaskit-wasm";
 import { shapeGeometry, type ShapeGeometry } from "./geometry.js";
-import { CLIPPING, hitTest } from "./hit-test.js";
+import { CLIPPING, hitTest, type NodeSource } from "./hit-test.js";
 
-export { DEFAULT_HIT_TOLERANCE, hitTest, insideShape, toLocal, type HitTestOptions, type NodeSource } from "./hit-test.js";
+export { CLIPPING, DEFAULT_HIT_TOLERANCE, hitTest, insideShape, toLocal, type HitTestOptions, type NodeSource } from "./hit-test.js";
 export { flatten, insideFill, nearStroke, PATH_TYPES, roundedPolygon, shapeGeometry, starPoints, type FillPath, type Flattened, type ShapeGeometry } from "./geometry.js";
 export { GpuCanvas } from "./gpu-canvas.js";
 
@@ -42,6 +42,24 @@ export interface FontSource {
   family: string;
   /** A TrueType, OpenType, WOFF or WOFF2 file. */
   data: ArrayBuffer;
+}
+
+/**
+ * The part of `Document` the renderer reads. A `Document` is one; export
+ * passes a read-only view whose `subscribe` never fires.
+ */
+export interface RenderSource extends NodeSource {
+  get(id: NodeId): ReadonlyNode | undefined;
+  subscribe(listener: (change: Change) => void): () => void;
+}
+
+/** One line of laid-out text, in the TEXT node's own space. */
+export interface TextLine {
+  text: string;
+  /** Left edge of the line. */
+  left: number;
+  /** Baseline, from the top of the node. */
+  baseline: number;
 }
 
 export interface RendererOptions {
@@ -95,7 +113,7 @@ export class PageRenderer {
   constructor(
     private readonly ck: CanvasKit,
     private surface: Surface,
-    private readonly doc: Document,
+    private readonly doc: RenderSource,
     private pageId: NodeId,
     private readonly dpr = 1,
     options: RendererOptions = {},
@@ -166,6 +184,23 @@ export class PageRenderer {
       y1 = Math.max(y1, n.y + n.height);
     }
     return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+  }
+
+  /**
+   * Draw node `id` and its subtree onto `canvas`, uncached, in the node's
+   * parent space: the node's own x, y, rotation and opacity apply, its
+   * ancestors' don't. Used by export. Returns how many nodes were drawn
+   * (0 when the node is missing or hidden).
+   */
+  drawSubtree(canvas: Canvas, id: NodeId): number {
+    const n = this.doc.get(id);
+    if (!n) return 0;
+    const count = this.nodeCount;
+    this.nodeCount = 0;
+    this.drawNode(canvas, n);
+    const drawn = this.nodeCount;
+    this.nodeCount = count;
+    return drawn;
   }
 
   dispose(): void {
@@ -362,7 +397,34 @@ export class PageRenderer {
   private drawText(canvas: Canvas, n: ReadonlyNode): void {
     const fill = n.fills[0];
     if (!fill?.visible || !n.characters || !this.fonts) return;
-    const { r, g, b, a } = fill.color;
+    const paragraph = this.paragraph(n, fill.color, this.fonts);
+    canvas.drawParagraph(paragraph, 0, 0);
+    paragraph.delete();
+  }
+
+  /**
+   * How TEXT node `id` breaks into lines when drawn: each line's text, its
+   * left edge and its baseline, in the node's own space. `null` without
+   * fonts, for other node types, or for empty text. SVG export uses it, so
+   * exported text wraps where the canvas wraps it.
+   */
+  layoutText(id: NodeId): TextLine[] | null {
+    const n = this.doc.get(id);
+    if (!n || n.type !== "TEXT" || !n.characters || !this.fonts) return null;
+    const text = n.characters;
+    const paragraph = this.paragraph(n, { r: 0, g: 0, b: 0, a: 1 }, this.fonts);
+    const lines = paragraph.getLineMetrics().map((m) => ({
+      text: text.slice(m.startIndex, m.endExcludingWhitespaces).replace(/[\r\n\u2028\u2029]+$/, ""),
+      left: m.left,
+      baseline: m.baseline,
+    }));
+    paragraph.delete();
+    return lines;
+  }
+
+  /** A TEXT node laid out at its width, in `color`. The caller deletes it. */
+  private paragraph(n: ReadonlyNode, color: DeepReadonly<Color>, fonts: TypefaceFontProvider): Paragraph {
+    const { r, g, b, a } = color;
     const fontSize = n.fontSize ?? 12;
     const style = (n.fontStyle ?? "Regular").toLowerCase();
     const families = n.fontFamily && n.fontFamily !== this.fallbackFamily ? [n.fontFamily] : [];
@@ -383,14 +445,13 @@ export class PageRenderer {
           ...(n.lineHeight ? { heightMultiplier: n.lineHeight / fontSize, halfLeading: true } : {}),
         },
       }),
-      this.fonts,
+      fonts,
     );
-    builder.addText(n.characters);
+    builder.addText(n.characters ?? "");
     const paragraph = builder.build();
     paragraph.layout(Math.max(1, n.width));
-    canvas.drawParagraph(paragraph, 0, 0);
-    paragraph.delete();
     builder.delete();
+    return paragraph;
   }
 
   private weight(style: string): FontWeight {
