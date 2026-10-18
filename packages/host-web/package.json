@@ -1,0 +1,14 @@
+{
+  "name": "@illigma/host-web",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MPL-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./testing": { "types": "./dist/testing/fake-fs.d.ts", "import": "./dist/testing/fake-fs.js" }
+  },
+  "dependencies": { "@illigma/core": "0.0.0", "@illigma/format": "0.0.0" }
+}

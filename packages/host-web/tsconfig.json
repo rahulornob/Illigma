@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "lib": ["ES2022", "DOM", "DOM.Iterable", "DOM.AsyncIterable"]
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/test-helpers.ts"],
+  "references": [{ "path": "../format" }, { "path": "../core" }]
+}
