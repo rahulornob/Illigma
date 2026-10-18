@@ -122,8 +122,11 @@ function onGeometry(n: ReadonlyNode, geo: ShapeGeometry, x: number, y: number, t
     const closed = n.type === "STAR" || n.type === "POLYGON" || (n.type === "VECTOR" && (n.vectorNetwork?.regions.length ?? 0) > 0);
     const align = closed ? (n.strokeAlign ?? "CENTER") : "CENTER";
     const weight = Math.max(0, n.strokeWeight);
-    const reach = (align === "CENTER" ? weight / 2 : align === "OUTSIDE" ? weight : 0) + tolerance;
-    if (nearStroke(flatten(geo.stroke), x, y, reach)) return true;
+    const half = align === "CENTER" ? weight / 2 : align === "OUTSIDE" ? weight : 0;
+    const reach = half + tolerance;
+    // A drawn stroke also reaches out with square caps and miter joins (lines have no joins).
+    const shape = hasStroke && half > 0 ? { half, cap: n.strokeCap, join: n.type === "LINE" ? ("ROUND" as const) : n.strokeJoin } : undefined;
+    if (nearStroke(flatten(geo.stroke), x, y, reach, shape)) return true;
   }
   return false;
 }

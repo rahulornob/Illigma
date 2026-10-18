@@ -6,6 +6,17 @@ import type { Box } from "./types.js";
  */
 export const MIN_SIZE = 1;
 
+/**
+ * Layout's output precision: positions and sizes are rounded to a millionth
+ * of a pixel, as the prototype importer does, so float noise (40.010000000000005)
+ * never reaches a file. Deterministic: the same input always rounds the same
+ * way. Values too large to carry a millionth (beyond about 9e9) are kept.
+ */
+export function roundLayout(v: number): number {
+  if (!(Math.abs(v) < 9e9)) return v;
+  return Math.round(v * 1e6) / 1e6 + 0; // "+ 0" turns -0 into 0, as JSON would
+}
+
 /** A finite number, or `fallback`. */
 export const finite = (v: number | undefined, fallback = 0): number => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
 

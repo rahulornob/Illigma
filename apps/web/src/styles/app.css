@@ -429,7 +429,8 @@ ul {
 .row[aria-current="page"] {
   color: var(--text-primary);
 }
-.row[aria-pressed="true"] {
+.row[aria-pressed="true"],
+.row[aria-selected="true"] {
   background: var(--accent-row);
   color: var(--text-primary);
 }

@@ -1,4 +1,4 @@
-import type { Constraints, Node, NodeId } from "@illigma/format";
+import type { Constraints, Node, NodeId, VectorNetwork, WindingRule } from "@illigma/format";
 
 /** A size in pixels. */
 export interface Size {
@@ -12,13 +12,27 @@ export interface Box extends Size {
   y: number;
 }
 
+/** A vector network as layout reads it: deeply read-only, so core's frozen nodes fit. */
+export interface ReadonlyVectorNetwork {
+  readonly vertices: readonly { readonly x: number; readonly y: number; readonly cornerRadius?: number }[];
+  readonly segments: readonly {
+    readonly start: number;
+    readonly end: number;
+    readonly tangentStart: { readonly x: number; readonly y: number };
+    readonly tangentEnd: { readonly x: number; readonly y: number };
+  }[];
+  readonly regions: readonly { readonly windingRule: WindingRule; readonly loops: readonly (readonly number[])[] }[];
+}
+
 /**
  * The node fields layout reads. A `@illigma/core` document's frozen nodes fit
- * this type. Paints, effects and vector geometry are left out: layout never reads them,
- * and core freezes them deeply.
+ * this type. Paints and effects are left out: layout never reads them, and
+ * core freezes them deeply. A vector's network is read (deeply read-only) only
+ * to scale it with the node when layout changes the node's size.
  */
 export type LayoutNode = Readonly<Omit<Node, "fills" | "strokes" | "constraints" | "vectorNetwork" | "effects">> & {
   readonly constraints?: Readonly<Constraints>;
+  readonly vectorNetwork?: ReadonlyVectorNetwork;
 };
 
 /**
@@ -32,9 +46,12 @@ export interface LayoutReader {
   children(id: NodeId): readonly LayoutNode[];
 }
 
-/** One field value layout wants changed. Apply each with `tx.set(id, key, value)` inside `Document.transact`. */
-export interface LayoutChange {
-  id: NodeId;
-  key: "x" | "y" | "width" | "height";
-  value: number;
-}
+/**
+ * One field value layout wants changed. Apply each with `tx.set(id, key, value)`
+ * inside `Document.transact`. A vector whose size layout changes also gets its
+ * `vectorNetwork` scaled to the new size: the network is in the node's own
+ * space (0…width, 0…height).
+ */
+export type LayoutChange =
+  | { id: NodeId; key: "x" | "y" | "width" | "height"; value: number }
+  | { id: NodeId; key: "vectorNetwork"; value: VectorNetwork };

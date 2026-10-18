@@ -372,9 +372,10 @@ describe("PageRenderer: stroke alignment", () => {
   it("hit-tests outside strokes of closed paths over their full weight", () => {
     let star = "";
     const { doc, page } = setup((add, p) => {
-      star = add("STAR", p, { x: 50, y: 50, width: 100, height: 100, strokes: [solid(BLUE)], strokeWeight: 10, strokeAlign: "OUTSIDE" });
+      star = add("STAR", p, { x: 50, y: 50, width: 100, height: 100, strokes: [solid(BLUE)], strokeWeight: 10, strokeAlign: "OUTSIDE", strokeJoin: "ROUND" });
     });
     // The top tip is at (100, 50): 8 above it is inside the 10-unit outside stroke (plus 0 tolerance), not with centring.
+    // Round joins: a miter tip would reach past it either way.
     expect(hitTest(doc, page, 100, 42, { tolerance: 0 })).toBe(star);
     doc.transact("Centre", (tx) => tx.set(star, "strokeAlign", "CENTER"));
     expect(hitTest(doc, page, 100, 42, { tolerance: 0 })).toBeNull();

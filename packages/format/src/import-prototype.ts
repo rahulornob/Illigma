@@ -38,7 +38,7 @@ import {
   type VectorNetwork,
 } from "./schema.js";
 import { validateFile } from "./validate.js";
-import { vectorNetworkFromSvgPath } from "./vector.js";
+import { vectorNetworkFromSvgPath, vectorNetworkProblem } from "./vector.js";
 
 export interface PrototypeImportOptions {
   /** Makes node and file ids. Defaults to random 12-character ids. Must return ids matching NODE_ID_PATTERN. */
@@ -763,6 +763,11 @@ function pathFields(raw: Obj, l: LayerIn, node: Node, notes: Notes): Partial<Nod
       t.x = round(t.x * sx);
       t.y = round(t.y * sy);
     }
+  }
+  // Scaling can push huge coordinates past what a number holds: such a path is unreadable, not a reason to stop the import.
+  if (vectorNetworkProblem(net)) {
+    notes.add("badPaths");
+    return {};
   }
   const out: Partial<Node> = { vectorNetwork: net };
   if (node.strokes.length) {

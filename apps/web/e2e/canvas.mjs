@@ -445,7 +445,7 @@ await runE2E("canvas", {}, async ({ browser, url, log, check, outDir, errors }) 
   check((await selectedRows(page).count()) === 1 && (await selectedName()) === "Hero", "the copy (named Hero) should be selected");
   check((await field(page, "X position")) === 120 && (await field(page, "Y position")) === 160, "the copy should sit in place");
   const rowNames = (await layerRows(page).allInnerTexts()).map((t) => t.trim());
-  const selIndex = await page.evaluate(() => [...document.querySelectorAll(".layer-list .layer-row")].findIndex((r) => r.getAttribute("aria-pressed") === "true"));
+  const selIndex = await page.evaluate(() => [...document.querySelectorAll(".layer-list .layer-row")].findIndex((r) => r.getAttribute("aria-selected") === "true"));
   check(rowNames[selIndex] === "Hero" && rowNames[selIndex + 1] === "Hero", `the copy should be just above the original in the Layers panel (${rowNames.join(", ")}, selected #${selIndex})`);
   await undo();
   check(await eventually(async () => (await layerRows(page).count()) === before5, 2_000), "undo removes the copy");

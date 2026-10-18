@@ -9,7 +9,7 @@
 
 import type { Document, Transaction } from "@illigma/core";
 import type { LayoutFields, NodeId } from "@illigma/format";
-import { setBoxField } from "./layout";
+import { setBoxValues } from "./layout";
 
 /** Layout fields the inspector sets. `undefined` removes the field (its default applies). */
 export type LayoutPatch = { [K in keyof LayoutFields]?: LayoutFields[K] | undefined };
@@ -59,5 +59,5 @@ export type BoxField = "x" | "y" | "width" | "height";
  */
 export function setBoxFields(doc: Document, ids: readonly NodeId[], field: BoxField, values: readonly number[], label: string): void {
   const changes = ids.map((id, i) => [id, values[i]] as const).filter(([id, v]) => v !== undefined && doc.get(id)?.[field] !== v);
-  if (changes.length) layoutTransact(doc, label, (tx) => changes.forEach(([id, v]) => setBoxField(tx, doc, id, field, v as number)));
+  if (changes.length) layoutTransact(doc, label, (tx) => setBoxValues(tx, doc, field, changes as (readonly [NodeId, number])[]));
 }

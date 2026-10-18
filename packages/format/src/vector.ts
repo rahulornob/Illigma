@@ -250,9 +250,15 @@ export function vectorNetworkPaths(net: VectorNetwork): { regions: { windingRule
 
 // ---- SVG path data ----
 
-/** Numbers in SVG output: at most 6 decimals, no "-0". */
+const isStraight = (s: VectorNetwork["segments"][number]) => s.tangentStart.x === 0 && s.tangentStart.y === 0 && s.tangentEnd.x === 0 && s.tangentEnd.y === 0;
+
+/**
+ * Numbers in SVG output: at most 6 decimals, no "-0". Values of a billion or
+ * more are written in full (scaling them by a million could overflow to
+ * Infinity), so every finite coordinate reads back as itself or its rounding.
+ */
 function num(v: number): string {
-  const r = Math.round(v * 1e6) / 1e6;
+  const r = Math.abs(v) < 1e9 ? Math.round(v * 1e6) / 1e6 : v;
   return Object.is(r, -0) ? "0" : String(r);
 }
 
@@ -281,7 +287,7 @@ export function svgPathFromVectorNetwork(net: VectorNetwork): string {
 }
 
 export interface SvgPathOptions {
-  /** The winding rule of the region made from the path's closed subpaths. Default "NONZERO", as in SVG. */
+  /** The winding rule of the region made from the path's closed subpaths (see `vectorNetworkFromSvgPath`). Default "NONZERO", as in SVG. */
   windingRule?: WindingRule;
 }
 
@@ -292,7 +298,12 @@ const COMMANDS = new Set("MLHVCSQTAZ");
  * V, C, S, Q, T, A, Z, absolute and relative), with quadratics raised to
  * cubics and elliptical arcs split into cubics of at most 90°. Each subpath
  * becomes a run of segments; the closed ones (Z) form one region with
- * `options.windingRule`. Throws `FormatError` on unreadable data or more than
+ * `options.windingRule`. When an open subpath encloses an area (SVG fills it
+ * as if closed, without stroking the closing line), there is no region
+ * instead, and every run fills as if closed with the nonzero rule: a region
+ * can't close a subpath without adding a stroked segment, so this is the
+ * closest the network can come. Throws `FormatError` on unreadable data
+ * (including coordinates or handles too large to be numbers) or more than
  * `VECTOR_LIMITS` allows.
  */
 export function vectorNetworkFromSvgPath(d: string, options: SvgPathOptions = {}): VectorNetwork {
@@ -371,6 +382,7 @@ export function vectorNetworkFromSvgPath(d: string, options: SvgPathOptions = {}
   let open = false; // a subpath is started and not yet closed
   let lastCubic: [number, number] | null = null; // second control point, for S
   let lastQuad: [number, number] | null = null; // control point, for T
+  let openArea = false; // an open subpath encloses an area (see the end)
 
   const check = (...vs: number[]) => {
     for (const v of vs) if (!Number.isFinite(v)) fail("a coordinate is too large");
@@ -380,9 +392,17 @@ export function vectorNetworkFromSvgPath(d: string, options: SvgPathOptions = {}
     net.vertices.push({ x: vx + 0, y: vy + 0 }); // "+ 0": never -0, which JSON would write as 0
     return net.vertices.length - 1;
   };
-  /** Drops a subpath that drew nothing (a lone M), so it leaves no stray vertex. */
+  /**
+   * Ends an open subpath (one not closed by Z). Drops it if it drew nothing (a
+   * lone M), so it leaves no stray vertex; notes whether it encloses an area
+   * that SVG fills as if closed (two or more segments, or one curve).
+   */
   const dropEmptySubpath = () => {
-    if (open && net.segments.length === firstSegment && curVertex === net.vertices.length - 1) net.vertices.pop();
+    if (open) {
+      const made = net.segments.length - firstSegment;
+      if (made === 0 && curVertex === net.vertices.length - 1) net.vertices.pop();
+      else if (made >= 2 || (made === 1 && !isStraight(net.segments[firstSegment] as VectorNetwork["segments"][number]))) openArea = true;
+    }
     open = false;
   };
   const beginSubpath = () => {
@@ -398,13 +418,12 @@ export function vectorNetworkFromSvgPath(d: string, options: SvgPathOptions = {}
     beginSubpath();
     if (net.segments.length >= VECTOR_LIMITS.maxSegments) throw new FormatError(`The path has more than ${count(VECTOR_LIMITS.maxSegments)} segments.`);
     const from = net.vertices[curVertex] as { x: number; y: number };
+    const tangentStart = straight ? { x: 0, y: 0 } : { x: c1x - from.x + 0, y: c1y - from.y + 0 };
+    const tangentEnd = straight ? { x: 0, y: 0 } : { x: c2x - ex + 0, y: c2y - ey + 0 };
+    // Finite points can still be too far apart for their difference to be a number (-1e308 to 1e308).
+    check(tangentStart.x, tangentStart.y, tangentEnd.x, tangentEnd.y);
     const to = addVertex(ex, ey);
-    net.segments.push({
-      start: curVertex,
-      end: to,
-      tangentStart: straight ? { x: 0, y: 0 } : { x: c1x - from.x + 0, y: c1y - from.y + 0 },
-      tangentEnd: straight ? { x: 0, y: 0 } : { x: c2x - ex + 0, y: c2y - ey + 0 },
-    });
+    net.segments.push({ start: curVertex, end: to, tangentStart, tangentEnd });
     curVertex = to;
     x = ex;
     y = ey;
@@ -538,7 +557,11 @@ export function vectorNetworkFromSvgPath(d: string, options: SvgPathOptions = {}
     skip();
   }
   dropEmptySubpath();
-  if (loops.length) net.regions.push({ windingRule, loops });
+  // SVG fills every subpath, the open ones as if closed by a straight line that isn't stroked. A
+  // region can't close a subpath without a (stroked) segment, so when an open subpath encloses an
+  // area the network gets no region: then every run fills as if closed (and with the nonzero rule),
+  // as it does for paths with no closed subpath. Otherwise the closed subpaths are one region.
+  if (loops.length && !openArea) net.regions.push({ windingRule, loops });
   return net;
 
   function quadTo(q: [number, number], ex: number, ey: number) {
