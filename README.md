@@ -27,6 +27,8 @@ npm test        # unit tests
 | --- | --- | --- |
 | [`@illigma/format`](packages/format) | MIT | The open `.illigma` file format: schema, reader, writer, migrations |
 | [`@illigma/core`](packages/core) | MPL-2.0 | The document model: nodes, operations, transactions, undo |
+| [`@illigma/renderer`](packages/renderer) | MPL-2.0 | GPU canvas renderer (CanvasKit / Skia WASM on WebGL2) |
+| [`apps/bench`](apps/bench) | MPL-2.0 | Renderer benchmark: 10,000 layers, `npm run bench` |
 
 ## Licence
 

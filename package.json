@@ -15,12 +15,15 @@
     "build": "tsc -b",
     "typecheck": "tsc -b --pretty",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "bench": "npm run dev -w @illigma/bench",
+    "bench:measure": "node scripts/bench.mjs"
   },
   "devDependencies": {
+    "@types/node": "22.19.1",
+    "playwright": "^1.56.1",
     "typescript": "5.9.3",
-    "vitest": "4.1.12",
     "vite": "7.3.7",
-    "@types/node": "22.19.1"
+    "vitest": "4.1.12"
   }
 }

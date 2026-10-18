@@ -1,0 +1,18 @@
+{
+  "name": "@illigma/bench",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MPL-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@illigma/core": "0.0.0",
+    "@illigma/format": "0.0.0",
+    "@illigma/renderer": "0.0.0",
+    "canvaskit-wasm": "0.42.0"
+  }
+}
