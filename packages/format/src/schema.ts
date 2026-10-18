@@ -176,7 +176,95 @@ export interface LayoutFields {
   maxHeight?: number;
 }
 
-export type Node = NodeBase & TextFields & LayoutFields;
+/** A point or a direction, in the node's own coordinate space. */
+export interface Vector2 {
+  x: number;
+  y: number;
+}
+
+/** A point of a vector network. */
+export interface VectorVertex {
+  x: number;
+  y: number;
+  /** Rounds the corner at this point, 0 or more. Default 0. */
+  cornerRadius?: number;
+}
+
+/**
+ * A straight or curved (cubic Bézier) edge between two vertices. The
+ * tangents are the Bézier handles, relative to their vertex: `tangentStart`
+ * from `start`, `tangentEnd` from `end`. Both { x: 0, y: 0 } is a straight line.
+ */
+export interface VectorSegment {
+  /** Vertex index. */
+  start: number;
+  /** Vertex index. May equal `start` (a closed curve through one point). */
+  end: number;
+  tangentStart: Vector2;
+  tangentEnd: Vector2;
+}
+
+export type WindingRule = "NONZERO" | "EVENODD";
+export const WINDING_RULES: readonly WindingRule[] = ["NONZERO", "EVENODD"];
+
+/** A filled area: one or more closed loops of segments (outer edges and holes), filled by its winding rule. */
+export interface VectorRegion {
+  windingRule: WindingRule;
+  /** Each loop lists segment indices that join end to end and close. */
+  loops: number[][];
+}
+
+/**
+ * Figma's vector network: points joined by straight or curved segments,
+ * which may branch, with filled regions. Coordinates are in the node's own
+ * space (0…width, 0…height), so resizing the node rewrites the network.
+ */
+export interface VectorNetwork {
+  vertices: VectorVertex[];
+  segments: VectorSegment[];
+  regions: VectorRegion[];
+}
+
+/** Line ends. Arrow caps arrive with the vector editor. */
+export type StrokeCap = "NONE" | "ROUND" | "SQUARE";
+export type StrokeJoin = "MITER" | "BEVEL" | "ROUND";
+export const STROKE_CAPS: readonly StrokeCap[] = ["NONE", "ROUND", "SQUARE"];
+export const STROKE_JOINS: readonly StrokeJoin[] = ["MITER", "BEVEL", "ROUND"];
+
+/** Limits on one vector network, so a file can't make the editor run out of memory. */
+export const VECTOR_LIMITS = {
+  maxVertices: 100_000,
+  maxSegments: 100_000,
+  maxRegions: 10_000,
+  /** Segment references across all of a network's loops. */
+  maxLoopEntries: 200_000,
+} as const;
+
+/** Polygon sides and star points: Figma's polygon and star tools allow 3 to 60; files may hold up to this. */
+export const MAX_POINT_COUNT = 1_000;
+/** Figma's defaults for nodes that don't store these fields. */
+export const DEFAULT_POLYGON_POINTS = 3;
+export const DEFAULT_STAR_POINTS = 5;
+export const DEFAULT_STAR_INNER_RADIUS = 0.382;
+
+/**
+ * Shape geometry, named after Figma's Plugin API. Every field is optional:
+ * absent means Figma's default, so files without them save exactly as before.
+ */
+export interface ShapeFields {
+  /** VECTOR: the outline. Absent: an empty vector, which draws nothing. */
+  vectorNetwork?: VectorNetwork;
+  /** POLYGON sides or STAR points, a whole number from 3. Default 3 (polygon) or 5 (star). */
+  pointCount?: number;
+  /** STAR: inner points' distance from the centre, as a fraction (0–1) of the outer. Default 0.382. */
+  innerRadius?: number;
+  /** Ends of open paths and lines. Default "NONE". */
+  strokeCap?: StrokeCap;
+  /** Corners of strokes. Default "MITER". */
+  strokeJoin?: StrokeJoin;
+}
+
+export type Node = NodeBase & TextFields & LayoutFields & ShapeFields;
 
 /** The node fields an operation may change. `id` and `type` never change. */
 export type NodeKey = Exclude<keyof Node, "id" | "type">;

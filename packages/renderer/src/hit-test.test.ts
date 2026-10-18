@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Document } from "@illigma/core";
-import type { Node, NodeId, NodeType } from "@illigma/format";
+import { vectorNetworkFromSvgPath, type Node, type NodeId, type NodeType } from "@illigma/format";
 import { hitTest } from "./hit-test.js";
 
 type Fields = Partial<Omit<Node, "id" | "type" | "parentId" | "index">>;
@@ -124,5 +124,69 @@ describe("hitTest", () => {
     expect(hitTest(doc, page, 75, 75)).toBe(below);
     doc.transact("Show", (tx) => tx.set(hidden, "visible", true));
     expect(hitTest(doc, page, 75, 75)).toBe(hidden);
+  });
+});
+
+describe("hitTest: path shapes", () => {
+  const solid = [{ type: "SOLID" as const, visible: true, color: { r: 1, g: 0, b: 0, a: 1 } }];
+  const RING = "M50 0 A50 50 0 1 1 49.999 0 Z M50 25 A25 25 0 1 1 49.999 25 Z";
+
+  it("hits stars and polygons by their shape, not their box", () => {
+    let star = "", tri = "";
+    const { doc, page } = setup((add, p) => {
+      star = add("STAR", p, { x: 0, y: 0, width: 100, height: 100 });
+      tri = add("POLYGON", p, { x: 200, y: 0, width: 100, height: 100 });
+    });
+    expect(hitTest(doc, page, 50, 50)).toBe(star);
+    expect(hitTest(doc, page, 50, 2)).toBe(star); // the top point
+    expect(hitTest(doc, page, 50, 80)).toBeNull(); // the notch between the lower points
+    expect(hitTest(doc, page, 5, 5)).toBeNull();
+    expect(hitTest(doc, page, 250, 70)).toBe(tri);
+    expect(hitTest(doc, page, 250, 90)).toBeNull(); // below the triangle, inside its box
+    expect(hitTest(doc, page, 205, 10)).toBeNull();
+  });
+
+  it("hits filled vectors by their regions, holes excluded", () => {
+    let ring = "";
+    const { doc, page } = setup((add, p) => {
+      ring = add("VECTOR", p, { width: 100, height: 100, fills: solid, vectorNetwork: vectorNetworkFromSvgPath(RING, { windingRule: "EVENODD" }) });
+    });
+    expect(hitTest(doc, page, 50, 10)).toBe(ring);
+    expect(hitTest(doc, page, 50, 50)).toBeNull(); // the hole
+    expect(hitTest(doc, page, 3, 3)).toBeNull(); // outside the circle
+    doc.transact("Non-zero", (tx) => tx.set(ring, "vectorNetwork", vectorNetworkFromSvgPath(RING, { windingRule: "NONZERO" })));
+    expect(hitTest(doc, page, 50, 50)).toBe(ring);
+  });
+
+  it("hits unfilled vectors and lines near their stroke only, within the tolerance", () => {
+    let path = "", line = "";
+    const { doc, page } = setup((add, p) => {
+      path = add("VECTOR", p, { width: 100, height: 100, strokes: solid, strokeWeight: 4, vectorNetwork: vectorNetworkFromSvgPath("M10 10 L90 10 L90 90 Z") });
+      line = add("LINE", p, { x: 200, y: 50, width: 100, height: 0, rotation: 90, strokeWeight: 2 });
+    });
+    expect(hitTest(doc, page, 50, 10)).toBe(path);
+    expect(hitTest(doc, page, 50, 13)).toBe(path); // 2 (half the stroke) + 2 (tolerance) from the edge
+    expect(hitTest(doc, page, 50, 15)).toBeNull();
+    expect(hitTest(doc, page, 70, 40)).toBeNull(); // inside, but there is no fill
+    expect(hitTest(doc, page, 50, 15, { tolerance: 5 })).toBe(path);
+    expect(hitTest(doc, page, 50, 11, { tolerance: 0 })).toBe(path);
+    // The line is rotated 90° about its start, so it runs down from (200, 50) to (200, 150).
+    expect(hitTest(doc, page, 200, 100)).toBe(line);
+    expect(hitTest(doc, page, 202.5, 100)).toBe(line);
+    expect(hitTest(doc, page, 204, 100)).toBeNull();
+    expect(hitTest(doc, page, 250, 50)).toBeNull();
+    expect(hitTest(doc, page, 200, 152.5)).toBe(line); // ends are reachable too
+    expect(hitTest(doc, page, 200, 154)).toBeNull(); // past its end
+  });
+
+  it("hits a filled vector with a stroke on either, and an empty vector never", () => {
+    let both = "";
+    const { doc, page } = setup((add, p) => {
+      both = add("VECTOR", p, { width: 100, height: 100, fills: solid, strokes: solid, strokeWeight: 10, vectorNetwork: vectorNetworkFromSvgPath("M10 10 L90 10 L90 90 Z") });
+      add("VECTOR", p, { x: 200, width: 100, height: 100, fills: solid });
+    });
+    expect(hitTest(doc, page, 70, 30)).toBe(both);
+    expect(hitTest(doc, page, 50, 4)).toBe(both); // on the stroke's outer half
+    expect(hitTest(doc, page, 250, 50)).toBeNull();
   });
 });

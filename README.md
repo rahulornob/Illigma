@@ -40,7 +40,7 @@ npm run import:prototype -- old-document.json "My design.illigma"          # pac
 npm run import:prototype -- old-document.json "My design.illigma" --zip    # single-file form
 ```
 
-It runs offline and never overwrites an existing file unless you add `--force`. Pages, frames, shapes, text, groups, colours, opacity, rotation, visibility and locks carry over. Anything the file format can't hold yet (path outlines, effects, swatches, auto layout and constraint settings, letter spacing) is listed when the import finishes. From code: `importPrototypeJson(json)` in `@illigma/format`.
+It runs offline and never overwrites an existing file unless you add `--force`. Pages, frames, shapes, text, groups, colours, opacity, rotation, visibility and locks carry over. Path outlines become vector networks. Anything the file format can't hold yet (effects, swatches, auto layout and constraint settings, letter spacing) is listed when the import finishes. From code: `importPrototypeJson(json)` in `@illigma/format`.
 
 ## Licence
 

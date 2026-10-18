@@ -10,11 +10,13 @@
  */
 
 import type { Change, DeepReadonly, Document, ReadonlyNode } from "@illigma/core";
-import type { NodeId, Paint as FilePaint } from "@illigma/format";
-import type { Canvas, CanvasKit, FontWeight, Paint, SkPicture, Surface, TypefaceFontProvider } from "canvaskit-wasm";
+import { PATH_CLOSE, PATH_CUBIC, PATH_LINE, PATH_MOVE, type NodeId, type Paint as FilePaint } from "@illigma/format";
+import type { Canvas, CanvasKit, FontWeight, Paint, Path, SkPicture, Surface, TypefaceFontProvider } from "canvaskit-wasm";
+import { shapeGeometry, type ShapeGeometry } from "./geometry.js";
 import { CLIPPING, hitTest } from "./hit-test.js";
 
-export { hitTest, insideShape, toLocal, type HitTestOptions, type NodeSource } from "./hit-test.js";
+export { DEFAULT_HIT_TOLERANCE, hitTest, insideShape, toLocal, type HitTestOptions, type NodeSource } from "./hit-test.js";
+export { flatten, insideFill, nearStroke, PATH_TYPES, roundedPolygon, shapeGeometry, starPoints, type FillPath, type Flattened, type ShapeGeometry } from "./geometry.js";
 export { GpuCanvas } from "./gpu-canvas.js";
 
 /** Screen point = (world point − camera.xy) × camera.zoom, in CSS pixels. */
@@ -148,7 +150,8 @@ export class PageRenderer {
    * it, or with `deep` the deepest node.
    */
   hitTest(screenX: number, screenY: number, camera: Camera, deep = false): NodeId | null {
-    return hitTest(this.doc, this.pageId, camera.x + screenX / camera.zoom, camera.y + screenY / camera.zoom, { deep });
+    // Thin lines and paths can be picked within 3 screen pixels of their stroke.
+    return hitTest(this.doc, this.pageId, camera.x + screenX / camera.zoom, camera.y + screenY / camera.zoom, { deep, tolerance: 3 / camera.zoom });
   }
 
   /** World-space bounds of the page's top-level nodes, for "zoom to fit". */
@@ -269,8 +272,11 @@ export class PageRenderer {
     }
 
     const rect = this.ck.XYWHRect(0, 0, n.width, n.height);
+    const geometry = shapeGeometry(n);
     if (n.type === "TEXT" && this.fonts) {
       this.drawText(canvas, n);
+    } else if (geometry) {
+      this.drawGeometry(canvas, n, geometry);
     } else {
       for (const fill of n.fills) this.drawShape(canvas, n, rect, fill, false);
       for (const stroke of n.strokes) this.drawShape(canvas, n, rect, stroke, true);
@@ -287,12 +293,62 @@ export class PageRenderer {
     canvas.restoreToCount(saved);
   }
 
-  private drawShape(canvas: Canvas, n: ReadonlyNode, rect: Float32Array, paint: DeepReadonly<FilePaint>, stroke: boolean): void {
-    if (!paint.visible) return;
+  /** Sets the shared paint for one fill or stroke; false when it draws nothing. */
+  private usePaint(n: ReadonlyNode, paint: DeepReadonly<FilePaint>, stroke: boolean): boolean {
+    // A 0-weight stroke draws nothing (Skia would draw a hairline).
+    if (!paint.visible || (stroke && !(n.strokeWeight > 0))) return false;
     const { r, g, b, a } = paint.color;
-    this.paint.setColor(this.ck.Color4f(r, g, b, a));
-    this.paint.setStyle(stroke ? this.ck.PaintStyle.Stroke : this.ck.PaintStyle.Fill);
-    this.paint.setStrokeWidth(n.strokeWeight);
+    const ck = this.ck;
+    this.paint.setColor(ck.Color4f(r, g, b, a));
+    this.paint.setStyle(stroke ? ck.PaintStyle.Stroke : ck.PaintStyle.Fill);
+    if (stroke) {
+      this.paint.setStrokeWidth(n.strokeWeight);
+      this.paint.setStrokeCap(n.strokeCap === "ROUND" ? ck.StrokeCap.Round : n.strokeCap === "SQUARE" ? ck.StrokeCap.Square : ck.StrokeCap.Butt);
+      this.paint.setStrokeJoin(n.strokeJoin === "ROUND" ? ck.StrokeJoin.Round : n.strokeJoin === "BEVEL" ? ck.StrokeJoin.Bevel : ck.StrokeJoin.Miter);
+    }
+    return true;
+  }
+
+  /** Vectors, stars, polygons and lines: each fill over every region (with its winding rule), then each stroke. */
+  private drawGeometry(canvas: Canvas, n: ReadonlyNode, geo: ShapeGeometry): void {
+    const visibleFills = n.fills.some((p) => p.visible);
+    const visibleStrokes = n.strokeWeight > 0 && n.strokes.some((p) => p.visible);
+    if (visibleFills && geo.fills.length) {
+      const paths = geo.fills.map((f) => this.toPath(f.commands, f.evenOdd));
+      for (const fill of n.fills) {
+        if (!this.usePaint(n, fill, false)) continue;
+        for (const path of paths) if (path) canvas.drawPath(path, this.paint);
+      }
+      for (const path of paths) path?.delete();
+    }
+    if (visibleStrokes && geo.stroke.length) {
+      const path = this.toPath(geo.stroke, false);
+      if (path) {
+        for (const stroke of n.strokes) if (this.usePaint(n, stroke, true)) canvas.drawPath(path, this.paint);
+        path.delete();
+      }
+    }
+  }
+
+  /** Path commands (see `@illigma/format`) to a CanvasKit path, in one call into WebAssembly. */
+  private toPath(commands: readonly number[], evenOdd: boolean): Path | null {
+    const ck = this.ck;
+    const cmds = new Float32Array(commands.length);
+    for (let i = 0; i < commands.length; ) {
+      const verb = commands[i] as number;
+      const args = verb === PATH_MOVE || verb === PATH_LINE ? 2 : verb === PATH_CUBIC ? 6 : verb === PATH_CLOSE ? 0 : -1;
+      if (args < 0) break;
+      cmds[i] = verb === PATH_MOVE ? ck.MOVE_VERB : verb === PATH_LINE ? ck.LINE_VERB : verb === PATH_CUBIC ? ck.CUBIC_VERB : ck.CLOSE_VERB;
+      for (let k = 1; k <= args; k++) cmds[i + k] = commands[i + k] as number;
+      i += args + 1;
+    }
+    const path = ck.Path.MakeFromCmds(cmds);
+    if (path && evenOdd) path.setFillType(ck.FillType.EvenOdd);
+    return path;
+  }
+
+  private drawShape(canvas: Canvas, n: ReadonlyNode, rect: Float32Array, paint: DeepReadonly<FilePaint>, stroke: boolean): void {
+    if (!this.usePaint(n, paint, stroke)) return;
     if (n.type === "ELLIPSE") canvas.drawOval(rect, this.paint);
     else if (n.type === "TEXT") canvas.drawRect(this.ck.XYWHRect(0, n.height * 0.3, n.width, n.height * 0.4), this.paint); // placeholder until fonts are loaded
     else if (n.cornerRadius > 0) canvas.drawRRect(this.ck.RRectXY(rect, n.cornerRadius, n.cornerRadius), this.paint);
