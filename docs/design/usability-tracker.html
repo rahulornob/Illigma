@@ -1,0 +1,286 @@
+<title>Illigma Usability Study</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one column. Verdict strip, then the task × participant matrix (the working surface), then the selected participant's sheet. Matches Illigma's editor tokens. */
+:root{
+  --bg:#F4F4F6; --panel:#FFFFFF; --card:#F0F0F3; --field:#E8E8EC; --line:rgba(0,0,0,.10);
+  --text:rgba(0,0,0,.90); --text-2:rgba(0,0,0,.68); --text-3:rgba(0,0,0,.55);
+  --accent:#2563EB; --accent-tint:rgba(37,99,235,.12); --on-accent:#FFFFFF;
+  --ok:#15803D; --ok-tint:rgba(21,128,61,.14); --warn:#B45309; --warn-tint:rgba(180,83,9,.14);
+  --bad:#B91C1C; --bad-tint:rgba(185,28,28,.12); --brand:#FF5B2E;
+  --font:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  --r:8px; --r-lg:12px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0B0B0C; --panel:#151517; --card:#1C1C1F; --field:#26262B; --line:rgba(255,255,255,.08);
+  --text:rgba(255,255,255,.92); --text-2:rgba(255,255,255,.70); --text-3:rgba(255,255,255,.50);
+  --accent:#3B82F6; --accent-tint:rgba(59,130,246,.18); --on-accent:#FFFFFF;
+  --ok:#4ADE80; --ok-tint:rgba(74,222,128,.14); --warn:#FBBF24; --warn-tint:rgba(251,191,36,.14);
+  --bad:#F87171; --bad-tint:rgba(248,113,113,.14); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0B0B0C; --panel:#151517; --card:#1C1C1F; --field:#26262B; --line:rgba(255,255,255,.08);
+  --text:rgba(255,255,255,.92); --text-2:rgba(255,255,255,.70); --text-3:rgba(255,255,255,.50);
+  --accent:#3B82F6; --accent-tint:rgba(59,130,246,.18); --on-accent:#FFFFFF;
+  --ok:#4ADE80; --ok-tint:rgba(74,222,128,.14); --warn:#FBBF24; --warn-tint:rgba(251,191,36,.14);
+  --bad:#F87171; --bad-tint:rgba(248,113,113,.14); color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font:14px/20px var(--font);-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 48px;display:flex;flex-direction:column;gap:20px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+.brand{display:flex;align-items:center;gap:10px}
+.mark{width:28px;height:28px;flex:none}
+h1{font-size:20px;line-height:28px;font-weight:600;margin:0;text-wrap:balance}
+.sub{color:var(--text-2);margin:2px 0 0}
+.eyebrow{font-size:12px;line-height:16px;letter-spacing:.04em;text-transform:uppercase;color:var(--text-3);font-weight:500}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn{background:var(--accent);color:var(--on-accent);border:0;border-radius:var(--r);padding:6px 12px;font-weight:500;min-height:32px}
+.btn.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
+.btn.danger{background:transparent;color:var(--bad);border:1px solid var(--bad-tint)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.notice{border:1px solid var(--warn-tint);background:var(--warn-tint);color:var(--text);border-radius:var(--r);padding:8px 12px}
+.strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden}
+.stat{background:var(--panel);padding:14px 16px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.stat .v{font-size:20px;line-height:28px;font-weight:600;font-variant-numeric:tabular-nums}
+.stat .h{color:var(--text-3);font-size:12px;line-height:16px}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;line-height:16px;font-weight:500;padding:2px 8px;border-radius:999px;width:max-content}
+.pill.ok{background:var(--ok-tint);color:var(--ok)} .pill.warn{background:var(--warn-tint);color:var(--warn)} .pill.bad{background:var(--bad-tint);color:var(--bad)} .pill.neutral{background:var(--field);color:var(--text-2)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg)}
+.panel-h{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.panel-h h2{font-size:14px;line-height:20px;font-weight:600;margin:0}
+.legend{display:flex;flex-wrap:wrap;gap:12px;color:var(--text-3);font-size:12px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:10px;height:10px;border-radius:3px;display:inline-block}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:720px}
+th,td{padding:8px 10px;text-align:left;vertical-align:middle;border-bottom:1px solid var(--line)}
+th{font-size:12px;line-height:16px;font-weight:500;color:var(--text-3);white-space:nowrap}
+td.task{min-width:240px}
+.task b{font-weight:500}
+.task .meta{color:var(--text-3);font-size:12px;font-family:var(--mono)}
+tr.weak td.task b{color:var(--warn)}
+.cell{display:flex;align-items:center;gap:4px}
+.res{width:30px;height:28px;border-radius:6px;border:1px solid var(--line);background:var(--field);font-size:12px;font-weight:600;display:inline-flex;align-items:center;justify-content:center}
+.res.pass{background:var(--ok-tint);color:var(--ok);border-color:transparent}
+.res.assist{background:var(--warn-tint);color:var(--warn);border-color:transparent}
+.res.fail{background:var(--bad-tint);color:var(--bad);border-color:transparent}
+select{font:inherit;font-size:12px;color:var(--text);background:var(--field);border:1px solid transparent;border-radius:6px;height:28px;padding:0 4px;font-variant-numeric:tabular-nums}
+.num{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+th.pcol button{background:none;border:0;padding:2px 6px;border-radius:6px;font:inherit;color:var(--text-2)}
+th.pcol button[aria-pressed="true"]{background:var(--accent-tint);color:var(--accent)}
+tfoot td{color:var(--text-2);font-size:12px;border-bottom:0}
+.empty{padding:32px 16px;display:flex;flex-direction:column;align-items:flex-start;gap:8px;color:var(--text-2);max-width:60ch}
+.sheet{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:0}
+.sheet>div{padding:16px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.sheet>div+div{border-left:1px solid var(--line)}
+label.f{display:flex;flex-direction:column;gap:6px;color:var(--text-2);font-size:12px}
+input[type=text],input[type=date],textarea{font:inherit;color:var(--text);background:var(--field);border:1px solid transparent;border-radius:var(--r);padding:6px 10px;width:100%}
+textarea{min-height:120px;resize:vertical}
+.seg{display:inline-flex;background:var(--field);border-radius:var(--r);padding:2px;gap:2px;flex-wrap:wrap}
+.seg button{border:0;background:transparent;border-radius:6px;padding:4px 10px;font-size:12px;color:var(--text-2)}
+.seg button[aria-pressed="true"]{background:var(--panel);color:var(--text);box-shadow:0 0 0 1px var(--line)}
+.sus{display:flex;flex-direction:column;gap:8px}
+.sus .q{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:8px;align-items:center}
+.sus .q .n{color:var(--text-3);font-variant-numeric:tabular-nums;font-size:12px}
+.sus .q .t{font-size:13px;line-height:18px}
+.sus .seg button{padding:4px 8px;min-width:26px}
+.score{display:flex;align-items:baseline;gap:8px}
+.score .v{font-size:24px;line-height:32px;font-weight:600;font-variant-numeric:tabular-nums}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.confirm{display:flex;flex-wrap:wrap;gap:8px;align-items:center;color:var(--text-2);font-size:12px}
+.foot{color:var(--text-3);font-size:12px;line-height:18px;max-width:80ch}
+.foot code{font-family:var(--mono)}
+@media (max-width:820px){.strip{grid-template-columns:repeat(2,minmax(0,1fr))}.sheet{grid-template-columns:minmax(0,1fr)}.sheet>div+div{border-left:0;border-top:1px solid var(--line)}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="9" fill="none" stroke="var(--brand)" stroke-width="2.4"/><rect x="18.5" y="4.5" width="7" height="7" rx="1.5" fill="var(--brand)"/></svg>
+      <div>
+        <div class="eyebrow">Phase 5 · Usability test</div>
+        <h1>Illigma usability study</h1>
+        <p class="sub">10 tasks per session. Target: 4 of 5 participants finish 8 or more tasks unaided, and an average SUS of 75 or higher.</p>
+      </div>
+    </div>
+    <button class="btn" id="add">Add participant</button>
+  </header>
+
+  <div class="notice" id="offline" hidden>Results can't be saved in this view. Open the published page in claude.ai to record sessions; changes made here are lost when you close it.</div>
+
+  <section class="strip" aria-label="Study summary">
+    <div class="stat"><span class="eyebrow">Sessions</span><span class="v" id="s-sessions">0 of 5</span><span class="h" id="s-sessions-h">Complete sessions (all 10 tasks scored)</span></div>
+    <div class="stat"><span class="eyebrow">Study result</span><span id="s-verdict" class="pill neutral">Not started</span><span class="h" id="s-verdict-h">Needs 4 of 5 participants at 8+ unaided</span></div>
+    <div class="stat"><span class="eyebrow">Average SUS</span><span class="v" id="s-sus">–</span><span class="h" id="s-sus-h">Target 75</span></div>
+    <div class="stat"><span class="eyebrow">Panels preferred</span><span class="v" id="s-panels">–</span><span class="h" id="s-panels-h">Docked is the default; switch only if most prefer floating</span></div>
+  </section>
+
+  <section class="panel" aria-labelledby="m-title">
+    <div class="panel-h">
+      <h2 id="m-title">Tasks by participant</h2>
+      <div class="legend">
+        <span><i class="sw" style="background:var(--ok)"></i>Unaided</span>
+        <span><i class="sw" style="background:var(--warn)"></i>Assisted</span>
+        <span><i class="sw" style="background:var(--bad)"></i>Failed</span>
+        <span>Click a result to cycle it. The number is ease, 1–7.</span>
+      </div>
+    </div>
+    <div id="matrix"></div>
+  </section>
+
+  <section class="panel" aria-labelledby="p-title" id="sheet-panel" hidden>
+    <div class="panel-h"><h2 id="p-title">Participant</h2><div class="confirm" id="del-area"></div></div>
+    <div class="sheet">
+      <div>
+        <label class="f" for="f-profile">Profile (no names or emails)
+          <input type="text" id="f-profile" placeholder="e.g. Product designer, 3 years of Figma">
+        </label>
+        <label class="f" for="f-date">Session date
+          <input type="date" id="f-date">
+        </label>
+        <div class="f"><span>Started with</span><div class="seg" id="f-start" role="group" aria-label="Started with"></div></div>
+        <div class="f"><span>Prefers to work in</span><div class="seg" id="f-prefer" role="group" aria-label="Prefers"></div></div>
+        <label class="f" for="f-notes">Problems and quotes
+          <textarea id="f-notes" placeholder="Top 3 problems, what they expected and didn't see, notable quotes"></textarea>
+        </label>
+      </div>
+      <div>
+        <div class="row" style="justify-content:space-between">
+          <span class="eyebrow">System Usability Scale</span>
+          <span class="score"><span class="v" id="f-sus">–</span><span class="h" style="color:var(--text-3);font-size:12px" id="f-sus-h">Answer all 10</span></span>
+        </div>
+        <div class="sus" id="f-susq"></div>
+        <p class="foot">1 = strongly disagree, 5 = strongly agree. Score = 2.5 × (sum of odd items − 5 + 25 − sum of even items).</p>
+      </div>
+    </div>
+  </section>
+
+  <p class="foot">Start screens are in the Figma file "Illigma", page "Illigma — Editor v1". Node ids are shown under each task. Recruiting, consent and the script are in <code>docs/design/usability-kit.md</code>.</p>
+</div>
+
+<script>
+const TASKS=[
+ {n:1,t:"Make a new design file and save it in your Design folder.",s:"96:19138",j:"1"},
+ {n:2,t:"Add a phone-sized frame.",s:"96:26601",j:"1"},
+ {n:3,t:"How do you know your work is saved?",s:"96:28247",j:"1, 6"},
+ {n:4,t:"Turn this button into a set with a small size.",s:"96:72680",j:"3"},
+ {n:5,t:"Make a colour that changes between light and dark.",s:"96:73332",j:"3"},
+ {n:6,t:"Make this screen's background use the theme colour.",s:"96:76581",j:"3"},
+ {n:7,t:"Show this screen in dark mode only.",s:"96:74921",j:"3"},
+ {n:8,t:"Make the button open the Home screen when tapped, then try it.",s:"96:75753",j:"4"},
+ {n:9,t:"A developer needs the button's CSS. Get it for them.",s:"96:47901",j:"5"},
+ {n:10,t:"Go back to the version from before the hand-off.",s:"96:54239",j:"6"}];
+const SUSQ=["I think that I would like to use this system frequently.","I found the system unnecessarily complex.","I thought the system was easy to use.","I think that I would need the support of a technical person to be able to use this system.","I found the various functions in this system were well integrated.","I thought there was too much inconsistency in this system.","I would imagine that most people would learn to use this system very quickly.","I found the system very cumbersome to use.","I felt very confident using the system.","I needed to learn a lot of things before I could get going with this system."];
+const CYCLE=["","pass","assist","fail"], LABEL={"":"–",pass:"✓",assist:"A",fail:"✕"}, NAME={"":"Not scored",pass:"Unaided",assist:"Assisted",fail:"Failed"};
+let db=null, col=null, live=false, people={}, order=[], selected=null, confirmDel=false;
+const q=new Map(), timers=new Map();
+const $=id=>document.getElementById(id);
+
+function susScore(a){ if(!Array.isArray(a)||a.length!==10||a.some(v=>!(v>=1&&v<=5))) return null; let s=0; a.forEach((v,i)=>{ s+= i%2===0 ? v-1 : 5-v; }); return s*2.5; }
+function unaided(p){ return TASKS.filter(t=>p.tasks?.[t.n]?.r==="pass").length; }
+function complete(p){ return TASKS.every(t=>p.tasks?.[t.n]?.r); }
+
+function write(id,patch){ // one write at a time per doc
+  if(!live){ return; }
+  const prev=q.get(id)||Promise.resolve();
+  const next=prev.then(()=>col.doc(id).update(patch)).catch(e=>{ if(e?.code==="invalid_argument"){ showReadOnly(); } });
+  q.set(id,next);
+}
+function writeLater(id,key,patch){ clearTimeout(timers.get(id+key)); timers.set(id+key,setTimeout(()=>write(id,patch),600)); }
+function showReadOnly(){ const o=$("offline"); o.textContent="You can view these results but not change them. Ask the owner for Contributor access to record sessions."; o.hidden=false; $("add").disabled=true; }
+
+function setLocal(id,mut){ const p=people[id]; if(!p) return; mut(p); render(); }
+
+function nextCode(){ let i=1; const used=new Set(order.map(id=>people[id].code)); while(used.has("P"+i)) i++; return "P"+i; }
+
+async function addParticipant(){
+  const code=nextCode(); const body={code, profile:"", date:new Date().toISOString().slice(0,10), start:"", prefer:"", notes:"", sus:[0,0,0,0,0,0,0,0,0,0], tasks:{}, createdAt:Date.now()};
+  if(live){ try{ const ref=col.doc(code); await ref.set(body); selected=code; }catch(e){ const o=$("offline"); o.hidden=false; o.textContent = e?.code==="quota_exceeded" ? "Storage is full. Delete a participant to add another." : "Couldn't add a participant. Try again in a moment."; } }
+  else { people[code]=body; order.push(code); selected=code; render(); }
+}
+
+function render(){ renderStrip(); renderMatrix(); renderSheet(); }
+
+function renderStrip(){
+  const ps=order.map(id=>people[id]); const done=ps.filter(complete);
+  $("s-sessions").textContent=`${done.length} of ${Math.max(5,ps.length)}`;
+  $("s-sessions-h").textContent= ps.length? `${ps.length} recorded, ${done.length} with all 10 tasks scored` : "Complete sessions (all 10 tasks scored)";
+  const passers=done.filter(p=>unaided(p)>=8).length; const v=$("s-verdict"), vh=$("s-verdict-h");
+  if(!ps.length){ v.className="pill neutral"; v.textContent="Not started"; vh.textContent="Needs 4 of 5 participants at 8+ unaided"; }
+  else if(done.length<5){ const canStill = passers + (5-done.length) >= 4; v.className= canStill? "pill neutral":"pill bad"; v.textContent= canStill? "In progress":"Target missed"; vh.textContent=`${passers} of ${done.length} complete sessions at 8+ unaided`; }
+  else { const need=Math.ceil(done.length*0.8); const ok=passers>=need; v.className= ok? "pill ok":"pill bad"; v.textContent= ok? "Target met":"Target missed"; vh.textContent=`${passers} of ${done.length} at 8+ unaided (needs ${need})`; }
+  const scores=ps.map(p=>susScore(p.sus)).filter(s=>s!==null); const sus=$("s-sus");
+  if(scores.length){ const avg=scores.reduce((a,b)=>a+b,0)/scores.length; sus.textContent=avg.toFixed(1); $("s-sus-h").textContent=`${scores.length} answered · target 75 · ${avg>=75?"met":"below target"}`; }
+  else { sus.textContent="–"; $("s-sus-h").textContent="Target 75"; }
+  const d=ps.filter(p=>p.prefer==="docked").length, f=ps.filter(p=>p.prefer==="floating").length, n=ps.filter(p=>p.prefer).length;
+  $("s-panels").textContent= n? `${d} docked · ${f} floating` : "–";
+  $("s-panels-h").textContent= n? (f>d && f>=Math.ceil(n*2/3) ? "Most prefer floating: consider switching the default back" : "Docked stays the default") : "Docked is the default; switch only if most prefer floating";
+}
+
+function renderMatrix(){
+  const m=$("matrix");
+  if(!order.length){ m.innerHTML=`<div class="empty"><strong style="color:var(--text)">No sessions recorded yet</strong><span>Add a participant before each session. Score each task as you watch: unaided, assisted or failed, plus how easy it felt from 1 to 7.</span><button class="btn" id="add-empty">Add the first participant</button></div>`; $("add-empty").onclick=addParticipant; return; }
+  const ps=order.map(id=>people[id]);
+  let h=`<div class="scroll"><table><thead><tr><th>Task</th>`;
+  ps.forEach(p=>{ h+=`<th class="pcol"><button data-sel="${p.code}" aria-pressed="${selected===p.code}" title="Open ${p.code}'s sheet">${p.code}</button></th>`; });
+  h+=`<th class="num">Unaided</th><th class="num">Avg ease</th></tr></thead><tbody>`;
+  TASKS.forEach(t=>{
+    const scored=ps.filter(p=>p.tasks?.[t.n]?.r); const pass=scored.filter(p=>p.tasks[t.n].r==="pass").length;
+    const eases=ps.map(p=>p.tasks?.[t.n]?.e).filter(e=>e>=1); const avg=eases.length? (eases.reduce((a,b)=>a+b,0)/eases.length).toFixed(1):"–";
+    const rate=scored.length? Math.round(pass/scored.length*100):null; const weak= rate!==null && rate<80;
+    h+=`<tr class="${weak?"weak":""}"><td class="task"><b>${t.n}. ${t.t}</b><div class="meta">${t.s} · journey ${t.j}</div></td>`;
+    ps.forEach(p=>{ const c=p.tasks?.[t.n]||{}; const r=c.r||""; const e=c.e||0;
+      h+=`<td><div class="cell"><button class="res ${r}" data-cycle="${p.code}|${t.n}" aria-label="${p.code} task ${t.n}: ${NAME[r]}. Click to change">${LABEL[r]}</button><select aria-label="${p.code} task ${t.n} ease" data-ease="${p.code}|${t.n}" id="e-${p.code}-${t.n}"><option value="0">–</option>${[1,2,3,4,5,6,7].map(v=>`<option value="${v}" ${v===e?"selected":""}>${v}</option>`).join("")}</select></div></td>`; });
+    h+=`<td class="num">${rate===null?"–":`${pass}/${scored.length}`}</td><td class="num">${avg}</td></tr>`;
+  });
+  h+=`</tbody><tfoot><tr><td>Unaided tasks per participant</td>`;
+  ps.forEach(p=>{ const u=unaided(p), c=complete(p); h+=`<td><span class="pill ${!c?"neutral":u>=8?"ok":"bad"}">${u}/10</span></td>`; });
+  h+=`<td></td><td></td></tr></tfoot></table></div>`;
+  m.innerHTML=h;
+  m.querySelectorAll("[data-sel]").forEach(b=>b.onclick=()=>{ selected=b.dataset.sel; confirmDel=false; render(); });
+  m.querySelectorAll("[data-cycle]").forEach(b=>b.onclick=()=>{ const [id,n]=b.dataset.cycle.split("|"); const cur=people[id].tasks?.[n]?.r||""; const nx=CYCLE[(CYCLE.indexOf(cur)+1)%CYCLE.length];
+    setLocal(id,p=>{ p.tasks=p.tasks||{}; p.tasks[n]={...(p.tasks[n]||{}),r:nx}; }); write(id,{tasks:{[n]:{r:nx}}}); });
+  m.querySelectorAll("[data-ease]").forEach(s=>s.onchange=()=>{ const [id,n]=s.dataset.ease.split("|"); const v=+s.value;
+    setLocal(id,p=>{ p.tasks=p.tasks||{}; p.tasks[n]={...(p.tasks[n]||{}),e:v}; }); write(id,{tasks:{[n]:{e:v}}}); });
+}
+
+function segInto(el,opts,val,onPick){ el.innerHTML=opts.map(([v,l])=>`<button type="button" data-v="${v}" aria-pressed="${val===v}">${l}</button>`).join(""); el.querySelectorAll("button").forEach(b=>b.onclick=()=>onPick(b.dataset.v)); }
+
+function renderSheet(){
+  const panel=$("sheet-panel"); const p=selected&&people[selected];
+  if(!p){ panel.hidden=true; return; } panel.hidden=false;
+  $("p-title").textContent=`Participant ${p.code}`;
+  for(const [fid,key] of [["f-profile","profile"],["f-date","date"],["f-notes","notes"]]){ const el=$(fid); if(document.activeElement!==el) el.value=p[key]||""; el.oninput=()=>{ const v=el.value; p[key]=v; writeLater(p.code,key,{[key]:v}); }; }
+  segInto($("f-start"),[["docked","Docked"],["floating","Floating"]],p.start,v=>{ const nv=p.start===v?"":v; setLocal(p.code,x=>x.start=nv); write(p.code,{start:nv}); });
+  segInto($("f-prefer"),[["docked","Docked"],["floating","Floating"],["none","No preference"]],p.prefer,v=>{ const nv=p.prefer===v?"":v; setLocal(p.code,x=>x.prefer=nv); write(p.code,{prefer:nv}); });
+  const sq=$("f-susq"); sq.innerHTML=SUSQ.map((t,i)=>`<div class="q"><span class="n">${i+1}</span><span class="t">${t}</span><div class="seg" role="group" aria-label="Question ${i+1}" data-q="${i}"></div></div>`).join("");
+  sq.querySelectorAll("[data-q]").forEach(el=>{ const i=+el.dataset.q; segInto(el,[1,2,3,4,5].map(v=>[String(v),String(v)]),String(p.sus?.[i]||""),v=>{ const arr=[...(p.sus||Array(10).fill(0))]; arr[i]= arr[i]===+v?0:+v; setLocal(p.code,x=>x.sus=arr); write(p.code,{sus:arr}); }); });
+  const s=susScore(p.sus); $("f-sus").textContent= s===null?"–":s.toFixed(1); $("f-sus-h").textContent= s===null? `${(p.sus||[]).filter(v=>v>=1).length} of 10 answered` : (s>=75?"At or above 75":"Below 75");
+  const da=$("del-area");
+  if(confirmDel){ da.innerHTML=`<span>Delete ${p.code} and all their scores?</span><button class="btn danger" id="del-yes">Delete</button><button class="btn ghost" id="del-no">Keep</button>`;
+    $("del-no").onclick=()=>{ confirmDel=false; renderSheet(); };
+    $("del-yes").onclick=async()=>{ const id=p.code; confirmDel=false; selected=null; if(live){ try{ await col.doc(id).delete(); }catch(e){} } else { delete people[id]; order=order.filter(x=>x!==id); render(); } };
+  } else { da.innerHTML=`<button class="btn ghost" id="del">Delete participant</button>`; $("del").onclick=()=>{ confirmDel=true; renderSheet(); }; }
+}
+
+$("add").onclick=addParticipant;
+render();
+
+(async()=>{
+  try{ db = window.claude ? await window.claude.use("db") : null; }catch(e){ db=null; }
+  if(!db){ $("offline").hidden=false; return; }
+  col=db.collection("participants"); live=true;
+  try{ const user=await window.claude.use("user"); const can=user? await user.can("data.write"):null; if(can===false) showReadOnly(); }catch(e){}
+  col.orderBy("createdAt").onSnapshot(snap=>{
+    const next={}; const ord=[];
+    snap.docs.forEach(d=>{ const b=d.data(); if(!b) return; next[d.id]={...b, tasks:{...(b.tasks||{})}, sus:[...(b.sus||Array(10).fill(0))]}; ord.push(d.id); });
+    people=next; order=ord; if(selected && !people[selected]) selected=null; if(!selected && order.length) selected=order[order.length-1];
+    render();
+  }, e=>{ const o=$("offline"); o.hidden=false; o.textContent="Live updates stopped. Reload the page to see the latest results."; });
+})();
+</script>

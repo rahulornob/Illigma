@@ -20,6 +20,13 @@ Draft · 13 October 2026 · Phase 5 of the [design plan](PLAN.md)
 - The other tasks use static screens. The facilitator shows the start screen and asks the participant to point and say what they would do. A correct first click or answer counts as success.
 - 45 minutes per session, remote, screen and voice recorded with consent. Think aloud.
 
+## Running the study (started 18 October 2026)
+
+1. **Recruit:** post the recruiting text and use the screener from [usability-kit.md](usability-kit.md) in a plain form (Google Forms, Tally). Participants don't need a claude.ai account.
+2. **Share the prototype:** in Figma, Share → "Anyone with the link can view", then copy the prototype link for the flow "Journey 1 · Create a file". The page has exactly two flows: Journey 1 (`96:19138`) and Journey 3 (`96:34466`).
+3. **Run each session** with the facilitator script, and score it live in the tracker: https://claude.ai/artifact/NwKqftD1bVMWrUqpVMcYdf (source `docs/design/usability-tracker.html`). It computes unaided tasks per participant, the 4-of-5 verdict, average SUS and the panel preference. Use participant codes (P1, P2…), never names or emails.
+4. **After 5 sessions:** ask Claude to read the tracker and write the findings into this file.
+
 ## The 10 tasks
 
 | # | Task (read aloud) | Start screen | Success = participant… | Journey |
