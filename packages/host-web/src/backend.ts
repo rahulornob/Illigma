@@ -6,6 +6,7 @@
 
 import { isSafePageId, type FileTree } from "@illigma/format";
 import { assertFileId, listFiles, openDir, opfsRoot, readText, writeText } from "./fs.js";
+import { atLocation, nextGeneration, type FileLocation, type LocationState } from "./location-queue.js";
 
 export interface ReadOptions {
   /**
@@ -31,6 +32,30 @@ export interface WriteOptions {
    * changes nothing (save-states.md rule 4).
    */
   overwrite?: boolean;
+  /**
+   * True once whoever asked for this write is gone, e.g. the autosaver of an
+   * editor that was closed. Checked when the write's turn comes: if a backend
+   * made later for the same package (the file opened again) has saved since,
+   * this older write is dropped (SupersededError, nothing written), so it never
+   * lands on top of newer content. Its edits stay in the recovery journal.
+   */
+  retired?: () => boolean;
+}
+
+/**
+ * A closed editor's last save came after the file was opened again and saved
+ * there: it was dropped, so it can't replace the newer save. Nothing was
+ * written; its edits are still in the recovery journal.
+ */
+export class SupersededError extends Error {
+  override readonly name = "SupersededError";
+  constructor(label: string) {
+    super(`An older save of "${label}" was skipped: the file was opened again and saved since.`);
+  }
+}
+
+export function isSuperseded(err: unknown): err is SupersededError {
+  return (err as { name?: unknown })?.name === "SupersededError";
 }
 
 /**
@@ -453,14 +478,24 @@ function knownSave() {
   };
 }
 
-/** Run writes one at a time, in call order. */
-function serial(): <T>(task: () => Promise<T>) => Promise<T> {
-  let tail: Promise<unknown> = Promise.resolve();
-  return (task) => {
-    const run = tail.then(task, task);
-    tail = run.catch(() => {});
-    return run;
-  };
+/**
+ * The queue of one package, shared with every other backend for the same
+ * place in this tab (location-queue.ts): reads, repairs and writes run one at
+ * a time, in call order, so a closed editor's last save and the reopened
+ * file's saves never overlap.
+ */
+function packageQueue(loc: FileLocation, label: string) {
+  /** Backends made later (the file opened again) have a higher one. */
+  const generation = nextGeneration();
+  const queue = <T>(task: (state: LocationState) => Promise<T>): Promise<T> => atLocation(loc, task);
+  /** Queue a write; drop it if its writer is retired and a newer backend has saved here (WriteOptions.retired). */
+  const write = (opts: WriteOptions | undefined, run: () => Promise<void>): Promise<void> =>
+    queue(async (state) => {
+      if (opts?.retired?.() && state.newestSaved > generation) throw new SupersededError(label);
+      await run();
+      state.newestSaved = Math.max(state.newestSaved, generation);
+    });
+  return { queue, write };
 }
 
 function isNotFound(err: unknown): boolean {
@@ -481,10 +516,11 @@ export interface OpfsOptions {
 export function opfsBackend(fileId: string, name: string, rootOrOptions?: FileSystemDirectoryHandle | OpfsOptions): OpfsBackend {
   assertFileId(fileId);
   const opts: OpfsOptions = rootOrOptions && "kind" in rootOrOptions ? { root: rootOrOptions } : ((rootOrOptions as OpfsOptions | undefined) ?? {});
-  const queue = serial();
-  const fileDir = async (create: boolean) => openDir(await opfsRoot(opts.root), [opts.area ?? "files", fileId], create);
+  const path = [opts.area ?? "files", fileId];
+  const fileDir = async (create: boolean) => openDir(await opfsRoot(opts.root), path, create);
   const save = knownSave();
   const label = "Browser storage";
+  const { queue, write } = packageQueue({ kind: "opfs", path, root: opts.root }, label);
   return {
     label,
     kind: "opfs",
@@ -505,7 +541,7 @@ export function opfsBackend(fileId: string, name: string, rootOrOptions?: FileSy
         }
       }),
     write: (tree, wopts) =>
-      queue(async () => {
+      write(wopts, async () => {
         const id = wopts?.saveId ?? newSaveId();
         const check = { label, expectSaveIds: save.expect(wopts) };
         await save.write(id, async () => writeTree(await fileDir(true), tree, id, check));
@@ -574,8 +610,8 @@ export interface FolderBackend extends Backend {
  * unless the folder is named "*.illigma" (NotAPackageError).
  */
 export function folderBackend(dir: FileSystemDirectoryHandle): FolderBackend {
-  const queue = serial();
   const save = knownSave();
+  const { queue, write } = packageQueue({ kind: "folder", dir }, dir.name);
   return {
     label: dir.name,
     kind: "folder",
@@ -591,7 +627,7 @@ export function folderBackend(dir: FileSystemDirectoryHandle): FolderBackend {
         return snap.tree;
       }),
     write: (tree, opts) =>
-      queue(async () => {
+      write(opts, async () => {
         await assertPermission(dir, "readwrite");
         const id = opts?.saveId ?? newSaveId();
         await save.write(id, () => writeTree(dir, tree, id, { label: dir.name, expectSaveIds: save.expect(opts), guardFolder: true }));

@@ -11,6 +11,7 @@ import {
   saveCopyElsewhere,
   snapshotDiskVersion,
   undoReload,
+  whileClosing,
   type Session,
 } from "../files";
 import { onBeforeUpdate } from "../sw-update";
@@ -107,7 +108,7 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
     return () => {
       window.removeEventListener("pagehide", flushJournal);
       document.removeEventListener("visibilitychange", onHidden);
-      detach();
+      whileClosing(doc.fileId, detach());
     };
   }, [doc, journal, viewOnly]);
 
@@ -120,16 +121,16 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
     const saver = new Autosaver(doc, backend, unsaved ? { journal, unsaved } : { journal });
     saverRef.current = saver;
     setAutosaver(saver);
-    const flush = () => {
-      if (saver.status.state !== "saved") void saver.flushNow();
-    };
-    const onHidden = () => document.visibilityState === "hidden" && flush();
-    window.addEventListener("pagehide", flush);
+    const flush = () => (saver.status.state !== "saved" ? saver.flushNow() : Promise.resolve());
+    const onHide = () => void flush();
+    const onHidden = () => document.visibilityState === "hidden" && onHide();
+    window.addEventListener("pagehide", onHide);
     document.addEventListener("visibilitychange", onHidden);
     return () => {
-      window.removeEventListener("pagehide", flush);
+      window.removeEventListener("pagehide", onHide);
       document.removeEventListener("visibilitychange", onHidden);
-      flush();
+      // The file stays locked until this last save is done (files.ts whileClosing).
+      whileClosing(doc.fileId, flush());
       saver.dispose();
       if (saverRef.current === saver) saverRef.current = null;
     };

@@ -25,6 +25,7 @@
 
 import type { Change, Document, Operation } from "@illigma/core";
 import { appendText, assertFileId, openDir, opfsRoot, readText, writeText } from "./fs.js";
+import { atLocation } from "./location-queue.js";
 
 /** How long changes are batched before they are appended. */
 export const JOURNAL_FLUSH_MS = 250;
@@ -55,7 +56,6 @@ export class RecoveryJournal {
   /** Appended by this journal and not cleared. */
   private written: Entry[] = [];
   private timer: ReturnType<typeof setTimeout> | undefined;
-  private tail: Promise<unknown> = Promise.resolve();
   private loaded: Promise<void> | null = null;
 
   constructor(
@@ -114,13 +114,14 @@ export class RecoveryJournal {
   /**
    * Record every change `doc` commits (edits, undo and redo). Changes are
    * appended in batches at most every 250 ms. Returns a function that stops
-   * recording and appends what is still batched.
+   * recording and appends what is still batched; its promise settles once
+   * that is done (it never rejects: what failed stays in the buffer).
    */
-  attach(doc: Document): () => void {
+  attach(doc: Document): () => Promise<void> {
     const unsubscribe = doc.subscribe((change) => this.record(change));
     return () => {
       unsubscribe();
-      void this.flush().catch(() => {});
+      return this.flush().catch(() => {});
     };
   }
 
@@ -236,9 +237,12 @@ export class RecoveryJournal {
     return openDir(await opfsRoot(this.root), ["journal"], true);
   }
 
+  /**
+   * Run `task` after every earlier one for this journal file, from this
+   * journal or another one for the same file id (e.g. the journal of an
+   * editor that was closed while the file opens again): see location-queue.ts.
+   */
   private enqueue<T>(task: () => Promise<T>): Promise<T> {
-    const run = this.tail.then(task, task);
-    this.tail = run.catch(() => {});
-    return run;
+    return atLocation({ kind: "opfs", path: ["journal", this.fileId], root: this.root }, task);
   }
 }
