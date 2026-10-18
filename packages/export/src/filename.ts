@@ -12,13 +12,21 @@ import { EXTENSIONS, type ExportFormat } from "./settings.js";
 const ILLEGAL = /[\\:*?"<>|]/g;
 /**
  * Characters dropped from names: control characters, the invisible
- * direction marks and overrides that can make a name read as another
- * ("photo‮gnp.exe"), and unpaired surrogates (not text; some disks refuse them).
+ * direction marks, embeddings, overrides and isolates that can make a name
+ * read as another ("photo{U+202E}gnp.exe"), line and paragraph separators, other
+ * invisible format characters (deprecated format controls, the byte order
+ * mark), and unpaired surrogates (not text; some disks refuse them). Written
+ * as escapes: the characters themselves are invisible in the source.
+ * U+200D (zero-width joiner) stays: emoji sequences need it.
  */
 // eslint-disable-next-line no-control-regex
-const DROPPED = /[\u0000-\u001f\u007f‎‏‪-‮⁦-⁩]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
-/** Device names Windows reserves, with or without an extension (COM¹ to COM³ and LPT¹ to LPT³ included). */
-const RESERVED = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³]|conin\$|conout\$)(\..*)?$/i;
+const DROPPED = /[\u0000-\u001f\u007f\u061c\u200e\u200f\u2028-\u202e\u2066-\u206f\ufeff]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+/**
+ * Device names Windows reserves, with or without an extension, and with
+ * spaces before it ("CON .png" opens CON too). COM¹ to COM³ and LPT¹ to
+ * LPT³ (superscript digits) included.
+ */
+const RESERVED = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³]|conin\$|conout\$) *(\..*)?$/i;
 /** Room for a suffix, a de-duplicating number and the extension within 255 bytes. */
 const MAX_PART_BYTES = 200;
 
@@ -92,14 +100,30 @@ export function takenNames(paths: Iterable<string>): Set<string> {
 }
 
 /**
+ * A relative path made safe part by part, for paths that didn't come from
+ * `exportFilename`: dropped and illegal characters, trailing dots and
+ * spaces, ".", ".." and empty parts, and device names, as `exportFilename`
+ * treats them. Its own results come back unchanged.
+ */
+function safePath(path: string): string {
+  const parts = path
+    .split("/")
+    .map((p) => p.replace(DROPPED, "").replace(ILLEGAL, "_").trim().replace(/[. ]+$/, ""))
+    .filter(Boolean)
+    .map(unreserved);
+  return parts.length ? parts.join("/") : "Untitled";
+}
+
+/**
  * `path`, or if it is taken, the same with `-1`, `-2`… before the extension.
  * Names compare without case and accent encoding (see `nameKey`), and a
  * file never takes the path of a folder or the reverse: a folder whose name
  * is a file's gets a number too. Adds the result to `taken`, which holds
  * keys: files as they are, folders with a trailing "/" (see `takenNames`).
+ * A path that isn't safe yet (not from `exportFilename`) is made safe first.
  */
 export function uniqueFilename(path: string, taken: Set<string>): string {
-  const parts = path.split("/");
+  const parts = safePath(path).split("/");
   const file = parts.pop() as string;
   const folders: string[] = [];
   for (const f of parts) {

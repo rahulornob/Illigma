@@ -6,20 +6,20 @@
 
 import type { ReadonlyNode } from "@illigma/core";
 import type { NodeId } from "@illigma/format";
-import type { FontSource } from "@illigma/renderer";
-import type { CanvasKit } from "canvaskit-wasm";
+import type { FontSource, TextLine } from "@illigma/renderer";
+import type { CanvasKit, Typeface } from "canvaskit-wasm";
 import { exportFilename, takenNames, uniqueFilename } from "./filename.js";
 import { writePdf, type PdfWriterOptions, type RasterText } from "./pdf.js";
 import { exportRaster, rasterizeLeaf, rasterSize, RasterContext } from "./raster.js";
-import { exportScene, hasText, type ExportScene, type ExportSource, type Rect } from "./scene.js";
+import { draws, exportScene, hasText, textLinesBounds, type ExportScene, type ExportSource, type Rect, type TextBounds } from "./scene.js";
 import { checkSettings, DEFAULT_EXPORT_LIMITS, ExportError, MIME_TYPES, type ExportLimits, type ExportSettings, type ExportSettingsPDF } from "./settings.js";
 import { writeSvg } from "./svg.js";
-import { imageSize } from "./vector-common.js";
+import { fallbackTextLines, imageSize } from "./vector-common.js";
 
 export { exportFilename, sanitizeFilePart, uniqueFilename } from "./filename.js";
 export { pdfString, writePdf, type PdfWriterOptions, type RasterText } from "./pdf.js";
 export { rasterSize, type PixelSize } from "./raster.js";
-export { exportScene, renderBounds, type ExportScene, type ExportSource, type Matrix, type Rect } from "./scene.js";
+export { exportScene, renderBounds, textLinesBounds, type ExportScene, type ExportSource, type Matrix, type Rect, type TextBounds } from "./scene.js";
 export * from "./settings.js";
 export { escapeAttr, escapeText, svgPathData, writeSvg, type SvgWriterOptions } from "./svg.js";
 
@@ -64,6 +64,9 @@ export interface BatchResult {
   failures: ExportFailure[];
 }
 
+/** Characters that draw no glyph of their own: controls, format characters (joiners, direction marks), separators and spaces, variation selectors. */
+const NO_GLYPH_NEEDED = /^[\p{Cc}\p{Cf}\p{Z}\uFE00-\uFE0F\u{E0100}-\u{E01EF}]$/u;
+
 /** Lazily made CanvasKit state shared by a batch. */
 class Session {
   private raster: RasterContext | null = null;
@@ -91,9 +94,73 @@ class Session {
   dispose(): void {
     this.raster?.dispose();
     this.raster = null;
+    for (const t of this.typefaces ?? []) t.delete();
+    this.typefaces = null;
   }
 
-  textLayout = (n: ReadonlyNode) => (this.hasTextEngine ? this.context().pageRenderer.layoutText(n.id) : null);
+  /** The loaded fonts as typefaces, for checking which characters they have. */
+  private typefaces: Typeface[] | null = null;
+
+  /**
+   * Characters in the TEXT layers under `roots` that none of the loaded
+   * fonts has: the text engine draws them as empty boxes. Spaces, controls
+   * and invisible format characters don't count. Empty without fonts.
+   */
+  missingGlyphs(roots: readonly ReadonlyNode[]): string[] {
+    const ck = this.deps.canvasKit;
+    if (!ck || !this.deps.fonts?.length) return [];
+    const factory = ck.Typeface as unknown as { MakeTypefaceFromData?: (d: ArrayBuffer) => Typeface | null; MakeFreeTypeFaceFromData?: (d: ArrayBuffer) => Typeface | null } | undefined;
+    const make = factory?.MakeTypefaceFromData ?? factory?.MakeFreeTypeFaceFromData;
+    if (!make) return [];
+    this.typefaces ??= this.deps.fonts.map((f) => make.call(factory, f.data)).filter((t): t is Typeface => !!t);
+    if (!this.typefaces.length) return [];
+    const chars = new Set<string>();
+    const stack = [...roots];
+    while (stack.length) {
+      const n = stack.pop() as ReadonlyNode;
+      if (!draws(n)) continue;
+      if (n.type === "TEXT" && n.characters && n.fills.some((p) => p.visible)) {
+        for (const ch of n.characters) if (!NO_GLYPH_NEEDED.test(ch)) chars.add(ch);
+      }
+      stack.push(...this.source.children(n.id));
+    }
+    if (!chars.size) return [];
+    const list = [...chars];
+    const found = list.map(() => false);
+    for (const t of this.typefaces) {
+      const ids = t.getGlyphIDs(list.join(""), list.length);
+      for (let i = 0; i < list.length; i++) if (ids[i]) found[i] = true;
+    }
+    return list.filter((_, i) => !found[i]);
+  }
+
+  /** A warning naming characters the loaded fonts don't have, for text drawn by the text engine (PNG, JPG, PDF). */
+  warnMissingGlyphs(roots: readonly ReadonlyNode[], warn: (message: string) => void): void {
+    const missing = this.missingGlyphs(roots);
+    if (!missing.length) return;
+    const shown = missing.slice(0, 5).map((c) => `“${c}”`).join(", ") + (missing.length > 5 ? " and more" : "");
+    warn(`The loaded fonts don't have some of the text's characters (${shown}), so they show as empty boxes. Load a font that has them.`);
+  }
+
+  /** Laid-out lines by layer, for this session (the document doesn't change during an export). */
+  private readonly layouts = new Map<NodeId, TextLine[] | null>();
+
+  textLayout = (n: ReadonlyNode): TextLine[] | null => {
+    if (!this.hasTextEngine) return null;
+    if (!this.layouts.has(n.id)) this.layouts.set(n.id, this.context().pageRenderer.layoutText(n.id));
+    return this.layouts.get(n.id) ?? null;
+  };
+
+  /**
+   * What TEXT layers draw in `format`: the renderer's lines, past the box
+   * where they don't fit it (as on the canvas); in SVG without fonts, the
+   * lines the SVG writes. Undefined: the box.
+   */
+  textBounds(format: ExportSettings["format"]): TextBounds | undefined {
+    if (this.hasTextEngine) return (n) => textLinesBounds(n, this.textLayout(n));
+    if (format === "SVG") return (n) => textLinesBounds(n, fallbackTextLines(n));
+    return undefined;
+  }
 
   /** A layer with shadows or blurs, drawn by the renderer for PDF (`scale` px per pt, chosen by the writer; at most 4,096 on a side). */
   rasterNode = (n: ReadonlyNode, area: Rect, scale = 2): RasterText | null => {
@@ -126,8 +193,10 @@ class Session {
 
   /** What the PDF writer gets from this session. */
   pdfOptions(warn: (message: string) => void, title: string): PdfWriterOptions {
+    const textBounds = this.textBounds("PDF");
     return {
       ...(this.hasTextEngine ? { rasterText: this.rasterText } : {}),
+      ...(textBounds ? { textBounds } : {}),
       ...(this.deps.canvasKit ? { rasterNode: this.rasterNode, decodeImage: this.decodeImage } : {}),
       warn,
       title,
@@ -136,10 +205,8 @@ class Session {
 
   rasterText = (n: ReadonlyNode): RasterText | null => {
     if (!this.hasTextEngine) return null;
-    // The box, and below it if the text runs past its bottom (as it draws on the canvas).
-    const lines = this.textLayout(n) ?? [];
-    const last = lines[lines.length - 1];
-    const area = { width: n.width, height: Math.max(n.height, last ? last.baseline + (n.fontSize ?? 12) * 0.5 : 0) };
+    // The box, and past it where the text runs out of it (as it draws on the canvas).
+    const area = textLinesBounds(n, this.textLayout(n));
     // 4 pixels per point, at most 4,096 on a side.
     const k = Math.min(4, 4096 / Math.max(area.width, area.height, 1));
     const width = Math.max(1, Math.ceil(area.width * k));
@@ -152,7 +219,8 @@ class Session {
 function exportWith(session: Session, nodeId: NodeId, settings: ExportSettings, filename: string): ExportedFile {
   checkSettings(settings);
   const { source } = session;
-  const scene = exportScene(source, nodeId, settings);
+  const textBounds = session.textBounds(settings.format);
+  const scene = exportScene(source, nodeId, settings, textBounds);
   const warnings = new Set<string>();
   const warn = (m: string) => void warnings.add(m);
   const text = hasText(source, scene.roots);
@@ -172,7 +240,7 @@ function exportWith(session: Session, nodeId: NodeId, settings: ExportSettings, 
     case "SVG": {
       if (text && settings.svgOutlineText) warn("Outline text isn't available yet, so text is written as editable text and needs its font installed to look right.");
       if (text && !session.hasTextEngine) warn("Text is written one line per line break, without wrapping, because no fonts were loaded.");
-      const svg = writeSvg(source, scene, { idAttribute: settings.svgIdAttribute ?? false, textLayout: session.textLayout, warn });
+      const svg = writeSvg(source, scene, { idAttribute: settings.svgIdAttribute ?? false, textLayout: session.textLayout, ...(textBounds ? { textBounds } : {}), warn });
       bytes = new TextEncoder().encode(svg);
       break;
     }
@@ -183,6 +251,8 @@ function exportWith(session: Session, nodeId: NodeId, settings: ExportSettings, 
       break;
     }
   }
+  // SVG text is drawn by the viewer's fonts; the others by ours.
+  if (text && settings.format !== "SVG") session.warnMissingGlyphs(scene.roots, warn);
   return { nodeId, settings, filename, mime: MIME_TYPES[settings.format], bytes, width, height, warnings: [...warnings] };
 }
 
@@ -257,7 +327,8 @@ export async function exportNodes(source: ExportSource, requests: readonly Expor
 
 /**
  * One PDF with a page per layer, in order (Figma's "Export frames to PDF").
- * Named after the first layer.
+ * Named after the first layer it holds. Hidden layers among several are
+ * left out with a warning; it fails only when every layer is hidden.
  */
 export async function exportPdf(
   source: ExportSource,
@@ -269,11 +340,24 @@ export async function exportPdf(
   if (settings.suffix !== undefined && typeof settings.suffix !== "string") throw new ExportError("The suffix must be text.");
   const session = new Session(source, deps);
   try {
-    const scenes: ExportScene[] = nodeIds.map((id) => exportScene(source, id, settings));
+    const textBounds = session.textBounds("PDF");
     const warnings = new Set<string>();
+    const scenes: ExportScene[] = [];
+    for (const id of nodeIds) {
+      const n = source.get(id);
+      // Among several, a hidden layer is left out (as a batch export skips it); the PDF fails only when none is left.
+      if (nodeIds.length > 1 && n && n.type !== "PAGE" && !draws(n)) {
+        warnings.add(`“${n.name}” is hidden, so it was left out of the PDF.`);
+        continue;
+      }
+      scenes.push(exportScene(source, id, settings, textBounds));
+    }
+    if (!scenes.length) throw new ExportError("Every layer chosen is hidden, so there is nothing to export to PDF. Show the layers first.");
     const first = scenes[0] as ExportScene;
     const docTitle = first.node.name;
-    const bytes = writePdf(source, scenes, session.pdfOptions((m) => void warnings.add(m), docTitle));
+    const warn = (m: string) => void warnings.add(m);
+    const bytes = writePdf(source, scenes, session.pdfOptions(warn, docTitle));
+    session.warnMissingGlyphs(scenes.flatMap((s) => s.roots), warn);
     const full: ExportSettingsPDF = { ...settings, format: "PDF" };
     return {
       nodeId: first.node.id,

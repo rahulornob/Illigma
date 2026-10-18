@@ -151,7 +151,7 @@ describe("SVG export of paints and effects", () => {
         height: 40,
         fills: solid(RED),
         effects: [
-          shadow(0, 4, 8, { spread: 2 }),
+          shadow(0, 4, 8),
           { type: "INNER_SHADOW", color: { r: 1, g: 1, b: 1, a: 0.5 }, offset: { x: 0, y: 2 }, radius: 4, visible: true },
           { type: "LAYER_BLUR", radius: 2, visible: true },
           { type: "BACKGROUND_BLUR", radius: 10, visible: true },
@@ -161,12 +161,12 @@ describe("SVG export of paints and effects", () => {
     const file = await exportNode(doc, ids.r, { format: "SVG" });
     const text = svgText(file.bytes);
     expect(file.warnings).toEqual(["SVG has no background blur, so it was left out."]);
-    // Bounds: the shadow (spread 2 and blur 3σ = 12 each side, moved down 4) and the layer blur (3σ = 3) widen the export.
-    expect([file.width, file.height]).toEqual([74, 74]);
+    // Bounds: the shadow (blur 3σ = 12 each side, moved down 4) and the layer blur (3σ = 3) widen the export.
+    expect([file.width, file.height]).toEqual([70, 70]);
     expect(text).toContain(`filter="url(#effects_${ids.r})"`);
+    expect(text).not.toContain("feMorphology");
     for (const piece of [
-      `<feMorphology in="SourceAlpha" operator="dilate" radius="2" result="drop0_spread"/>`,
-      `<feOffset in="drop0_spread" dx="0" dy="4"/>`,
+      `<feOffset in="SourceAlpha" dx="0" dy="4"/>`,
       `<feGaussianBlur stdDeviation="4" result="drop0_alpha"/>`,
       `<feComposite in="drop0" in2="SourceAlpha" operator="out" result="drop0"/>`,
       `<feFuncA type="table" tableValues="1 0"/>`,
