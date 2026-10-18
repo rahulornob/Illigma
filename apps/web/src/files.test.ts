@@ -4,7 +4,7 @@ import { Document } from "@illigma/core";
 import { readPackage, writePackage } from "@illigma/format";
 import { Autosaver, opfsBackend, RecoveryJournal } from "@illigma/host-web";
 import { FakeFileSystem, installFakeOpfs } from "@illigma/host-web/testing";
-import { closeSession, discardRecovered, keepRecovered, openStoredFile, replayRecovered, whileClosing } from "./files";
+import { closeSession, discardRecovered, keepRecovered, openStoredFile, replayRecovered, whileClosing, CLOSING_WAIT_MS } from "./files";
 
 let fs: FakeFileSystem;
 let restore: () => void;
@@ -198,5 +198,24 @@ describe("closing and reopening a file", () => {
     const s2 = await next;
     expect(s2.lock).not.toBeNull(); // this tab edits it again, not read-only
     await closeSession(s2);
+  });
+
+  it("gives up waiting for a save that never finishes, with a plain message", async () => {
+    const { doc } = base();
+    await opfsBackend(doc.fileId, "T").write(writePackage(doc.toFile()));
+    const s = await openStoredFile(doc.fileId, "T");
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      void closeSession(s);
+      whileClosing(doc.fileId, new Promise(() => {})); // a stuck save
+      const opening = openStoredFile(doc.fileId, "T").then(
+        () => null,
+        (e: unknown) => e,
+      );
+      await vi.advanceTimersByTimeAsync(CLOSING_WAIT_MS + 10);
+      expect(String(await opening)).toMatch(/still saving from when it was last closed/);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

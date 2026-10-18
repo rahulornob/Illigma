@@ -96,6 +96,12 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
     [doc, pageId],
   );
 
+  /** Writes that replace the session (Keep, Discard, reloads): closing the file waits for them before giving up the lock. */
+  const track = <T,>(work: Promise<T>): Promise<T> => {
+    whileClosing(doc.fileId, work);
+    return work;
+  };
+
   // Every committed edit goes to the recovery journal first (save-states.md rule 2).
   useEffect(() => {
     if (viewOnly) return; // the journal belongs to the tab that is editing
@@ -161,7 +167,7 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
       if (!saver.hasUnsavedChanges && saver.status.state === "saved" && !current.recovered.length) {
         setDiskBusy(true);
         try {
-          const next = await reloadFromDisk(current);
+          const next = await track(reloadFromDisk(current));
           // An edit that slipped in meanwhile: keep it, and let the person choose instead.
           if (!saver.hasUnsavedChanges) {
             onSession(next);
@@ -232,7 +238,7 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
 
   const undoReloadFromDisk = () => {
     setReloaded({ busy: true, error: null });
-    undoReload(session).then(onSession, (e: unknown) =>
+    track(undoReload(session)).then(onSession, (e: unknown) =>
       setReloaded({ busy: false, error: `Couldn't undo: ${messageOf(e)} The version from disk is still open.` }),
     );
   };
@@ -262,7 +268,7 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
     const hadUnsaved = old !== null && (old.hasUnsavedChanges || old.status.state !== "saved");
     old?.dispose();
     try {
-      onSession(await keepRecovered(session));
+      onSession(await track(keepRecovered(session)));
     } catch (e) {
       setRecovery({ busy: null, error: `Couldn't keep the recovered changes: ${messageOf(e)} Nothing was changed; they are still in the recovery journal.` });
       // The new autosaver must not claim "Saved" for edits the stopped one never wrote; it saves them instead.
@@ -273,7 +279,7 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
 
   const discard = () => {
     setRecovery({ busy: "discard", error: null });
-    discardRecovered(session).then(
+    track(discardRecovered(session)).then(
       (next) => {
         setRecovery({ busy: null, error: null });
         onSession(next);

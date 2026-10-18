@@ -21,6 +21,8 @@
 export interface LocationState {
   /** Settles when every task queued so far has. */
   tail: Promise<unknown>;
+  /** Tasks queued and not yet settled. */
+  pending: number;
   /** The newest backend (by `nextGeneration`) that has saved here. 0: none yet. */
   newestSaved: number;
 }
@@ -41,12 +43,15 @@ let folderLookup: Promise<unknown> = Promise.resolve();
 
 let generations = 0;
 
+/** How long one `isSameEntry` comparison may take before the folders count as different. */
+const SAME_ENTRY_MS = 2_000;
+
 /** A number for a new backend: a backend made later (a file opened again) gets a higher one. */
 export function nextGeneration(): number {
   return ++generations;
 }
 
-const newState = (): LocationState => ({ tail: Promise.resolve(), newestSaved: 0 });
+const newState = (): LocationState => ({ tail: Promise.resolve(), pending: 0, newestSaved: 0 });
 
 function opfsState(root: object, path: readonly string[]): LocationState {
   let places = opfsPlaces.get(root);
@@ -60,7 +65,12 @@ function opfsState(root: object, path: readonly string[]): LocationState {
 async function sameFolder(a: FileSystemDirectoryHandle, b: FileSystemDirectoryHandle): Promise<boolean> {
   if (a === b) return true;
   if (typeof a.isSameEntry !== "function") return false; // can't tell: only the same handle counts
-  return a.isSameEntry(b).catch(() => false);
+  // A comparison that never answers must not stall every later folder lookup.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const slow = new Promise<boolean>((r) => (timer = setTimeout(() => r(false), SAME_ENTRY_MS)));
+  const same = await Promise.race([a.isSameEntry(b).catch(() => false), slow]);
+  clearTimeout(timer);
+  return same;
 }
 
 /** Find (or make) the folder's place, then queue `task` there in the same turn, so tasks keep call order. */
@@ -74,7 +84,10 @@ function atFolder<T>(dir: FileSystemDirectoryHandle, task: (state: LocationState
       if (state) break;
       if (await sameFolder(place.dir, dir)) state = place.state;
     }
-    if (!state) folderPlaces.push({ dir, state: (state = newState()) });
+    if (!state) {
+      pruneFolders();
+      folderPlaces.unshift({ dir, state: (state = newState()) });
+    }
     folderByHandle.set(dir, state);
     run = enqueue(state, task);
   });
@@ -83,12 +96,31 @@ function atFolder<T>(dir: FileSystemDirectoryHandle, task: (state: LocationState
 }
 
 function enqueue<T>(state: LocationState, task: (state: LocationState) => Promise<T>): Promise<T> {
+  state.pending++;
   const run = state.tail.then(
     () => task(state),
     () => task(state),
   );
-  state.tail = run.catch(() => {});
+  state.tail = run.catch(() => {}).then(() => void state.pending--);
   return run;
+}
+
+/** Folders remembered before idle ones are forgotten. */
+const MAX_FOLDERS = 32;
+
+/**
+ * Forget folders with nothing queued once there are many, so lookups (one
+ * `isSameEntry` per remembered folder) stay short. A forgotten folder only
+ * loses its `newestSaved`; its next task makes a new place.
+ */
+function pruneFolders(): void {
+  if (folderPlaces.length <= MAX_FOLDERS) return;
+  for (let i = folderPlaces.length - 1; i >= 0 && folderPlaces.length > MAX_FOLDERS; i--) {
+    const place = folderPlaces[i]!;
+    if (place.state.pending) continue;
+    folderPlaces.splice(i, 1);
+    folderByHandle.delete(place.dir);
+  }
 }
 
 /**

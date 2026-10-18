@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { flushSync } from "react-dom";
 import { listRecentFiles, pruneCompareSnapshots, type OpfsBackend } from "@illigma/host-web";
 import { Editor } from "./editor/Editor";
 import { closeSession, createFile, openCompareSnapshot, openFolder, openStoredFile, type Session } from "./files";
@@ -23,6 +24,9 @@ function setFileHash(session: Session | null): void {
 
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
+  /** The open session, for callbacks that finish after it was closed. */
+  const current = useRef<Session | null>(null);
+  current.current = session;
   const [generation, setGeneration] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,11 +99,17 @@ export function App() {
           key={generation}
           session={session}
           onClose={() => {
-            closeSession(session);
-            setSession(null);
+            // Unmount the editor now, so its cleanup notes its last save before closeSession waits for it.
+            flushSync(() => setSession(null));
+            void closeSession(session);
             setFileHash(null);
           }}
           onSession={(next) => {
+            // Keep, Discard or a reload that finished after the file was closed: the close already let the lock go.
+            if (current.current !== session) {
+              if (next.lock && next.lock !== session.lock) void closeSession(next);
+              return;
+            }
             // A new document (after Keep) needs a fresh editor; the same one only re-renders.
             if (next.doc !== session.doc) setGeneration((g) => g + 1);
             setSession(next);

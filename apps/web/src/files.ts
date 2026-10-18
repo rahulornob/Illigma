@@ -103,7 +103,7 @@ export async function createFile(): Promise<Session> {
 
 /** Open a file from this browser's storage. Read-only if another tab is editing it. */
 export async function openStoredFile(fileId: string, name: string): Promise<Session> {
-  await settled(fileId); // the file's last editor may still be saving
+  await closedBeforeOpening([fileId], name); // the file's last editor may still be saving
   const lock = await acquireFileLock(fileId);
   return holding(lock, async () => {
     const backend = opfsBackend(fileId, name);
@@ -124,6 +124,9 @@ let locationStore: LocationStore | null = null;
 export async function openFolder(locations: LocationStore = (locationStore ??= idbLocationStore())): Promise<Session | null> {
   const backend = await pickFolderBackend();
   if (!backend) return null;
+  // The file id is only known after reading, and a closing editor's last save may be queued after this read:
+  // wait for every file being closed first, so the read sees that save.
+  await closedBeforeOpening(null, backend.label);
   // The file id is in the package, so read before locking, without repairing; the first save repairs.
   const tree = await backend.read({ repair: false });
   if (isEmpty(tree)) {
@@ -139,7 +142,6 @@ export async function openFolder(locations: LocationStore = (locationStore ??= i
   let doc = Document.fromFile(readPackage(tree));
   const copy = await isCopyOfAnother(doc.fileId, backend.dir, locations).catch(() => false);
   if (copy) doc = Document.fromFile(withNewFileId(doc.toFile()));
-  await settled(doc.fileId); // the file's last editor may still be saving
   const lock = await acquireFileLock(doc.fileId);
   return holding(lock, async () => {
     if (copy && lock) {
@@ -184,6 +186,27 @@ async function closingDone(fileId: string): Promise<void> {
 /** Wait until `fileId` is fully closed (see whileClosing). Resolves at once if it isn't closing. */
 function settled(fileId: string): Promise<void> {
   return closing.get(fileId) ?? Promise.resolve();
+}
+
+/** How long opening a file waits for its last editor's save before giving up. */
+export const CLOSING_WAIT_MS = 10_000;
+
+/**
+ * Wait until `fileIds` (every file being closed if `null`) are fully closed,
+ * at most CLOSING_WAIT_MS. A save that never finishes must not leave opening
+ * stuck with no way out: this throws a plain message instead, and opening can
+ * be tried again.
+ */
+async function closedBeforeOpening(fileIds: readonly string[] | null, name: string): Promise<void> {
+  const waits = fileIds ? fileIds.map(settled) : [...closing.values()];
+  if (!waits.length) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<"timeout">((r) => (timer = setTimeout(() => r("timeout"), CLOSING_WAIT_MS)));
+  const result = await Promise.race([Promise.all(waits), timeout]);
+  clearTimeout(timer);
+  if (result === "timeout") {
+    throw new Error(`"${name}" is still saving from when it was last closed. Wait a moment, then open it again.`);
+  }
 }
 
 /**
