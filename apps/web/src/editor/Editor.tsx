@@ -19,6 +19,7 @@ import { Icon, LogoMark } from "../ui/Icon";
 import { Canvas, type CanvasHandle, type HitTest, type Tool } from "./Canvas";
 import { createdLayers, deleteLayers, duplicateLayers, freeLayers, movable, moveBy, reorderStep, sharedFlowParent, snapshot } from "./edit";
 import { nudgeFor } from "./geometry";
+import { autoLayoutSelection, removeAutoLayout } from "./layout-model";
 import { useDocVersion, useSaveDisplay } from "./hooks";
 import { LayersPanel } from "./LayersPanel";
 import { PropertiesPanel } from "./PropertiesPanel";
@@ -415,6 +416,14 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
         canvas.current?.zoomTo(1);
         return;
       }
+      // Shift+A: add auto layout, or wrap the selection in an auto layout frame. ⌥⇧A removes it (e.code: ⌥ changes e.key on macOS).
+      if (!mod && e.shiftKey && e.code === "KeyA") {
+        e.preventDefault();
+        if (noEdits || !sel.length) return;
+        if (e.altKey) removeAutoLayout(doc, sel);
+        else setSelection(autoLayoutSelection(doc, sel));
+        return;
+      }
       if (mod || e.altKey) return;
       if (e.shiftKey && e.code === "Digit1") {
         e.preventDefault();
@@ -692,7 +701,7 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
           </div>
         </main>
 
-        <PropertiesPanel doc={doc} pageId={pageId} selection={selection} readOnly={locked} />
+        <PropertiesPanel doc={doc} pageId={pageId} selection={selection} readOnly={locked} onSelect={setSelection} />
       </div>
     </div>
   );

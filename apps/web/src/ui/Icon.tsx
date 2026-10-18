@@ -72,6 +72,124 @@ const PATHS = {
       <path d="M8 16H3v5" />
     </>
   ),
+  "rows-2": (
+    <>
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="M3 12h18" />
+    </>
+  ),
+  "arrow-right": (
+    <>
+      <path d="M5 12h14" />
+      <path d="m12 5 7 7-7 7" />
+    </>
+  ),
+  "arrow-down": (
+    <>
+      <path d="M12 5v14" />
+      <path d="m19 12-7 7-7-7" />
+    </>
+  ),
+  "corner-down-left": (
+    <>
+      <polyline points="9 10 4 15 9 20" />
+      <path d="M20 4v7a4 4 0 0 1-4 4H4" />
+    </>
+  ),
+  "chevron-down": <path d="m6 9 6 6 6-6" />,
+  pin: (
+    <>
+      <path d="M12 17v5" />
+      <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
+    </>
+  ),
+  "square-dashed-mouse-pointer": (
+    <>
+      <path d="M12.034 12.681a.498.498 0 0 1 .647-.647l9 3.5a.5.5 0 0 1-.033.943l-3.444 1.068a1 1 0 0 0-.66.66l-1.067 3.443a.5.5 0 0 1-.943.033z" />
+      <path d="M5 3a2 2 0 0 0-2 2" />
+      <path d="M19 3a2 2 0 0 1 2 2" />
+      <path d="M5 21a2 2 0 0 1-2-2" />
+      <path d="M9 3h1" />
+      <path d="M9 21h2" />
+      <path d="M14 3h1" />
+      <path d="M3 9v1" />
+      <path d="M21 9v2" />
+      <path d="M3 14v1" />
+    </>
+  ),
+  "square-dashed": (
+    <>
+      <path d="M5 3a2 2 0 0 0-2 2" />
+      <path d="M19 3a2 2 0 0 1 2 2" />
+      <path d="M21 19a2 2 0 0 1-2 2" />
+      <path d="M5 21a2 2 0 0 1-2-2" />
+      <path d="M9 3h1" />
+      <path d="M9 21h1" />
+      <path d="M14 3h1" />
+      <path d="M14 21h1" />
+      <path d="M3 9v1" />
+      <path d="M21 9v1" />
+      <path d="M3 14v1" />
+      <path d="M21 14v1" />
+    </>
+  ),
+  "panel-left": (
+    <>
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="M9 3v18" />
+    </>
+  ),
+  "panel-right": (
+    <>
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="M15 3v18" />
+    </>
+  ),
+  "panel-top": (
+    <>
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="M3 9h18" />
+    </>
+  ),
+  "panel-bottom": (
+    <>
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="M3 15h18" />
+    </>
+  ),
+  // Illigma's own auto layout glyphs (Figma board "01 Auto layout"), drawn on Lucide's 24 px grid.
+  gap: (
+    <>
+      <path d="M4 4v16" />
+      <path d="M20 4v16" />
+      <path d="M8 12h8" />
+      <path d="m10 10-2 2 2 2" />
+      <path d="m14 10 2 2-2 2" />
+    </>
+  ),
+  "gap-vertical": (
+    <>
+      <path d="M4 4h16" />
+      <path d="M4 20h16" />
+      <path d="M12 8v8" />
+      <path d="m10 10 2-2 2 2" />
+      <path d="m10 14 2 2 2-2" />
+    </>
+  ),
+  "padding-horizontal": (
+    <>
+      <rect width="18" height="16" x="3" y="4" rx="2" />
+      <path d="M8 8v8" />
+      <path d="M16 8v8" />
+    </>
+  ),
+  "padding-vertical": (
+    <>
+      <rect width="18" height="16" x="3" y="4" rx="2" />
+      <path d="M8 9h8" />
+      <path d="M8 15h8" />
+    </>
+  ),
 } as const;
 
 export type IconName = keyof typeof PATHS;
