@@ -126,11 +126,13 @@ describe("PDF images (QC7 #5, #14)", () => {
     png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
     png.set([0, 0, 0x4e, 0x20, 0, 0, 0, 10], 16);
     const { doc, ids } = build((add, p) => ({ r: add("RECTANGLE", p, { width: 10, height: 10 }) }));
-    const hash = doc.addImage(png);
+    // Documents refuse such images (addImage), but a file can still hold one: hand it to the writer directly.
+    const hash = "a".repeat(64);
     doc.transact("Image", (tx) => tx.set(ids.r, "fills", [{ type: "IMAGE", visible: true, imageHash: hash, scaleMode: "FILL" }]));
+    const source = { get: (id: string) => doc.get(id), children: (id: string) => doc.children(id), image: (h: string) => (h === hash ? png : undefined) };
     let decoded = 0;
     const warnings: string[] = [];
-    writePdf(doc, [exportScene(doc, ids.r, {})], { decodeImage: () => (decoded++, null), warn: (m) => warnings.push(m) });
+    writePdf(source, [exportScene(source, ids.r, {})], { decodeImage: () => (decoded++, null), warn: (m) => warnings.push(m) });
     expect(decoded).toBe(0);
     expect(warnings).toEqual(["Images larger than 16,384 px on a side or 64 million pixels can't go into a PDF yet, so some were left out."]);
   });
