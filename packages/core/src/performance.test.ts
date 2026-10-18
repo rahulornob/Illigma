@@ -10,6 +10,9 @@ import { describe, expect, it } from "vitest";
 import { readPackage, writePackage } from "@illigma/format";
 import { Document } from "./index.js";
 
+/** The limits are tuned on a laptop. Shared CI runners are slower, so CI gets 3x (or PERF_BUDGET_SCALE). */
+const budget = (ms: number) => ms * (Number(process.env.PERF_BUDGET_SCALE) || (process.env.CI ? 3 : 1));
+
 describe("performance guards", () => {
   it("50,000 nodes: create, toFile, writePackage, readPackage and fromFile in under 10 s", () => {
     const t0 = performance.now();
@@ -35,7 +38,7 @@ describe("performance guards", () => {
     const back = Document.fromFile(readPackage(tree));
     const ms = performance.now() - t0;
     expect(back.size).toBe(doc.size);
-    expect(ms, `took ${Math.round(ms)} ms`).toBeLessThan(10_000);
+    expect(ms, `took ${Math.round(ms)} ms`).toBeLessThan(budget(10_000));
   }, 60_000);
 
   // Fixed; was: every create computes its key with indexAt(), which calls
@@ -54,6 +57,6 @@ describe("performance guards", () => {
     });
     const ms = performance.now() - t0;
     expect(doc.children(page)).toHaveLength(10_000);
-    expect(ms, `took ${Math.round(ms)} ms`).toBeLessThan(3_000);
+    expect(ms, `took ${Math.round(ms)} ms`).toBeLessThan(budget(3_000));
   }, 120_000);
 });

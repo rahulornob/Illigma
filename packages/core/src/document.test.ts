@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { readPackage, writePackage } from "@illigma/format";
 import { Document, type Change } from "./index.js";
 
+/** Time budgets are tuned on a laptop. Shared CI runners are slower, so CI gets 3x (or PERF_BUDGET_SCALE). */
+const budget = (ms: number) => ms * (Number(process.env.PERF_BUDGET_SCALE) || (process.env.CI ? 3 : 1));
+
 function setup() {
   const doc = new Document("Test");
   const page = doc.transact("Add page", (tx) => tx.addPage("Page 1"));
@@ -140,6 +143,6 @@ describe("Document", () => {
     const back = Document.fromFile(readPackage(tree));
     const ms = performance.now() - t0;
     expect(back.size).toBe(10_001);
-    expect(ms).toBeLessThan(5000);
+    expect(ms, `took ${Math.round(ms)} ms`).toBeLessThan(budget(5000));
   });
 });

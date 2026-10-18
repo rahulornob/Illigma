@@ -8,9 +8,9 @@
 //
 // Usage (from the repo root):  node apps/web/e2e/canvas.mjs [--headed] [--no-build]
 
-import { createFile, drag, field, layerRow, layerRows, newContext, poll, runE2E, selectedRows, setField, watchErrors } from "./lib.mjs";
+import { createFile, drag, eventually, field, layerRow, layerRows, newContext, poll, runE2E, selectedRows, setField, watchErrors } from "./lib.mjs";
 
-await runE2E("canvas", { port: 5195 }, async ({ browser, url, log, check, outDir, errors }) => {
+await runE2E("canvas", {}, async ({ browser, url, log, check, outDir, errors }) => {
   const context = await newContext(browser);
   const page = await context.newPage();
   watchErrors(page, errors);
@@ -255,8 +255,8 @@ await runE2E("canvas", { port: 5195 }, async ({ browser, url, log, check, outDir
   await ax.focus();
   await page.keyboard.type("123");
   await page.keyboard.press("Escape");
-  await page.waitForTimeout(150);
+  const reverted = await eventually(async () => Number(await ax.inputValue()) === original, 2_000);
   const afterEscape = Number(await ax.inputValue());
-  check(afterEscape === original, `Escape in a Properties field should revert the typed value (X ${original} → ${afterEscape})`);
+  check(reverted, `Escape in a Properties field should revert the typed value (X ${original} → ${afterEscape})`);
   await context.close();
 });

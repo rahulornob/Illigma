@@ -4,6 +4,9 @@ import { describe, expect, it } from "vitest";
 import { readPackage, validateFile, writePackage, type Node } from "@illigma/format";
 import { Document, DocumentError, type Operation, type Transaction } from "./index.js";
 
+/** Time budgets are tuned on a laptop. Shared CI runners are slower, so CI gets 3x (or PERF_BUDGET_SCALE). */
+const budget = (ms: number) => ms * (Number(process.env.PERF_BUDGET_SCALE) || (process.env.CI ? 3 : 1));
+
 function setup() {
   const doc = new Document("QC");
   const page = doc.transact("Add page", (tx) => tx.addPage("Page 1"));
@@ -22,7 +25,7 @@ describe("appending many children", () => {
     expect(kids).toHaveLength(10_000);
     expect(kids.map((n) => n.x)).toEqual(Array.from({ length: 10_000 }, (_, i) => i));
     expect(Math.max(...kids.map((n) => n.index.length))).toBeLessThanOrEqual(8);
-    expect(ms, `took ${Math.round(ms)} ms`).toBeLessThan(1_000);
+    expect(ms, `took ${Math.round(ms)} ms`).toBeLessThan(budget(1_000));
   });
 
   it("keeps children sorted through first/before/after inserts, moves, undo and redo", () => {
@@ -223,6 +226,6 @@ describe("round trip at 10,000 layers", () => {
     const back = Document.fromFile(readPackage(writePackage(doc.toFile())));
     const ms = performance.now() - t0;
     expect(back.size).toBe(10_001);
-    expect(ms, `took ${Math.round(ms)} ms`).toBeLessThan(2_000);
+    expect(ms, `took ${Math.round(ms)} ms`).toBeLessThan(budget(2_000));
   });
 });

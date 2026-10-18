@@ -6,11 +6,10 @@
 // asks before replacing the disk version.
 //
 // Usage (from the repo root):  node apps/web/e2e/disk-changes.mjs [--headed] [--no-build]
-// Not yet in run-all.mjs (that list is being reworked); run it on its own.
 
-import { canvasReady, createFile, layerRow, newContext, poll, runE2E, saveState, setField, waitSaved, watchErrors } from "./lib.mjs";
+import { T, canvasReady, createFile, layerRow, newContext, poll, runE2E, saveState, setField, waitSaved, watchErrors } from "./lib.mjs";
 
-await runE2E("disk-changes", { port: 5198 }, async ({ browser, url, log, check, outDir, errors }) => {
+await runE2E("disk-changes", {}, async ({ browser, url, log, check, outDir, errors }) => {
   const context = await newContext(browser);
   const page = await context.newPage();
   watchErrors(page, errors);
@@ -48,16 +47,16 @@ await runE2E("disk-changes", { port: 5198 }, async ({ browser, url, log, check, 
   log("Compare… opens the disk version read-only in a new tab");
   const [view] = await Promise.all([context.waitForEvent("page"), banner.getByRole("button", { name: "Compare…" }).click()]);
   watchErrors(view, errors);
-  await view.waitForURL(/#\/compare\/[\w-]+$/, { timeout: 10_000 });
+  await view.waitForURL(/#\/compare\/[\w-]+$/, { timeout: T(10_000) });
   await canvasReady(view);
-  await view.locator(".banner", { hasText: "The version on disk — read-only." }).waitFor({ timeout: 5_000 });
+  await view.locator(".banner", { hasText: "The version on disk — read-only." }).waitFor({ timeout: T(5_000) });
   check((await view.locator(".save-status").innerText()).includes("read-only"), "the compare tab should say it is read-only");
   await view.close();
 
   log("Keep mine: a conflict copy first, then replace after confirming");
   await banner.getByRole("button", { name: "Keep mine" }).click();
   const confirm = page.locator(".banner", { hasText: "Your version is saved as" });
-  await confirm.waitFor({ timeout: 5_000 });
+  await confirm.waitFor({ timeout: T(5_000) });
   check(/\(conflict \d{4}-\d\d-\d\d \d\d\.\d\d\) in browser storage/.test(await confirm.innerText()), `the banner should name the conflict copy, got "${await confirm.innerText()}"`);
   const files = await page.evaluate(async () => {
     const root = await navigator.storage.getDirectory();

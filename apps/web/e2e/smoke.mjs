@@ -8,9 +8,9 @@
 // Usage (from the repo root):  node apps/web/e2e/smoke.mjs [--headed] [--no-build]
 // Screenshots go to apps/web/e2e/out/ (or $SMOKE_OUT). Helpers live in lib.mjs.
 
-import { canvasReady, layerRows, newContext, runE2E, waitSaved as waitSavedOn, watchErrors } from "./lib.mjs";
+import { T, canvasReady, eventually, layerRows, newContext, runE2E, stableShot, waitSaved as waitSavedOn, watchErrors } from "./lib.mjs";
 
-await runE2E("smoke", { port: 5192 }, async ({ browser, url: URL_, log, check, outDir, errors }) => {
+await runE2E("smoke", {}, async ({ browser, url: URL_, log, check, outDir, errors }) => {
   const context = await newContext(browser);
   const page = await context.newPage();
   watchErrors(page, errors);
@@ -21,7 +21,7 @@ await runE2E("smoke", { port: 5192 }, async ({ browser, url: URL_, log, check, o
   log("open home");
   await page.goto(URL_);
   await page.getByRole("button", { name: "New design file" }).waitFor();
-  await page.getByText("No files yet").waitFor({ timeout: 5_000 }).catch(() => check(false, "a fresh browser should have no recent files"));
+  await page.getByText("No files yet").waitFor({ timeout: T(5_000) }).catch(() => check(false, "a fresh browser should have no recent files"));
 
   log("create a file");
   await page.getByRole("button", { name: "New design file" }).click();
@@ -69,9 +69,9 @@ await runE2E("smoke", { port: 5192 }, async ({ browser, url: URL_, log, check, o
   await page.locator("canvas.canvas").focus();
   const z0 = await zoomText();
   await page.keyboard.press("ControlOrMeta+Equal");
-  check((await zoomText()) !== z0, "⌘+ should zoom in");
+  check(await eventually(async () => (await zoomText()) !== z0), "⌘+ should zoom in");
   await page.keyboard.press("Shift+Digit1");
-  check((await zoomText()) === z0, `⇧1 should fit the page again (${z0})`);
+  check(await eventually(async () => (await zoomText()) === z0), `⇧1 should fit the page again (${z0})`);
 
   log("save");
   await page.keyboard.press("ControlOrMeta+s");
@@ -116,7 +116,7 @@ await runE2E("smoke", { port: 5192 }, async ({ browser, url: URL_, log, check, o
   await second.goto(page.url());
   await canvasReady(second);
   const readOnly = second.locator(".banner", { hasText: "Open in another tab — read-only here." });
-  await readOnly.waitFor({ timeout: 5_000 });
+  await readOnly.waitFor({ timeout: T(5_000) });
   check((await second.locator(".save-status").innerText()).trim() === "Read-only", "the second tab's title bar should read Read-only");
   check((await second.locator(".banner", { hasText: "Recovered unsaved changes." }).count()) === 0, "the second tab must not offer the first tab's journal as recovered");
   await second.locator("canvas.canvas").focus();
@@ -131,9 +131,9 @@ await runE2E("smoke", { port: 5192 }, async ({ browser, url: URL_, log, check, o
   log("the canvas comes back after the GPU context is lost");
   await page.locator("canvas.canvas").focus();
   await page.keyboard.press("Escape"); // no selection overlay in the shots
-  await page.waitForTimeout(100);
-  const shot = () => page.locator("canvas.canvas").screenshot();
-  const drawn = await shot();
+  const canvasEl = page.locator("canvas.canvas");
+  const shot = () => canvasEl.screenshot();
+  const drawn = await stableShot(canvasEl); // the redraw after Escape has finished
   const lost = await page.evaluate(() => {
     const ext = document.querySelector("canvas.canvas")?.getContext("webgl2")?.getExtension("WEBGL_lose_context");
     if (!ext) return false;
@@ -143,11 +143,9 @@ await runE2E("smoke", { port: 5192 }, async ({ browser, url: URL_, log, check, o
   });
   console.log(`  WebGL context loss simulated: ${lost}`);
   if (lost) {
-    await page.waitForTimeout(200);
-    check(!(await shot()).equals(drawn), "losing the WebGL context should blank the canvas (the simulation worked)");
+    check(await eventually(async () => !(await shot()).equals(drawn)), "losing the WebGL context should blank the canvas (the simulation worked)");
     await page.evaluate(() => globalThis.__restore());
-    await page.waitForTimeout(500);
+    check(await eventually(async () => (await shot()).equals(drawn), 10_000), "the canvas should draw the page again after the WebGL context is restored");
     check((await page.locator(".canvas-status").count()) === 0, "the canvas should not show an error after the context is restored");
-    check((await shot()).equals(drawn), "the canvas should draw the page again after the WebGL context is restored");
   }
 });

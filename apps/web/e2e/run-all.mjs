@@ -3,12 +3,18 @@
 // Exits non-zero if any script fails. Known bugs are listed but don't fail.
 //
 // Usage (from the repo root):  npm run test:e2e   (or node apps/web/e2e/run-all.mjs [--headed] [--no-build])
+//
+// CI (Linux, no GPU): the scripts pick software WebGL (SwiftShader) on Linux
+// on their own, serve on free ports, and scale wait timeouts when CI is set.
+// In mcr.microsoft.com/playwright:v1.56.1-jammy:  npm ci && CI=1 npm run test:e2e
+// Shake out timing races locally: E2E_SLOW=1 npm run test:e2e (4x CPU throttle).
+// See lib.mjs for E2E_GL, E2E_SLOW and E2E_TIMEOUT_SCALE.
 
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { buildApp, skipBuild } from "./lib.mjs";
 
-const SCRIPTS = ["smoke.mjs", "recovery.mjs", "save-errors.mjs", "canvas.mjs", "offline-update.mjs", "a11y.mjs"];
+const SCRIPTS = ["smoke.mjs", "recovery.mjs", "save-errors.mjs", "disk-changes.mjs", "canvas.mjs", "offline-update.mjs", "a11y.mjs"];
 const started = Date.now();
 const passthrough = process.argv.slice(2).filter((a) => a === "--headed");
 

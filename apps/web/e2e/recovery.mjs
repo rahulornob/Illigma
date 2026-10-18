@@ -8,6 +8,7 @@
 // Usage (from the repo root):  node apps/web/e2e/recovery.mjs [--headed] [--no-build]
 
 import {
+  T,
   canvasReady,
   createFile,
   drag,
@@ -24,7 +25,7 @@ import {
   watchErrors,
 } from "./lib.mjs";
 
-await runE2E("recovery", { port: 5193 }, async ({ browser, url, log, check, outDir, errors }) => {
+await runE2E("recovery", {}, async ({ browser, url, log, check, outDir, errors }) => {
   const banner = (page) => page.locator(".banner", { hasText: "Recovered unsaved changes." });
   const rectangles = (page) => page.locator(".layer-list .layer-row", { hasText: /^Rectangle \d+$/ });
 
@@ -47,7 +48,7 @@ await runE2E("recovery", { port: 5193 }, async ({ browser, url, log, check, outD
     await rectangles(page).first().waitFor();
     await layerRow(page, "Hero").click();
     await setField(page, "X position", 77);
-    await page.waitForSelector('.save-status[data-save-state="error"]', { timeout: 10_000 });
+    await page.waitForSelector('.save-status[data-save-state="error"]', { timeout: T(10_000) });
     // Let the journal's 250 ms batch reach OPFS, then "crash".
     await poll(async () => {
       const text = await readJournal(page, fileId);
@@ -75,7 +76,7 @@ await runE2E("recovery", { port: 5193 }, async ({ browser, url, log, check, outD
     const { page, fileId } = await crashWithEdits(context, "keep");
 
     log("keep: reopen shows the recovery banner");
-    await banner(page).waitFor({ timeout: 5_000 });
+    await banner(page).waitFor({ timeout: T(5_000) });
     const text = await banner(page).innerText();
     check(/\d+ edits? from your last session/.test(text), `the banner should count the recovered edits, got "${text}"`);
     check((await layerRows(page).count()) === 3, "before choosing, the file should show its saved state (3 layers)");
@@ -84,7 +85,7 @@ await runE2E("recovery", { port: 5193 }, async ({ browser, url, log, check, outD
 
     log("keep: Keep restores the edits and saves them");
     await banner(page).getByRole("button", { name: "Keep" }).click();
-    await banner(page).waitFor({ state: "detached", timeout: 5_000 });
+    await banner(page).waitFor({ state: "detached", timeout: T(5_000) });
     await canvasReady(page);
     check((await layerRows(page).count()) === 4, `Keep should restore the drawn rectangle (4 layers), found ${await layerRows(page).count()}`);
     check((await rectangles(page).count()) === 1, "Keep must not apply the rectangle twice");
@@ -109,11 +110,11 @@ await runE2E("recovery", { port: 5193 }, async ({ browser, url, log, check, outD
     const context = await newContext(browser);
     log("discard: crash with unsaved edits");
     const { page, fileId } = await crashWithEdits(context, "discard");
-    await banner(page).waitFor({ timeout: 5_000 });
+    await banner(page).waitFor({ timeout: T(5_000) });
 
     log("discard: Discard drops the edits");
     await banner(page).getByRole("button", { name: "Discard" }).click();
-    await banner(page).waitFor({ state: "detached", timeout: 5_000 });
+    await banner(page).waitFor({ state: "detached", timeout: T(5_000) });
     check((await layerRows(page).count()) === 3, "Discard should leave the saved 3 layers");
     check((await rectangles(page).count()) === 0, "Discard should not apply the drawn rectangle");
     check((await heroX(page)) === 120, "Discard should leave Hero at its saved X (120)");
@@ -148,7 +149,7 @@ await runE2E("recovery", { port: 5193 }, async ({ browser, url, log, check, outD
     const context = await newContext(browser);
     log("edit before choosing: recovered edits must not be lost");
     const { page } = await crashWithEdits(context, "edit-first");
-    await banner(page).waitFor({ timeout: 5_000 });
+    await banner(page).waitFor({ timeout: T(5_000) });
     // The person ignores the banner and keeps working; autosave runs.
     await layerRow(page, "Avatar").click();
     await setField(page, "Y position", 64);
@@ -194,7 +195,7 @@ await runE2E("recovery", { port: 5193 }, async ({ browser, url, log, check, outD
     if (stale) {
       log("stale journal: Keep must not apply the saved edit twice");
       await banner(next).getByRole("button", { name: "Keep" }).click();
-      await banner(next).waitFor({ state: "detached", timeout: 5_000 });
+      await banner(next).waitFor({ state: "detached", timeout: T(5_000) });
       await canvasReady(next);
       check((await ellipses().count()) === 1, "Keep must not duplicate an edit that is already in the file");
       check((await layerRows(next).count()) === 4, "Keep must not change the layer count when the edits are already saved");
