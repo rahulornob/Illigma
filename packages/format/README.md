@@ -19,13 +19,31 @@ Onboarding flow.illigma/
 
 The node schema is in [`schema/node.v0.schema.json`](schema/node.v0.schema.json) (JSON Schema 2020-12) and [`src/schema.ts`](src/schema.ts).
 
-Planned for later versions: the single-file zip form, `assets/` for images and fonts, `variables.json`, `styles.json`, components, comments and `history/` (PRD section 6.2).
+### Single-file form (done)
+
+For sharing, the same tree can be one `Name.illigma` file: a standard zip archive.
+
+- **Same paths, nothing extra.** The zip holds exactly the package paths. Unzipping a file gives a valid package folder, and zipping a package folder (Finder, Explorer, `zip -r`) gives a file Illigma opens. A single wrapping folder, folder entries and `__MACOSX/` / `.DS_Store` noise are ignored on read.
+- **No marker entry.** Instead of an ODF-style `mimetype` file, `manifest.json` is always the first entry and is stored uncompressed, so a tool can read the format, version and name from the first local header without inflating anything. `isZip(bytes)` tells the two forms apart.
+- **Deterministic bytes.** Entries after the manifest are in sorted path order and deflated (or stored when that is smaller). Timestamps are fixed at 1980-01-01 00:00, names are flagged UTF-8, and there are no comments, extra fields or data descriptors. The same file always zips to identical bytes.
+- **Safe to open.** Reading refuses paths that escape the folder (`..`, absolute paths, drive letters, backslashes), duplicate entries, encrypted, split and ZIP64 archives, unknown compression, CRC mismatches, entries that inflate past their declared size, and archives whose contents add up to more than `maxTotalBytes` (default 512 MB). Every failure is a `FormatError` with a plain message.
+
+DEFLATE comes from [fflate](https://github.com/101arrowz/fflate) (MIT); the zip container code is ours.
+
+Planned for later versions: `assets/` for images and fonts, `variables.json`, `styles.json`, components, comments and `history/` (PRD section 6.2). Binary entries such as `assets/` will need the tree to carry bytes as well as text.
 
 ## Use
 
 ```ts
-import { readPackage, writePackage } from "@illigma/format";
+import { isZip, readPackage, readZip, writePackage, writeZip } from "@illigma/format";
 
 const tree = writePackage(file);   // Map<path, text>
 const again = readPackage(tree);   // throws FormatError with plain-language problems
+
+const bytes = writeZip(tree);      // the single-file form, deterministic
+const opened = readPackage(isZip(bytes) ? readZip(bytes, { maxTotalBytes: 512 * 1024 * 1024 }) : tree);
 ```
+
+## Robustness
+
+`src/fuzz.test.ts` feeds both readers 2,000 seeded random inputs per run (truncated, bit-flipped and spliced archives; damaged JSON; random values in node and manifest fields). Each must open as a valid file or throw a `FormatError`, never another exception. To fuzz longer: `FUZZ_SEED=42 FUZZ_CASES=100000 npx vitest run fuzz`.

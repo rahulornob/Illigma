@@ -9,6 +9,13 @@ import { FORMAT_NAME, NODE_TYPES, type IlligmaFile, type Node, type NodeType } f
 const NUMBER_FIELDS = ["x", "y", "width", "height", "rotation", "opacity", "strokeWeight", "cornerRadius"] as const;
 const BOOLEAN_FIELDS = ["visible", "locked"] as const;
 const MAX_PROBLEMS = 50;
+// One path segment: no slashes, backslashes, control characters or ":" (drive letters).
+const SAFE_PAGE_ID = /^[^/\\:\u0000-\u001f\u007f]{1,200}$/;
+
+/** True when a page id can be used as a file name (`pages/<id>.json`). */
+export function isSafePageId(id: string): boolean {
+  return SAFE_PAGE_ID.test(id) && id !== "." && id !== "..";
+}
 
 function isColor(c: unknown): boolean {
   if (!c || typeof c !== "object") return false;
@@ -32,7 +39,11 @@ function checkNode(n: unknown, at: string, problems: string[]): n is Node {
   const id = typeof o.id === "string" && o.id.length > 0 ? o.id : null;
   const where = id ? `Node ${id}` : at;
   if (!id) problems.push(`${at} has no id.`);
-  if (!NODE_TYPES.includes(o.type as NodeType)) problems.push(`${where} has an unknown type "${String(o.type)}".`);
+  if (!NODE_TYPES.includes(o.type as NodeType)) {
+    // Never String() an arbitrary JSON value: {"toString": 1} would throw.
+    const shown = typeof o.type === "string" ? `"${o.type.slice(0, 40)}"` : `of the wrong kind`;
+    problems.push(`${where} has an unknown type ${shown}.`);
+  }
   if (!(o.parentId === null || typeof o.parentId === "string")) problems.push(`${where} has an invalid parentId.`);
   if (typeof o.index !== "string" || !isValidKey(o.index)) problems.push(`${where} has an invalid order index.`);
   if (typeof o.name !== "string") problems.push(`${where} has no name.`);
@@ -68,13 +79,20 @@ export function validateFile(file: IlligmaFile): string[] {
   const pageIds = new Set<string>();
   for (const p of (Array.isArray(m?.pages) ? m.pages : []) as { id?: unknown }[]) {
     const id = typeof p?.id === "string" ? p.id : "";
+    // A page id becomes a file name (pages/<id>.json), so it must be one plain path segment.
+    if (!isSafePageId(id)) problems.push(`Page id ${JSON.stringify(id)} can't be used as a file name.`);
     if (pageIds.has(id)) problems.push(`Page ${id} is listed twice.`);
     pageIds.add(id);
     const node = byId.get(id);
     if (!node || node.type !== "PAGE") problems.push(`Page ${id} is listed but has no PAGE node.`);
   }
 
-  for (const n of byId.values()) {
+  // Tree checks only use nodes whose links are well-typed; checkNode already reported the rest.
+  const linked = [...byId.values()].filter(
+    (n) => (n.parentId === null || typeof n.parentId === "string") && typeof n.index === "string",
+  );
+
+  for (const n of linked) {
     if (n.type === "PAGE") {
       if (n.parentId !== null) problems.push(`Page ${n.id} must not have a parent.`);
       if (!pageIds.has(n.id)) problems.push(`Page ${n.id} is not listed in the manifest.`);
@@ -97,7 +115,7 @@ export function validateFile(file: IlligmaFile): string[] {
 
   // Sibling order keys must be unique within a parent.
   const seen = new Map<string, string>();
-  for (const n of byId.values()) {
+  for (const n of linked) {
     const k = `${n.parentId ?? ""}\u0000${n.index}`;
     const other = seen.get(k);
     if (other) problems.push(`Nodes ${other} and ${n.id} share the same position.`);

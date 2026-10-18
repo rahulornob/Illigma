@@ -31,6 +31,9 @@ After v1.0: a Tauri desktop app in v1.x, then optional multiplayer (CRDT over LA
 - `@illigma/format` (MIT): `.illigma` format v0 (package form, canonical output, fractional-index ordering, validation, migrations, JSON Schema).
 - `@illigma/core` (MPL-2.0): document model with operations, transactions, rollback on error, undo/redo (100+ steps) and change events.
 - 24 unit tests, including a lossless save-and-reopen round trip and a 10,000-layer file.
+- `.illigma` single-file form: `writeZip` / `readZip` / `isZip` (deterministic bytes, manifest first and stored, zip-slip, zip-bomb and size-limit protection; DEFLATE via fflate 0.8.3, MIT).
+- Seeded fuzz tests: 2,000 broken inputs per run; every one opens as a valid file or is refused with a `FormatError`. `validateFile` no longer crashes on hostile JSON values such as `{"toString": 1}` in a node's type or parent. Page ids must now be plain file names.
+- CI (GitHub Actions): typecheck, tests and the benchmark app build on every push and pull request to `main`.
 
 ### Added (2026-10-13, design phase 4)
 - High-fidelity editor states in Figma, sections 11–20, each audited by the design QA agent with fixes applied: Home and files, empty canvas and frame presets, save and file states, components and variants, Variables manager and modes, Prototype mode with presentation and phone preview over the local network, Inspect mode, Export and token export, version history and compare, Preferences (including the local MCP server), and core states (text and font picker, multi-select, Light mode, comments, import report, stroke and constraints, styles, view menu, docked panels).

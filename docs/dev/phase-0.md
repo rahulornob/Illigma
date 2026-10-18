@@ -21,7 +21,7 @@ Started 18 October 2026, after the design sign-off. Planned to run through Decem
 |---|---|
 | 0.1 Monorepo | Done 2026-10-18 |
 | 0.2 Document model | Done 2026-10-18 (`@illigma/core`, unit-tested) |
-| 0.3 File format v0 | Done 2026-10-18 (`@illigma/format`, lossless round trip tested; zip form later) |
+| 0.3 File format v0 | Done 2026-10-18 (`@illigma/format`, lossless round trip tested). Single-file zip form, reader fuzz tests and CI added 2026-10-18 |
 | 0.4 Renderer spike | **Done 2026-10-18; with 0.3 this meets the Phase 0 gate.** 10,000 layers: median 60 fps, 100% of frames within 16.7 ms, 4.8 ms draw per frame at 2× pixel density, page recorded once in 24 ms (Chromium, ANGLE Metal, Apple M1, 1440×900). Run `npm run bench` (opens the benchmark) or `npm run bench:measure` (headless, prints JSON). Text, hit-testing and per-frame picture caching added 2026-10-18 (below); tiles come next |
 | 0.5 Offline web app | Next |
 | 0.6 Design tokens in code | Not started |
