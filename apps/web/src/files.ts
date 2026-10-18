@@ -81,7 +81,7 @@ export async function openFolder(): Promise<Session | null> {
 export async function keepRecovered(session: Session): Promise<Session> {
   for (const op of session.recovered) {
     try {
-      session.doc.apply(op);
+      session.doc.replay([op]);
     } catch {
       // An edit that no longer fits (e.g. its node is gone) is skipped; the rest still apply.
     }

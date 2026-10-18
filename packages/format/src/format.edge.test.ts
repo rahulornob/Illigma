@@ -32,7 +32,7 @@ function file(pages: { id: string; name?: string }[], nodes: Node[] = []): Illig
   };
 }
 
-function node(type: NodeType, id: string, parentId: string, index = "V", extra: Partial<Node> = {}): Node {
+function node(type: NodeType, id: string, parentId: string, index = "a0", extra: Partial<Node> = {}): Node {
   return { ...defaultNode(type, id, parentId, index), ...extra };
 }
 
@@ -68,7 +68,7 @@ describe("text", () => {
   });
 
   it("keeps one node per line even when text contains line breaks", () => {
-    const f = file([{ id: "p1" }], [node("TEXT", "t", "p1", "V", { characters: "a\nb\r\nc d" })]);
+    const f = file([{ id: "p1" }], [node("TEXT", "t", "p1", "a0", { characters: "a\nb\r\nc d" })]);
     const lines = (writePackage(f).get("pages/p1.json") as string).trimEnd().split("\n");
     expect(lines).toHaveLength(4); // "[", two nodes, "]"
   });
@@ -76,7 +76,7 @@ describe("text", () => {
   it("keeps 1 MB of text (and 1M UTF-16 units of emoji) exactly", () => {
     const big = "Lorem ipsum dolor sit amet. ".repeat(40_000).slice(0, 1_000_000);
     const emoji = "🧩".repeat(500_000);
-    const f = file([{ id: "p1" }], [node("TEXT", "t1", "p1", "V", { characters: big }), node("TEXT", "t2", "p1", "k", { characters: emoji, name: emoji })]);
+    const f = file([{ id: "p1" }], [node("TEXT", "t1", "p1", "a0", { characters: big }), node("TEXT", "t2", "p1", "a1", { characters: emoji, name: emoji })]);
     const back = roundTrip(f);
     expect(back.nodes.find((n) => n.id === "t1")?.characters).toBe(big);
     expect(back.nodes.find((n) => n.id === "t2")?.characters).toBe(emoji);
@@ -98,7 +98,7 @@ describe("numbers", () => {
   });
 
   it("turns -0 into 0 (JSON has no -0), which is accepted", () => {
-    const back = roundTrip(file([{ id: "p1" }], [node("RECTANGLE", "r", "p1", "V", { x: -0, rotation: -0 })]));
+    const back = roundTrip(file([{ id: "p1" }], [node("RECTANGLE", "r", "p1", "a0", { x: -0, rotation: -0 })]));
     const n = back.nodes.find((m) => m.id === "r") as Node;
     expect(Object.is(n.x, 0) && Object.is(n.rotation, 0)).toBe(true);
   });
@@ -106,7 +106,7 @@ describe("numbers", () => {
   it("rejects NaN, Infinity and -Infinity in every number field", () => {
     for (const field of NUMBER_FIELDS) {
       for (const bad of [NaN, Infinity, -Infinity]) {
-        const f = file([{ id: "p1" }], [node("RECTANGLE", "r", "p1", "V", { [field]: bad })]);
+        const f = file([{ id: "p1" }], [node("RECTANGLE", "r", "p1", "a0", { [field]: bad })]);
         expect(validateFile(f).join("\n"), `${field}=${bad}`).toMatch(new RegExp(`"${field}" must be a number`));
         expect(() => writePackage(f)).toThrow(FormatError);
       }
@@ -115,28 +115,28 @@ describe("numbers", () => {
 
   it("rejects numbers given as strings, null or missing", () => {
     for (const bad of ["12", null, undefined]) {
-      const f = file([{ id: "p1" }], [node("RECTANGLE", "r", "p1", "V", { width: bad as unknown as number })]);
+      const f = file([{ id: "p1" }], [node("RECTANGLE", "r", "p1", "a0", { width: bad as unknown as number })]);
       expect(validateFile(f).join("\n")).toMatch(/"width" must be a number/);
     }
   });
 
   it("rejects colour channels that are non-finite or outside 0–1", () => {
     for (const bad of [NaN, Infinity, -Infinity, -0.0001, 1.0001]) {
-      const f = file([{ id: "p1" }], [node("RECTANGLE", "r", "p1", "V", { strokes: [{ type: "SOLID", visible: true, color: { r: 0, g: bad, b: 0, a: 1 } }] })]);
+      const f = file([{ id: "p1" }], [node("RECTANGLE", "r", "p1", "a0", { strokes: [{ type: "SOLID", visible: true, color: { r: 0, g: bad, b: 0, a: 1 } }] })]);
       expect(validateFile(f).join("\n"), `g=${bad}`).toMatch(/"strokes"/);
     }
   });
 
   it("refuses to open a page file whose number overflows to Infinity", () => {
-    const tree = writePackage(file([{ id: "p1" }], [node("RECTANGLE", "r", "p1", "V", { x: 5 })]));
+    const tree = writePackage(file([{ id: "p1" }], [node("RECTANGLE", "r", "p1", "a0", { x: 5 })]));
     tree.set("pages/p1.json", (tree.get("pages/p1.json") as string).replace('"x":5', '"x":1e400'));
     expect(() => readPackage(tree)).toThrow(/damaged/);
   });
 
-  // BUG: validateFile checks "characters" but not fontSize, lineHeight,
+  // Fixed; was: validateFile checks "characters" but not fontSize, lineHeight,
   // fontFamily or fontStyle. NaN fontSize is saved as null, a string
   // fontSize passes, and the bad value reaches the renderer.
-  it.fails("validates the optional text fields fontSize, lineHeight, fontFamily and fontStyle", () => {
+  it("validates the optional text fields fontSize, lineHeight, fontFamily and fontStyle", () => {
     const bads: Partial<Node>[] = [
       { fontSize: NaN },
       { fontSize: Infinity },
@@ -146,7 +146,7 @@ describe("numbers", () => {
       { fontStyle: {} as unknown as string },
     ];
     for (const extra of bads) {
-      const f = file([{ id: "p1" }], [node("TEXT", "t", "p1", "V", { characters: "Hi", ...extra })]);
+      const f = file([{ id: "p1" }], [node("TEXT", "t", "p1", "a0", { characters: "Hi", ...extra })]);
       expect(validateFile(f), JSON.stringify(extra)).not.toEqual([]);
     }
   });
@@ -181,15 +181,17 @@ describe("ordering", () => {
     expect(order.map((n) => n.id)).toEqual(nodes.map((n) => n.id));
   });
 
-  it("keeps the manifest page order even when it disagrees with page index keys", () => {
+  // Fixed: the manifest page order must now agree with the page index keys
+  // (see core's document.edge.test.ts for the fallout when it didn't).
+  it("rejects a manifest page order that disagrees with page index keys", () => {
     const f = file([{ id: "a" }, { id: "b" }, { id: "c" }]);
     f.manifest.pages.reverse(); // c, b, a — the keys say a, b, c
-    expect(validateFile(f)).toEqual([]); // accepted today; see core's document.edge.test.ts for the fallout
-    expect(roundTrip(f).manifest.pages.map((p) => p.id)).toEqual(["c", "b", "a"]);
+    expect(validateFile(f).join("\n")).toMatch(/page order/);
+    expect(() => writePackage(f)).toThrow(FormatError);
   });
 
   it("rejects two siblings with the same key, and two pages with the same key", () => {
-    const f = file([{ id: "p1" }], [node("RECTANGLE", "a", "p1", "V"), node("RECTANGLE", "b", "p1", "V")]);
+    const f = file([{ id: "p1" }], [node("RECTANGLE", "a", "p1", "a0"), node("RECTANGLE", "b", "p1", "a0")]);
     expect(validateFile(f).join("\n")).toMatch(/same position/);
     const g = file([{ id: "p1" }, { id: "p2" }]);
     (g.nodes[1] as Node).index = (g.nodes[0] as Node).index;
@@ -223,13 +225,13 @@ describe("pages", () => {
   });
 
   it("reads files whose line endings were changed to CRLF (e.g. by git on Windows)", () => {
-    const f = file([{ id: "p1" }], [node("TEXT", "t", "p1", "V", { characters: "a\nb" })]);
+    const f = file([{ id: "p1" }], [node("TEXT", "t", "p1", "a0", { characters: "a\nb" })]);
     const tree: FileTree = new Map([...writePackage(f)].map(([k, v]) => [k, v.replace(/\n/g, "\r\n")]));
     expect(byId(readPackage(tree))).toEqual(byId(f));
   });
 
   it("writes byte-identical output after a save → open → save cycle", () => {
-    const f = file([{ id: "p1" }, { id: "p2" }], [node("FRAME", "f", "p1"), node("TEXT", "t", "f", "V", { characters: "日本語" })]);
+    const f = file([{ id: "p1" }, { id: "p2" }], [node("FRAME", "f", "p1"), node("TEXT", "t", "f", "a0", { characters: "日本語" })]);
     const once = writePackage(f);
     const twice = writePackage(readPackage(once));
     expect([...twice.entries()]).toEqual([...once.entries()]);
@@ -252,8 +254,14 @@ describe("ids and names", () => {
     expect(back.manifest.pages.map((p) => p.name)).toEqual(names);
   });
 
-  it("keeps unusual non-page node ids (they never become file names)", () => {
-    const ids = ["🧩", "a b", 'q"uote', "new\nline", "__proto__", "constructor", "../x"];
+  // Changed: every node id is now 1–64 of [A-Za-z0-9_-], so any node can
+  // become a page file name safely. Unusual but valid ids still round-trip.
+  it("rejects node ids outside [A-Za-z0-9_-]{1,64} and keeps valid unusual ones", () => {
+    const bad = ["🧩", "a b", 'q"uote', "new\nline", "../x", "x".repeat(65)];
+    for (const id of bad) {
+      expect(validateFile(file([{ id: "p1" }], [node("RECTANGLE", id, "p1")])).join("\n"), JSON.stringify(id)).toMatch(/"id"/);
+    }
+    const ids = ["__proto__", "constructor", "-", "_", "x".repeat(64)];
     const nodes = ids.map((id, i) => node("RECTANGLE", id, "p1", keysBetween(null, null, ids.length)[i]));
     const back = roundTrip(file([{ id: "p1" }], nodes));
     expect(byId(back)).toEqual(byId(file([{ id: "p1" }], nodes)));
@@ -263,11 +271,11 @@ describe("ids and names", () => {
     expect(validateFile(file([{ id: "p1" }], [node("RECTANGLE", "", "p1")])).join("\n")).toMatch(/has no id/);
   });
 
-  // BUG: a page id becomes a file name (`pages/<id>.json`) but validateFile
+  // Fixed; was: a page id becomes a file name (`pages/<id>.json`) but validateFile
   // accepts any non-empty string. "../x" writes outside pages/, "a/b" makes a
   // sub-folder, and NUL or backslash break on real file systems. An opened
   // package could make the app read or write files outside the package.
-  it.fails("page ids that are unsafe as file names are rejected", () => {
+  it("page ids that are unsafe as file names are rejected", () => {
     const SAFE = /^pages\/[0-9A-Za-z_-]+\.json$/;
     for (const id of ["../escape", "../../../tmp/x", "a/b", "a\\b", "..", "x\u0000y", "x.json"]) {
       const f = file([{ id }]);
@@ -282,10 +290,10 @@ describe("ids and names", () => {
     }
   });
 
-  // BUG (low): ids mix upper and lower case (core's newId alphabet), so two
+  // Fixed; was (low): ids mix upper and lower case (core's newId alphabet), so two
   // pages can map to page files that collide on case-insensitive file systems
   // (macOS and Windows defaults): one page would overwrite the other on disk.
-  it.fails("page file names never collide on case-insensitive file systems", () => {
+  it("page file names never collide on case-insensitive file systems", () => {
     const f = file([{ id: "PageA" }, { id: "pagea" }]);
     let tree: FileTree | null = null;
     try {
@@ -316,7 +324,7 @@ describe("damaged input never crashes with a TypeError", () => {
     ["node fills are null", (t) => t.set("pages/p1.json", (t.get("pages/p1.json") as string).replace('"fills":[]', '"fills":null'))],
     ["node fills hold null", (t) => t.set("pages/p1.json", (t.get("pages/p1.json") as string).replace('"fills":[]', '"fills":[null]'))],
     ["paint colour is null", (t) => t.set("pages/p1.json", (t.get("pages/p1.json") as string).replace('"fills":[]', '"fills":[{"type":"SOLID","visible":true,"color":null}]'))],
-    ["index key ends in 0", (t) => t.set("pages/p1.json", (t.get("pages/p1.json") as string).replace('"index":"V"', '"index":"V0"'))],
+    ["index key ends in 0", (t) => t.set("pages/p1.json", (t.get("pages/p1.json") as string).replace('"index":"a0"', '"index":"a00"'))],
     ["page has a parent", (t) => t.set("pages/p1.json", (t.get("pages/p1.json") as string).replace('"parentId":null', '"parentId":"f"'))],
   ];
   for (const [label, damage] of cases) {

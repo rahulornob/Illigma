@@ -1,26 +1,29 @@
 /**
- * Structural validation for a whole file. Returns plain-language problems;
- * an empty list means the file is valid.
+ * Structural validation. `validateFile` checks a whole file; `validateNode`
+ * and `validateNodeField` check single nodes and values with the same rules,
+ * so the document model can refuse a bad value before it is ever stored.
+ * Each returns plain-language problems; an empty list (or `null`) means valid.
  */
 
 import { isValidKey } from "./fractional-index.js";
-import { FORMAT_NAME, NODE_TYPES, type IlligmaFile, type Node, type NodeType } from "./schema.js";
+import { FORMAT_NAME, NODE_ID_PATTERN, NODE_TYPES, type IlligmaFile, type Node } from "./schema.js";
 
-const NUMBER_FIELDS = ["x", "y", "width", "height", "rotation", "opacity", "strokeWeight", "cornerRadius"] as const;
-const BOOLEAN_FIELDS = ["visible", "locked"] as const;
 const MAX_PROBLEMS = 50;
-// One path segment: no slashes, backslashes, control characters or ":" (drive letters).
-const SAFE_PAGE_ID = /^[^/\\:\u0000-\u001f\u007f]{1,200}$/;
-
-/** True when a page id can be used as a file name (`pages/<id>.json`). */
+const isId = (v: unknown): v is string => typeof v === "string" && NODE_ID_PATTERN.test(v);
+/** True when a page id can be used as a file name (`pages/<id>.json`): node ids already are. */
 export function isSafePageId(id: string): boolean {
-  return SAFE_PAGE_ID.test(id) && id !== "." && id !== "..";
+  return isId(id);
 }
+
+const isFinite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
+const unit = (v: unknown): boolean => isFinite(v) && v >= 0 && v <= 1;
+const TYPES = new Set<unknown>(NODE_TYPES);
 
 function isColor(c: unknown): boolean {
   if (!c || typeof c !== "object") return false;
   const o = c as Record<string, unknown>;
-  return ["r", "g", "b", "a"].every((k) => typeof o[k] === "number" && (o[k] as number) >= 0 && (o[k] as number) <= 1);
+  return unit(o.r) && unit(o.g) && unit(o.b) && unit(o.a);
 }
 
 function isPaintList(v: unknown): boolean {
@@ -30,70 +33,115 @@ function isPaintList(v: unknown): boolean {
   );
 }
 
-function checkNode(n: unknown, at: string, problems: string[]): n is Node {
-  if (!n || typeof n !== "object") {
-    problems.push(`${at} is not an object.`);
-    return false;
+type Rule = (v: unknown) => string | null;
+
+const number: Rule = (v) => (isFinite(v) ? null : "must be a number (not NaN or Infinity)");
+const boolean: Rule = (v) => (typeof v === "boolean" ? null : "must be true or false");
+const text: Rule = (v) => (typeof v === "string" ? null : "must be text");
+const paints: Rule = (v) => (isPaintList(v) ? null : "must be a list of solid paints with colour channels from 0 to 1");
+const optional =
+  (rule: Rule): Rule =>
+  (v) =>
+    v === undefined ? null : rule(v);
+
+/** One rule per node field. Typed against `Node`, so a new field can't be forgotten here. */
+const RULES: { [K in keyof Node]-?: Rule } = {
+  id: (v) => (isId(v) ? null : v === undefined || v === "" ? "is missing: the node has no id" : 'must be 1–64 letters, digits, "_" or "-"'),
+  // Never String() an arbitrary JSON value: {"toString": 1} would throw.
+  type: (v) => (TYPES.has(v) ? null : typeof v === "string" ? `is an unknown type "${v.slice(0, 40)}"` : "is not a node type"),
+  parentId: (v) => (v === null || isId(v) ? null : "must be a node id or null"),
+  index: (v) => (typeof v === "string" && isValidKey(v) ? null : "must be a valid order index"),
+  name: text,
+  visible: boolean,
+  locked: boolean,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  rotation: number,
+  opacity: number,
+  fills: paints,
+  strokes: paints,
+  strokeWeight: number,
+  cornerRadius: number,
+  characters: optional(text),
+  fontFamily: optional(text),
+  fontStyle: optional(text),
+  fontSize: optional(number),
+  lineHeight: optional(number),
+};
+
+/** Every node field name, required and optional. */
+export const NODE_KEYS = Object.freeze(Object.keys(RULES)) as readonly (keyof Node)[];
+
+const KNOWN = new Set<string>(NODE_KEYS);
+const RULE_LIST = Object.entries(RULES) as [keyof Node, Rule][];
+
+/** The problem with `value` as node field `key`, or `null` if it is valid. Unknown keys are a problem. */
+export function validateNodeField(key: string, value: unknown): string | null {
+  if (!KNOWN.has(key)) return `"${key}" is not a node field`;
+  const problem = RULES[key as keyof Node](value);
+  return problem && `"${key}" ${problem}`;
+}
+
+/** Problems with one node's own fields (not its links to other nodes). Unknown extra keys are allowed. */
+export function validateNode(node: unknown): string[] {
+  if (!node || typeof node !== "object" || Array.isArray(node)) return ["the node is not an object"];
+  const o = node as Record<string, unknown>;
+  const problems: string[] = [];
+  for (const [k, rule] of RULE_LIST) {
+    const p = rule(o[k]);
+    if (p) problems.push(`"${k}" ${p}`);
   }
-  const o = n as Record<string, unknown>;
-  const id = typeof o.id === "string" && o.id.length > 0 ? o.id : null;
-  const where = id ? `Node ${id}` : at;
-  if (!id) problems.push(`${at} has no id.`);
-  if (!NODE_TYPES.includes(o.type as NodeType)) {
-    // Never String() an arbitrary JSON value: {"toString": 1} would throw.
-    const shown = typeof o.type === "string" ? `"${o.type.slice(0, 40)}"` : `of the wrong kind`;
-    problems.push(`${where} has an unknown type ${shown}.`);
-  }
-  if (!(o.parentId === null || typeof o.parentId === "string")) problems.push(`${where} has an invalid parentId.`);
-  if (typeof o.index !== "string" || !isValidKey(o.index)) problems.push(`${where} has an invalid order index.`);
-  if (typeof o.name !== "string") problems.push(`${where} has no name.`);
-  for (const k of NUMBER_FIELDS) {
-    if (typeof o[k] !== "number" || !Number.isFinite(o[k] as number)) problems.push(`${where}: "${k}" must be a number.`);
-  }
-  for (const k of BOOLEAN_FIELDS) {
-    if (typeof o[k] !== "boolean") problems.push(`${where}: "${k}" must be true or false.`);
-  }
-  if (!isPaintList(o.fills)) problems.push(`${where}: "fills" must be a list of solid paints.`);
-  if (!isPaintList(o.strokes)) problems.push(`${where}: "strokes" must be a list of solid paints.`);
-  if (o.characters !== undefined && typeof o.characters !== "string") problems.push(`${where}: "characters" must be text.`);
-  return id !== null;
+  return problems;
 }
 
 export function validateFile(file: IlligmaFile): string[] {
   const problems: string[] = [];
-  const m = file.manifest as unknown as Record<string, unknown>;
+  const m = file?.manifest as unknown as Record<string, unknown>;
   if (!m || m.format !== FORMAT_NAME) problems.push('The manifest must have "format": "illigma".');
   if (typeof m?.fileId !== "string" || !m.fileId) problems.push("The manifest has no file id.");
   if (typeof m?.name !== "string") problems.push("The manifest has no file name.");
+  if (typeof m?.created !== "string") problems.push('The manifest\'s "created" date must be text.');
+  if (typeof m?.app !== "string") problems.push('The manifest\'s "app" must be text.');
   if (!Array.isArray(m?.pages) || m.pages.length === 0) problems.push("The file must have at least one page.");
-  if (!Array.isArray(file.nodes)) return [...problems, "The file has no node list."];
+  if (!Array.isArray(file?.nodes)) return [...problems, "The file has no node list."];
 
   const byId = new Map<string, Node>();
   file.nodes.forEach((n, i) => {
-    if (checkNode(n, `Node #${i + 1}`, problems)) {
-      if (byId.has(n.id)) problems.push(`Node id ${n.id} is used twice.`);
-      byId.set(n.id, n);
-    }
+    const o = n as unknown as Record<string, unknown> | null;
+    const where = isId(o?.id) ? `Node ${o.id}` : `Node #${i + 1}`;
+    for (const p of validateNode(n)) problems.push(`${where}: ${p}.`);
+    if (!isId(o?.id)) return;
+    if (byId.has(o.id)) problems.push(`Node id ${o.id} is used twice.`);
+    byId.set(o.id, n);
   });
 
+  // Page ids name files (pages/<id>.json), so they must also differ ignoring case.
   const pageIds = new Set<string>();
-  for (const p of (Array.isArray(m?.pages) ? m.pages : []) as { id?: unknown }[]) {
+  const lowerIds = new Map<string, string>();
+  const listed: string[] = [];
+  for (const p of (Array.isArray(m?.pages) ? m.pages : []) as { id?: unknown; name?: unknown }[]) {
     const id = typeof p?.id === "string" ? p.id : "";
     // A page id becomes a file name (pages/<id>.json), so it must be one plain path segment.
-    if (!isSafePageId(id)) problems.push(`Page id ${JSON.stringify(id)} can't be used as a file name.`);
+    if (!isSafePageId(id)) problems.push(`Page id ${JSON.stringify(id.slice(0, 80))} can't be used as a file name.`);
+    if (typeof p?.name !== "string") problems.push(`Page ${id} has no name in the manifest.`);
     if (pageIds.has(id)) problems.push(`Page ${id} is listed twice.`);
+    else if (lowerIds.has(id.toLowerCase())) problems.push(`Pages ${lowerIds.get(id.toLowerCase())} and ${id} differ only in case.`);
     pageIds.add(id);
+    lowerIds.set(id.toLowerCase(), id);
+    listed.push(id);
     const node = byId.get(id);
     if (!node || node.type !== "PAGE") problems.push(`Page ${id} is listed but has no PAGE node.`);
   }
 
-  // Tree checks only use nodes whose links are well-typed; checkNode already reported the rest.
-  const linked = [...byId.values()].filter(
-    (n) => (n.parentId === null || typeof n.parentId === "string") && typeof n.index === "string",
-  );
+  // Tree checks only use nodes whose links are well-typed; validateNode already reported the rest.
+  const linked = [...byId.values()].filter((n) => !RULES.parentId(n.parentId) && !RULES.index(n.index));
 
+  const pages: Node[] = [];
   for (const n of linked) {
     if (n.type === "PAGE") {
+      pages.push(n);
       if (n.parentId !== null) problems.push(`Page ${n.id} must not have a parent.`);
       if (!pageIds.has(n.id)) problems.push(`Page ${n.id} is not listed in the manifest.`);
       continue;
@@ -113,6 +161,12 @@ export function validateFile(file: IlligmaFile): string[] {
     if (steps > byId.size) problems.push(`Node ${n.id} is inside a parent loop.`);
   }
 
+  // The manifest's page order must agree with the pages' order keys.
+  pages.sort(compareOrder);
+  if (pages.length === listed.length && pages.some((p, i) => p.id !== listed[i])) {
+    problems.push("The manifest's page order doesn't match the pages' order indexes.");
+  }
+
   // Sibling order keys must be unique within a parent.
   const seen = new Map<string, string>();
   for (const n of linked) {
@@ -123,4 +177,9 @@ export function validateFile(file: IlligmaFile): string[] {
   }
 
   return problems.slice(0, MAX_PROBLEMS);
+}
+
+/** Sibling order: by index, then by id. */
+export function compareOrder(a: { index: string; id: string }, b: { index: string; id: string }): number {
+  return a.index < b.index ? -1 : a.index > b.index ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }

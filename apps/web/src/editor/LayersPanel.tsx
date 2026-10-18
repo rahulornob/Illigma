@@ -1,4 +1,4 @@
-import type { Document } from "@illigma/core";
+import type { Document, ReadonlyNode } from "@illigma/core";
 import type { Node, NodeId } from "@illigma/format";
 import { Icon, type IconName } from "../ui/Icon";
 
@@ -26,7 +26,7 @@ const typeClass = (t: Node["type"]) =>
 export function LayersPanel({ doc, pageId, selection, onPage, onSelect }: LayersPanelProps) {
   const pages = doc.pages();
 
-  const rows: { node: Readonly<Node>; depth: number }[] = [];
+  const rows: { node: ReadonlyNode; depth: number }[] = [];
   const walk = (parent: NodeId, depth: number) => {
     // Top of the list = front-most, as in Figma.
     for (const n of [...doc.children(parent)].reverse()) {

@@ -38,14 +38,14 @@ describe("performance guards", () => {
     expect(ms, `took ${Math.round(ms)} ms`).toBeLessThan(10_000);
   }, 60_000);
 
-  // BUG: every create computes its key with indexAt(), which calls
+  // Fixed; was: every create computes its key with indexAt(), which calls
   // children(parent) and so re-sorts the whole sibling list, and keys grow
   // about one character per 5 appends (see fractional-index.property.test.ts).
   // Appending n children to one parent is therefore O(n² log n) with long
   // string compares: 1k ≈ 0.05 s, 2k ≈ 0.2 s, 4k ≈ 1 s, 10k ≈ 6+ s.
   // Suspected fix: keep children per parent in a sorted array (or cache the
   // first/last key), and use keys that grow logarithmically.
-  it.fails("10,000 creates appended as the last child of one parent take under 3 s", () => {
+  it("10,000 creates appended as the last child of one parent take under 3 s", () => {
     const doc = new Document("Flat");
     const page = doc.transact("Page", (tx) => tx.addPage());
     const t0 = performance.now();

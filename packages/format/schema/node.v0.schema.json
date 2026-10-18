@@ -9,12 +9,12 @@
     "fills", "strokes", "strokeWeight", "cornerRadius"
   ],
   "properties": {
-    "id": { "type": "string", "minLength": 1 },
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$", "description": "Also names the page file for pages" },
     "type": {
       "enum": ["PAGE", "SECTION", "FRAME", "GROUP", "RECTANGLE", "ELLIPSE", "LINE", "POLYGON", "STAR", "VECTOR", "TEXT", "COMPONENT", "COMPONENT_SET", "INSTANCE"]
     },
-    "parentId": { "type": ["string", "null"], "description": "null only for pages" },
-    "index": { "type": "string", "pattern": "^[0-9A-Za-z]*[1-9A-Za-z]$", "description": "Fractional index among siblings; compare as plain strings" },
+    "parentId": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9_-]{1,64}$", "description": "null only for pages" },
+    "index": { "type": "string", "pattern": "^(?!A00000000000000000000000000$)(?:a[0-9A-Za-z]{1}|b[0-9A-Za-z]{2}|c[0-9A-Za-z]{3}|d[0-9A-Za-z]{4}|e[0-9A-Za-z]{5}|f[0-9A-Za-z]{6}|g[0-9A-Za-z]{7}|h[0-9A-Za-z]{8}|i[0-9A-Za-z]{9}|j[0-9A-Za-z]{10}|k[0-9A-Za-z]{11}|l[0-9A-Za-z]{12}|m[0-9A-Za-z]{13}|n[0-9A-Za-z]{14}|o[0-9A-Za-z]{15}|p[0-9A-Za-z]{16}|q[0-9A-Za-z]{17}|r[0-9A-Za-z]{18}|s[0-9A-Za-z]{19}|t[0-9A-Za-z]{20}|u[0-9A-Za-z]{21}|v[0-9A-Za-z]{22}|w[0-9A-Za-z]{23}|x[0-9A-Za-z]{24}|y[0-9A-Za-z]{25}|z[0-9A-Za-z]{26}|Z[0-9A-Za-z]{1}|Y[0-9A-Za-z]{2}|X[0-9A-Za-z]{3}|W[0-9A-Za-z]{4}|V[0-9A-Za-z]{5}|U[0-9A-Za-z]{6}|T[0-9A-Za-z]{7}|S[0-9A-Za-z]{8}|R[0-9A-Za-z]{9}|Q[0-9A-Za-z]{10}|P[0-9A-Za-z]{11}|O[0-9A-Za-z]{12}|N[0-9A-Za-z]{13}|M[0-9A-Za-z]{14}|L[0-9A-Za-z]{15}|K[0-9A-Za-z]{16}|J[0-9A-Za-z]{17}|I[0-9A-Za-z]{18}|H[0-9A-Za-z]{19}|G[0-9A-Za-z]{20}|F[0-9A-Za-z]{21}|E[0-9A-Za-z]{22}|D[0-9A-Za-z]{23}|C[0-9A-Za-z]{24}|B[0-9A-Za-z]{25}|A[0-9A-Za-z]{26})(?:[0-9A-Za-z]*[1-9A-Za-z])?$", "description": "Fractional index among siblings; compare as plain strings" },
     "name": { "type": "string" },
     "visible": { "type": "boolean" },
     "locked": { "type": "boolean" },

@@ -12,7 +12,7 @@ Onboarding flow.illigma/
   pages/<page-id>.json   that page's nodes: a JSON array, one node per line, sorted by id
 ```
 
-- **Nodes are flat.** Each node has a `parentId` (pages have `null`) and an `index`, a fractional key that orders it among its siblings. Keys compare as plain strings, so inserting or moving a node never rewrites its neighbours.
+- **Nodes are flat.** Each node has a `parentId` (pages have `null`) and an `index`, a fractional key that orders it among its siblings. Keys compare as plain strings, so inserting or moving a node never rewrites its neighbours. They follow rocicorp's `fractional-indexing` scheme (`a0`, `a1` … `az`, `b00` …), so repeated appends stay short. Node ids are 1–64 of `A–Z a–z 0–9 _ -`, because a page id is also its file name.
 - **Output is canonical.** Keys are sorted and spacing is fixed, so saving the same file twice gives identical bytes and Git diffs stay small.
 - **Versions only go forward.** A reader upgrades older files through `MIGRATIONS` and refuses files from a newer version with a clear message. The app never writes an older version.
 - **Validation runs on read and write.** A damaged file is refused with a list of problems; an invalid document is never saved.

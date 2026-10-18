@@ -11,6 +11,9 @@ export const FORMAT_VERSION = 0;
 
 export type NodeId = string;
 
+/** Node ids also name page files (`pages/<id>.json`), so they stay short and file-name safe. */
+export const NODE_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+
 export type NodeType =
   | "PAGE"
   | "SECTION"

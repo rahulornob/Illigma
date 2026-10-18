@@ -1,8 +1,14 @@
 import {
+  compareOrder,
   defaultNode,
   FORMAT_NAME,
   FORMAT_VERSION,
   keyBetween,
+  NODE_KEYS,
+  NODE_TYPES,
+  validateFile,
+  validateNode,
+  validateNodeField,
   type IlligmaFile,
   type Node,
   type NodeId,
@@ -10,14 +16,15 @@ import {
   type NodeType,
 } from "@illigma/format";
 import { newId } from "./ids.js";
-import { clone, invert, sameValue, type Operation } from "./operations.js";
+import { clone, deepFreeze, frozenCopy, invert, sameValue, type DeepReadonly, type Operation, type ReadonlyNode } from "./operations.js";
 
 /** A committed transaction: its operations in order, plus a label for the undo menu. */
 export interface Change {
-  label: string;
-  ops: Operation[];
-  /** "edit" for new work, "undo" and "redo" for history moves. */
-  origin: "edit" | "undo" | "redo";
+  readonly label: string;
+  /** A private copy for each listener, so changing it can't rewrite history. */
+  readonly ops: readonly Operation[];
+  /** "edit" for new work, "undo" and "redo" for history moves, "replay" for `Document.replay`. */
+  readonly origin: "edit" | "undo" | "redo" | "replay";
 }
 
 export type Listener = (change: Change) => void;
@@ -34,194 +41,372 @@ export class DocumentError extends Error {
 /** Where a node goes among its new siblings. */
 export type Position = { before: NodeId } | { after: NodeId } | "first" | "last";
 
+/** Fields `create` accepts. id, type, parentId and index are always set by `create` itself. */
+export type CreateFields = Partial<DeepReadonly<Omit<Node, "id" | "type" | "parentId" | "index">>>;
+
+const NO_IDS: readonly NodeId[] = Object.freeze([]);
+const FIXED_FIELDS = new Set<string>(["id", "type", "parentId", "index"]);
+const KNOWN_FIELDS = new Set<string>(NODE_KEYS);
+
+// Module-private access to Document and Transaction internals, set in their
+// static blocks. Not exported, so plugins can't reach them.
+let applyOp: (doc: Document, o: Operation) => void;
+let siblingIds: (doc: Document, parentId: NodeId | null) => readonly NodeId[];
+let siblingPos: (doc: Document, node: ReadonlyNode) => number;
+let currentTx: (doc: Document) => Transaction | null;
+let txOps: (tx: Transaction) => Operation[];
+
+/** Deep copy of a caller's value; values JSON can't hold become a DocumentError. */
+function copyIn<T>(value: T): T {
+  try {
+    return clone(value);
+  } catch (err) {
+    throw new DocumentError(`The value can't be stored: ${(err as Error).message}`);
+  }
+}
+
 /**
  * The in-memory document: a flat map of nodes keyed by id. Parents are ids,
  * sibling order is a fractional index. All changes go through `transact`.
+ * Stored nodes are frozen; every change replaces a node object instead of
+ * mutating it, so what `get` returns can be kept and compared by identity.
  */
 export class Document {
   readonly fileId: string;
   name: string;
   readonly created: string;
-  private nodes = new Map<NodeId, Node>();
-  private childIds = new Map<NodeId, Set<NodeId>>();
-  private pageOrder: NodeId[] = [];
-  private undoStack: Change[] = [];
-  private redoStack: Change[] = [];
-  private listeners = new Set<Listener>();
-  private readonly historyLimit: number;
-  private activeTx: Transaction | null = null;
+  #nodes = new Map<NodeId, ReadonlyNode>();
+  /** Child ids per parent (`null` holds the pages), kept sorted by index, then id. */
+  #kids = new Map<NodeId | null, NodeId[]>();
+  #undoStack: Change[] = [];
+  #redoStack: Change[] = [];
+  #listeners = new Set<Listener>();
+  readonly #historyLimit: number;
+  #tx: Transaction | null = null;
+
+  static {
+    applyOp = (doc, o) => doc.#apply(o);
+    siblingIds = (doc, parentId) => doc.#kids.get(parentId) ?? NO_IDS;
+    siblingPos = (doc, node) => doc.#find(doc.#kids.get(node.parentId) ?? NO_IDS, node);
+    currentTx = (doc) => doc.#tx;
+  }
 
   constructor(name = "Untitled", options: DocumentOptions = {}) {
     this.fileId = newId();
     this.name = name;
     this.created = new Date().toISOString();
-    this.historyLimit = Math.max(100, options.historyLimit ?? 200);
+    this.#historyLimit = Math.max(100, options.historyLimit ?? 200);
   }
 
   // ---- reading ----
 
-  get(id: NodeId): Readonly<Node> | undefined {
-    return this.nodes.get(id);
+  get(id: NodeId): ReadonlyNode | undefined {
+    return this.#nodes.get(id);
   }
 
   has(id: NodeId): boolean {
-    return this.nodes.has(id);
+    return this.#nodes.has(id);
   }
 
   get size(): number {
-    return this.nodes.size;
+    return this.#nodes.size;
   }
 
-  pages(): Readonly<Node>[] {
-    return this.pageOrder.map((id) => this.nodes.get(id)).filter((n): n is Node => !!n);
+  pages(): ReadonlyNode[] {
+    return this.#list(null);
   }
 
   /** Children of `parentId` in order. */
-  children(parentId: NodeId): Readonly<Node>[] {
-    const out: Node[] = [];
-    for (const id of this.childIds.get(parentId) ?? []) {
-      const n = this.nodes.get(id);
-      if (n) out.push(n);
-    }
-    return out.sort((a, b) => (a.index < b.index ? -1 : a.index > b.index ? 1 : a.id < b.id ? -1 : 1));
+  children(parentId: NodeId): ReadonlyNode[] {
+    return this.#list(parentId);
   }
 
   /** `id` and everything under it, parents before children. */
-  subtree(id: NodeId): Readonly<Node>[] {
-    const root = this.nodes.get(id);
+  subtree(id: NodeId): ReadonlyNode[] {
+    const root = this.#nodes.get(id);
     if (!root) return [];
-    const out: Node[] = [root];
-    for (let i = 0; i < out.length; i++) out.push(...(this.children((out[i] as Node).id) as Node[]));
+    const out: ReadonlyNode[] = [root];
+    for (let i = 0; i < out.length; i++) {
+      // A loop, not push(...ids): spreading 100k+ arguments overflows the stack.
+      for (const cid of this.#kids.get((out[i] as ReadonlyNode).id) ?? NO_IDS) out.push(this.#nodes.get(cid) as ReadonlyNode);
+    }
+    return out;
+  }
+
+  #list(parentId: NodeId | null): ReadonlyNode[] {
+    const ids = this.#kids.get(parentId) ?? NO_IDS;
+    const out = new Array<ReadonlyNode>(ids.length);
+    for (let i = 0; i < ids.length; i++) out[i] = this.#nodes.get(ids[i] as NodeId) as ReadonlyNode;
     return out;
   }
 
   // ---- history ----
 
   get canUndo(): boolean {
-    return this.undoStack.length > 0;
+    return this.#undoStack.length > 0;
   }
 
   get canRedo(): boolean {
-    return this.redoStack.length > 0;
+    return this.#redoStack.length > 0;
   }
 
   /** Label of the next undo, e.g. "Move 2 layers". */
   get undoLabel(): string | null {
-    return this.undoStack.at(-1)?.label ?? null;
+    return this.#undoStack.at(-1)?.label ?? null;
   }
 
   undo(): boolean {
-    const change = this.undoStack.pop();
+    this.#assertIdle("undo");
+    const change = this.#undoStack.at(-1);
     if (!change) return false;
-    const ops = [...change.ops].reverse().map(invert);
-    for (const o of ops) this.apply(o);
-    this.redoStack.push(change);
-    this.emit({ label: change.label, ops, origin: "undo" });
+    const ops = deepFreeze([...change.ops].reverse().map(invert));
+    this.#applyAll(ops); // all or nothing: on failure the entry stays on the stack
+    this.#undoStack.pop();
+    this.#redoStack.push(change);
+    this.#emit(change.label, ops, "undo");
     return true;
   }
 
   redo(): boolean {
-    const change = this.redoStack.pop();
+    this.#assertIdle("redo");
+    const change = this.#redoStack.at(-1);
     if (!change) return false;
-    for (const o of change.ops) this.apply(o);
-    this.undoStack.push(change);
-    this.emit({ label: change.label, ops: change.ops, origin: "redo" });
+    this.#applyAll(change.ops);
+    this.#redoStack.pop();
+    this.#undoStack.push(change);
+    this.#emit(change.label, change.ops, "redo");
     return true;
   }
 
   // ---- changing ----
 
   subscribe(listener: Listener): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
   }
 
   /**
    * Run `fn` as one undoable step. If `fn` throws, every operation it made
-   * is rolled back and nothing is recorded.
+   * is rolled back and nothing is recorded. A nested call joins the outer
+   * step; if it throws, only its own operations are rolled back.
    */
   transact<T>(label: string, fn: (tx: Transaction) => T): T {
-    if (this.activeTx) return fn(this.activeTx); // nested calls join the outer step
+    const outer = this.#tx;
+    if (outer) {
+      const ops = txOps(outer);
+      const start = ops.length;
+      try {
+        return fn(outer);
+      } catch (err) {
+        this.#rollback(ops, start);
+        throw err;
+      }
+    }
     const tx = new Transaction(this);
-    this.activeTx = tx;
+    this.#tx = tx;
     let result: T;
     try {
       result = fn(tx);
     } catch (err) {
-      for (const o of [...tx.ops].reverse()) this.apply(invert(o));
+      this.#rollback(txOps(tx), 0);
       throw err;
     } finally {
-      this.activeTx = null;
+      this.#tx = null;
     }
-    if (tx.ops.length) {
-      const change: Change = { label, ops: tx.ops, origin: "edit" };
-      this.undoStack.push(change);
-      if (this.undoStack.length > this.historyLimit) this.undoStack.shift();
-      this.redoStack = [];
-      this.emit(change);
+    const ops = txOps(tx);
+    if (ops.length) {
+      const change: Change = Object.freeze({ label, ops: Object.freeze(ops), origin: "edit" as const });
+      this.#undoStack.push(change);
+      if (this.#undoStack.length > this.#historyLimit) this.#undoStack.shift();
+      this.#redoStack = [];
+      this.#emit(label, change.ops, "edit");
     }
     return result;
   }
 
-  /** Apply one operation without recording history. Used by transactions, undo and loading. */
-  apply(o: Operation): void {
+  /**
+   * Apply operations recorded elsewhere (a recovery journal, later sync)
+   * without adding undo history. Each operation is checked first; if one is
+   * invalid or fails, those already applied are undone and the error is thrown.
+   */
+  replay(ops: readonly Operation[]): void {
+    this.#assertIdle("replay operations");
+    const done: Operation[] = [];
+    const parents = new Set<NodeId | null>();
+    try {
+      for (const raw of ops) {
+        const o = this.#checked(raw);
+        this.#apply(o);
+        done.push(o);
+        if (o.op === "create") parents.add(o.node.parentId);
+        else if (o.op === "set" && (o.key === "parentId" || o.key === "index")) parents.add(this.#nodes.get(o.id)?.parentId ?? null);
+      }
+      // Checked at the end: a move sets parentId before index, so siblings may share an index in between.
+      const shared = this.#sharedIndex(parents);
+      if (shared !== undefined) throw new DocumentError(`Can't replay: two children of ${shared ?? "the file"} would share a position.`);
+    } catch (err) {
+      this.#rollback(done, 0);
+      throw err;
+    }
+    if (done.length) this.#emit("Replay", done, "replay");
+  }
+
+  /** A frozen copy of an outside operation, checked against the current document. */
+  #checked(raw: Operation): Operation {
+    const o = copyIn(raw) as Operation;
+    const fail = (why: string): never => {
+      throw new DocumentError(`Can't replay ${JSON.stringify(raw)?.slice(0, 200)}: ${why}`);
+    };
+    if (!o || typeof o !== "object") return fail("it is not an operation.");
     switch (o.op) {
       case "create": {
-        if (this.nodes.has(o.node.id)) throw new DocumentError(`Node ${o.node.id} already exists.`);
-        this.nodes.set(o.node.id, clone(o.node));
-        this.link(o.node.id, o.node.parentId);
-        if (o.node.type === "PAGE" && !this.pageOrder.includes(o.node.id)) this.insertPageOrder(o.node);
+        const problems = validateNode(o.node);
+        if (problems.length) return fail(problems.join("; ") + ".");
+        const n = o.node as Node;
+        if (this.#nodes.has(n.id)) fail(`node ${n.id} already exists.`);
+        if ((n.type === "PAGE") !== (n.parentId === null)) fail("only pages have no parent.");
+        if (n.parentId !== null && !this.#nodes.has(n.parentId)) fail(`parent ${n.parentId} does not exist.`);
+        return deepFreeze(o);
+      }
+      case "delete": {
+        const id = (o.node as { id?: unknown } | undefined)?.id;
+        if (typeof id !== "string" || !this.#nodes.has(id)) fail(`node ${String(id)} does not exist.`);
+        // History needs the node as it is now, not as the operation remembers it.
+        return deepFreeze({ op: "delete", node: this.#nodes.get(id as string) as ReadonlyNode });
+      }
+      case "set": {
+        const n = this.#nodes.get(o.id);
+        if (!n) return fail(`node ${o.id} does not exist.`);
+        if (o.key === ("id" as NodeKey) || o.key === ("type" as NodeKey)) fail(`"${o.key}" can't change.`);
+        const problem = validateNodeField(o.key, o.value);
+        if (problem) fail(problem + ".");
+        if (o.key === "parentId") {
+          const p = o.value as NodeId | null;
+          if ((p === null) !== (n.type === "PAGE")) fail("only pages have no parent.");
+          for (let cur = p; cur !== null; cur = this.#nodes.get(cur)?.parentId ?? null) {
+            if (cur === n.id) fail("a node can't be moved inside itself.");
+            if (!this.#nodes.has(cur)) fail(`parent ${cur} does not exist.`);
+          }
+        }
+        return deepFreeze({ op: "set", id: o.id, key: o.key, value: o.value, prev: n[o.key] });
+      }
+      default:
+        return fail("unknown operation.");
+    }
+  }
+
+  /** Apply one operation without recording history. Callers check it first. */
+  #apply(o: Operation): void {
+    switch (o.op) {
+      case "create": {
+        if (this.#nodes.has(o.node.id)) throw new DocumentError(`Node ${o.node.id} already exists.`);
+        const node = deepFreeze(o.node);
+        this.#nodes.set(node.id, node);
+        this.#link(node);
         return;
       }
       case "delete": {
-        const existing = this.nodes.get(o.node.id);
+        const existing = this.#nodes.get(o.node.id);
         if (!existing) throw new DocumentError(`Node ${o.node.id} does not exist.`);
-        this.unlink(existing.id, existing.parentId);
-        this.nodes.delete(o.node.id);
-        this.pageOrder = this.pageOrder.filter((id) => id !== o.node.id);
+        if (this.#kids.has(existing.id)) throw new DocumentError(`Node ${existing.id} still has children.`);
+        this.#unlink(existing);
+        this.#nodes.delete(existing.id);
         return;
       }
       case "set": {
-        const n = this.nodes.get(o.id);
+        const n = this.#nodes.get(o.id);
         if (!n) throw new DocumentError(`Node ${o.id} does not exist.`);
-        const rec = n as unknown as Record<string, unknown>;
-        if (o.key === "parentId") {
-          this.unlink(n.id, n.parentId);
-          this.link(n.id, o.value as NodeId | null);
-        }
-        if (o.value === undefined) delete rec[o.key];
-        else rec[o.key] = clone(o.value);
-        if (n.type === "PAGE" && o.key === "index") {
-          this.pageOrder = this.pageOrder.filter((id) => id !== n.id);
-          this.insertPageOrder(n);
-        }
+        // Build a new frozen node; the old object stays as it was.
+        const next = { ...n } as Record<string, unknown>;
+        if (o.value === undefined) delete next[o.key];
+        else next[o.key] = deepFreeze(o.value);
+        const node = Object.freeze(next) as unknown as ReadonlyNode;
+        const relink = o.key === "parentId" || o.key === "index";
+        if (relink) this.#unlink(n);
+        this.#nodes.set(n.id, node);
+        if (relink) this.#link(node);
         return;
       }
     }
   }
 
-  private link(id: NodeId, parentId: NodeId | null): void {
-    if (parentId === null) return;
-    let set = this.childIds.get(parentId);
-    if (!set) this.childIds.set(parentId, (set = new Set()));
-    set.add(id);
+  /** Apply `ops` in order; if one fails, undo the ones before it and rethrow. */
+  #applyAll(ops: readonly Operation[]): void {
+    let i = 0;
+    try {
+      for (; i < ops.length; i++) this.#apply(ops[i] as Operation);
+    } catch (err) {
+      for (let j = i - 1; j >= 0; j--) this.#apply(invert(ops[j] as Operation));
+      throw err;
+    }
   }
 
-  private unlink(id: NodeId, parentId: NodeId | null): void {
-    if (parentId === null) return;
-    const set = this.childIds.get(parentId);
-    set?.delete(id);
-    if (set && set.size === 0) this.childIds.delete(parentId);
+  /** Undo `ops` from the end back to `start`, and drop them. */
+  #rollback(ops: Operation[], start: number): void {
+    for (let i = ops.length - 1; i >= start; i--) this.#apply(invert(ops[i] as Operation));
+    ops.length = start;
   }
 
-  private insertPageOrder(page: Node): void {
-    const i = this.pageOrder.findIndex((id) => (this.nodes.get(id)?.index ?? "") > page.index);
-    if (i < 0) this.pageOrder.push(page.id);
-    else this.pageOrder.splice(i, 0, page.id);
+  /** Position of `node` in sorted `ids`, or where it would go (binary search). */
+  #find(ids: readonly NodeId[], node: ReadonlyNode): number {
+    let lo = 0;
+    let hi = ids.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (compareOrder(this.#nodes.get(ids[mid] as NodeId) as ReadonlyNode, node) < 0) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
   }
 
-  private emit(change: Change): void {
-    for (const l of this.listeners) l(change);
+  /** A parent among `parents` with two children sharing an index, or `undefined`. */
+  #sharedIndex(parents: Iterable<NodeId | null>): NodeId | null | undefined {
+    for (const p of parents) {
+      const ids = this.#kids.get(p) ?? NO_IDS;
+      // Sorted by index, so equal indexes sit next to each other.
+      for (let i = 1; i < ids.length; i++) {
+        if (this.#nodes.get(ids[i] as NodeId)?.index === this.#nodes.get(ids[i - 1] as NodeId)?.index) return p;
+      }
+    }
+    return undefined;
+  }
+
+  #link(node: ReadonlyNode): void {
+    let ids = this.#kids.get(node.parentId);
+    if (!ids) this.#kids.set(node.parentId, (ids = []));
+    const last = ids.length ? this.#nodes.get(ids[ids.length - 1] as NodeId) : undefined;
+    // Appending is the common case and costs O(1).
+    if (!last || compareOrder(last, node) < 0) ids.push(node.id);
+    else ids.splice(this.#find(ids, node), 0, node.id);
+  }
+
+  /** Remove `node` from its parent's list. `node` is the stored object, before any change. */
+  #unlink(node: ReadonlyNode): void {
+    const ids = this.#kids.get(node.parentId);
+    if (!ids) return;
+    let i = ids.length - 1;
+    if (ids[i] !== node.id) i = this.#find(ids, node);
+    if (ids[i] !== node.id) i = ids.indexOf(node.id);
+    if (i >= 0) ids.splice(i, 1);
+    if (ids.length === 0) this.#kids.delete(node.parentId);
+  }
+
+  #assertIdle(what: string): void {
+    if (this.#tx) throw new DocumentError(`Can't ${what} while a transaction is running.`);
+  }
+
+  #emit(label: string, ops: readonly Operation[], origin: Change["origin"]): void {
+    for (const listener of this.#listeners) {
+      // Each listener gets its own copy of the operations, made only if it reads them.
+      let copy: Operation[] | undefined;
+      listener({
+        label,
+        origin,
+        get ops() {
+          return (copy ??= structuredClone(ops) as Operation[]);
+        },
+      });
+    }
   }
 
   // ---- files ----
@@ -237,94 +422,137 @@ export class Document {
         created: this.created,
         app,
       },
-      nodes: [...this.nodes.values()].map(clone),
+      nodes: [...this.#nodes.values()].map((n) => clone(n) as Node),
     };
   }
 
-  /** Build a document from a file. History starts empty. */
+  /** Build a document from a file. Throws `DocumentError` if the file is invalid. History starts empty. */
   static fromFile(file: IlligmaFile, options: DocumentOptions = {}): Document {
+    const problems = validateFile(file);
+    if (problems.length) throw new DocumentError(`The file is not valid:\n- ${problems.join("\n- ")}`);
     const doc = new Document(file.manifest.name, options);
     (doc as { fileId: string }).fileId = file.manifest.fileId;
     (doc as { created: string }).created = file.manifest.created;
-    const order = new Map(file.manifest.pages.map((p, i) => [p.id, i]));
-    const pages = file.nodes.filter((n) => n.type === "PAGE").sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     for (const n of file.nodes) {
-      doc.nodes.set(n.id, clone(n));
-      doc.link(n.id, n.parentId);
+      const node = frozenCopy(n);
+      doc.#nodes.set(node.id, node);
+      let ids = doc.#kids.get(node.parentId);
+      if (!ids) doc.#kids.set(node.parentId, (ids = []));
+      ids.push(node.id);
     }
-    doc.pageOrder = pages.map((p) => p.id);
+    // Sort each sibling list once; pages come out in index order too.
+    const nodes = doc.#nodes;
+    const order = (a: NodeId, b: NodeId) => compareOrder(nodes.get(a) as ReadonlyNode, nodes.get(b) as ReadonlyNode);
+    for (const ids of doc.#kids.values()) ids.sort(order);
     return doc;
   }
 }
 
 /** The handle passed to `Document.transact`. Every method records an operation. */
 export class Transaction {
-  readonly ops: Operation[] = [];
+  readonly #doc: Document;
+  #ops: Operation[] = [];
 
-  constructor(private readonly doc: Document) {}
+  static {
+    txOps = (tx) => tx.#ops;
+  }
 
-  private record(o: Operation): void {
-    this.doc.apply(o);
-    this.ops.push(o);
+  constructor(doc: Document) {
+    this.#doc = doc;
+  }
+
+  /** The operations recorded so far. */
+  get ops(): readonly Operation[] {
+    return this.#ops;
+  }
+
+  #record(o: Operation): void {
+    if (currentTx(this.#doc) !== this) throw new DocumentError("This transaction has already ended.");
+    const op = deepFreeze(o);
+    applyOp(this.#doc, op);
+    this.#ops.push(op);
   }
 
   /** Order key for a new child of `parentId` at `position`. */
   indexAt(parentId: NodeId | null, position: Position = "last", ignore?: NodeId): string {
-    const siblings = (parentId === null ? this.doc.pages() : this.doc.children(parentId)).filter((n) => n.id !== ignore);
-    if (position === "first") return keyBetween(null, siblings[0]?.index ?? null);
-    if (position === "last") return keyBetween(siblings.at(-1)?.index ?? null, null);
-    const ref = "before" in position ? position.before : position.after;
-    const i = siblings.findIndex((n) => n.id === ref);
-    if (i < 0) throw new DocumentError(`Node ${ref} is not a sibling here.`);
-    return "before" in position
-      ? keyBetween(siblings[i - 1]?.index ?? null, (siblings[i] as Node).index)
-      : keyBetween((siblings[i] as Node).index, siblings[i + 1]?.index ?? null);
+    const ids = siblingIds(this.#doc, parentId);
+    const key = (i: number) => (i >= 0 && i < ids.length ? (this.#doc.get(ids[i] as NodeId) as ReadonlyNode).index : null);
+    if (position === "first") return keyBetween(null, key(ids[0] === ignore ? 1 : 0));
+    if (position === "last") return keyBetween(key(ids.length - (ids.at(-1) === ignore ? 2 : 1)), null);
+    const refId = "before" in position ? position.before : position.after;
+    const ref = refId === ignore ? undefined : this.#doc.get(refId);
+    if (!ref || ref.parentId !== parentId) throw new DocumentError(`Node ${refId} is not a sibling here.`);
+    const i = siblingPos(this.#doc, ref);
+    if ("before" in position) return keyBetween(key(ids[i - 1] === ignore ? i - 2 : i - 1), ref.index);
+    return keyBetween(ref.index, key(ids[i + 1] === ignore ? i + 2 : i + 1));
   }
 
   addPage(name = "Page", position: Position = "last"): NodeId {
     const id = newId();
     const node = defaultNode("PAGE", id, null, this.indexAt(null, position));
     node.name = name;
-    this.record({ op: "create", node });
+    this.#record({ op: "create", node: this.#valid(node) });
     return id;
   }
 
-  /** Create a node under `parentId`. `fields` override the defaults. */
-  create(type: NodeType, parentId: NodeId, fields: Partial<Omit<Node, "id" | "type" | "parentId" | "index">> = {}, position: Position = "last"): NodeId {
+  /**
+   * Create a node under `parentId`. `fields` override the defaults; id,
+   * type, parentId and index in `fields` are ignored, and unknown keys are refused.
+   */
+  create(type: NodeType, parentId: NodeId, fields: CreateFields = {}, position: Position = "last"): NodeId {
     if (type === "PAGE") throw new DocumentError("Use addPage to add a page.");
-    if (!this.doc.has(parentId)) throw new DocumentError(`Parent ${parentId} does not exist.`);
+    if (!NODE_TYPES.includes(type)) throw new DocumentError(`Unknown node type "${String(type)}".`);
+    if (!this.#doc.has(parentId)) throw new DocumentError(`Parent ${parentId} does not exist.`);
+    if (!fields || typeof fields !== "object") throw new DocumentError("Node fields must be an object.");
+    const unknown = Object.keys(fields).filter((k) => !KNOWN_FIELDS.has(k));
+    if (unknown.length) throw new DocumentError(`Unknown node field${unknown.length > 1 ? "s" : ""}: ${unknown.join(", ")}.`);
+    const own = copyIn(fields) as Record<string, unknown>;
+    for (const k of FIXED_FIELDS) delete own[k];
     const id = newId();
-    const node: Node = { ...defaultNode(type, id, parentId, this.indexAt(parentId, position)), ...clone(fields) };
-    this.record({ op: "create", node });
+    const node = { ...defaultNode(type, id, parentId, "a0"), ...own, id, type, parentId, index: this.indexAt(parentId, position) } as Node;
+    this.#record({ op: "create", node: this.#valid(node) });
     return id;
+  }
+
+  #valid(node: Node): Node {
+    const problems = validateNode(node);
+    if (problems.length) throw new DocumentError(`Can't create the node: ${problems.join("; ")}.`);
+    return node;
   }
 
   /** Change one field. Does nothing if the value is unchanged. */
-  set<K extends NodeKey>(id: NodeId, key: K, value: Node[K]): void {
-    const n = this.doc.get(id);
+  set<K extends NodeKey>(id: NodeId, key: K, value: DeepReadonly<Node[K]>): void {
+    const n = this.#doc.get(id);
     if (!n) throw new DocumentError(`Node ${id} does not exist.`);
     if (key === "parentId" || key === "index") throw new DocumentError("Use move to change a node's parent or order.");
-    const prev = (n as Node)[key];
-    if (sameValue(prev, value)) return;
-    this.record({ op: "set", id, key, value: clone(value), prev: clone(prev) });
+    if (FIXED_FIELDS.has(key)) throw new DocumentError(`A node's "${key}" can't change.`);
+    const v = copyIn(value);
+    const problem = validateNodeField(key, v);
+    if (problem) throw new DocumentError(`Can't set ${key} on node ${id}: ${problem}.`);
+    const prev = n[key];
+    if (sameValue(prev, v)) return;
+    this.#record({ op: "set", id, key, value: v, prev });
   }
 
   /** Move `id` under `parentId` at `position`. */
   move(id: NodeId, parentId: NodeId, position: Position = "last"): void {
-    const n = this.doc.get(id);
+    const n = this.#doc.get(id);
     if (!n) throw new DocumentError(`Node ${id} does not exist.`);
     if (n.type === "PAGE") throw new DocumentError("Pages can't be moved into other nodes.");
-    if (this.doc.subtree(id).some((d) => d.id === parentId)) throw new DocumentError("A node can't be moved inside itself.");
+    if (!this.#doc.has(parentId)) throw new DocumentError(`Parent ${parentId} does not exist.`);
+    for (let cur: NodeId | null = parentId; cur !== null; cur = this.#doc.get(cur)?.parentId ?? null) {
+      if (cur === id) throw new DocumentError("A node can't be moved inside itself.");
+    }
     const index = this.indexAt(parentId, position, id);
-    if (n.parentId !== parentId) this.record({ op: "set", id, key: "parentId", value: parentId, prev: n.parentId });
-    if (n.index !== index) this.record({ op: "set", id, key: "index", value: index, prev: n.index });
+    if (n.parentId !== parentId) this.#record({ op: "set", id, key: "parentId", value: parentId, prev: n.parentId });
+    if (n.index !== index) this.#record({ op: "set", id, key: "index", value: index, prev: n.index });
   }
 
   /** Delete `id` and everything under it. */
   delete(id: NodeId): void {
-    const all = this.doc.subtree(id);
+    const all = this.#doc.subtree(id);
     if (!all.length) throw new DocumentError(`Node ${id} does not exist.`);
-    if (all[0]?.type === "PAGE" && this.doc.pages().length === 1) throw new DocumentError("A file must keep at least one page.");
-    for (const n of [...all].reverse()) this.record({ op: "delete", node: clone(n as Node) });
+    if (all[0]?.type === "PAGE" && this.#doc.pages().length === 1) throw new DocumentError("A file must keep at least one page.");
+    for (let i = all.length - 1; i >= 0; i--) this.#record({ op: "delete", node: all[i] as ReadonlyNode });
   }
 }
