@@ -25,6 +25,11 @@ After v1.0: a Tauri desktop app in v1.x, then optional multiplayer (CRDT over LA
 - Phase 0 (foundations): renderer spike (CanvasKit, 10,000 layers at 60 fps), offline web app, design tokens in code. See [docs/dev/phase-0.md](docs/dev/phase-0.md).
 - Run the real usability sessions (Phase 5) in parallel; fix what they find.
 
+### Fixed (2026-10-18, prototype import QC round 5)
+- `import:prototype --force` only replaces an Illigma file: a package folder whose manifest.json says `"format": "illigma"`, or a zip holding one. It never replaces another folder with a manifest.json (web projects, browser extensions) or any other file, never the folder it runs in or a parent of it, never the input or a folder holding it, and never writes through a symbolic link. The new file is written under a temporary name and renamed into place, so a failed import leaves the old one as it was.
+- The command explains a folder as input, unreadable input, a file in the output's path and an unwritable output folder in plain language, naming the right path. Its logic moved to `src/import-cli.ts` with tests.
+- Importer: input with a UTF-8 byte order mark is read; breaking a loop of frames only moves a frame of the loop (frames hanging below it keep their parent) and counts each loop once; missing text settings no longer count as broken values; large groups and older documents with many frames import in near-linear time.
+
 ### Added (2026-10-18, prototype import: auto layout and constraints)
 - `importPrototypeJson` now carries the prototype's auto layout and constraints into the format v0 layout fields: direction, gap (including negative), gap between wrapped lines, padding (with the prototype's 16 px defaults), nine-point alignment, Packed/Between/Around/Evenly spacing, wrap, Hug/Fixed/Fill sizing on frames and layers (text Hug becomes auto height), min and max sizes, "Ignore auto layout", child order, and Left/Right/Left and right/Center/Scale constraints. A `@illigma/layout` relayout of an imported document moves nothing (a test runs it on a document laid out by the prototype's own code). Grid auto layout becomes a plain frame with a warning; grid spans and unclipped frames are still warnings. Known difference: a Fill layer across a hugging frame no longer holds the frame open, as in Figma.
 
