@@ -32,7 +32,7 @@ import {
   watchErrors,
 } from "./lib.mjs";
 
-await runE2E("save-errors", {}, async ({ browser, url, log, check, knownBug, outDir, errors }) => {
+await runE2E("save-errors", {}, async ({ browser, url, log, check, outDir, errors }) => {
   const context = await newContext(browser);
   const page = await context.newPage();
   watchErrors(page, errors);
@@ -147,10 +147,10 @@ await runE2E("save-errors", {}, async ({ browser, url, log, check, knownBug, out
   await layerRow(page, "Hero").click();
   check((await field(page, "Y position")) === 333, "the edit made before leaving should come back through recovery");
 
-  log("a save still running from the closed editor must not break Keep");
+  log("a save still running from the closed editor finishes before the file opens again");
   // Back to files flushes (that attempt fails); after "Leave anyway" the editor's unmount
-  // starts one more save that nobody awaits. Hold that save mid-write, reopen the file and
-  // press Keep: Keep's save must wait for it (or not collide with it), not fail.
+  // starts one more save. Hold that save mid-write and reopen the file: opening must wait
+  // for it (files.ts whileClosing), so the two sessions never write the file at once.
   await failWrites(true);
   await setField(page, "Y position", 444);
   await page.clock.runFor(1500);
@@ -172,19 +172,29 @@ await runE2E("save-errors", {}, async ({ browser, url, log, check, knownBug, out
   await poll(() => page.evaluate(() => (globalThis.__e2eHeld ?? 0) > 0), "the editor's unmount should start another save");
   await page.evaluate(() => (globalThis.__e2eFail = null)); // the disk is back; the held write stays open
   await page.locator(".file-card").first().click();
-  await canvasReady(page);
-  await recovered.waitFor({ timeout: T(5_000) });
-  await recovered.getByRole("button", { name: "Keep" }).click();
-  const keepError = page.locator(".banner", { hasText: "Couldn't keep the recovered changes" });
-  const kept = await Promise.race([
-    recovered.waitFor({ state: "detached", timeout: T(5_000) }).then(() => true),
-    keepError.waitFor({ timeout: T(5_000) }).then(() => false),
-  ]).catch(() => false);
-  const why = kept ? "" : ` (${((await keepError.innerText().catch(() => "")) || "Keep never finished").replace(/\s+/g, " ").trim()})`;
-  knownBug(
-    kept,
-    `Keep fails while the closed editor's last save is still writing the same file: Editor unmount calls saver.flushNow() without awaiting it after "Back to files" already flushed, and the reopened session's save runs on a new backend, so nothing serializes the two${why}. Repro: save fails, Back to files, Leave anyway, reopen, Keep while the unmount save is still in flight (slow disk).`,
-  );
+  await page.waitForTimeout(T(500));
+  check((await page.locator("canvas.canvas").count()) === 0, "the file should not open while its closed editor is still saving");
   await page.evaluate(() => globalThis.__e2eRelease?.());
+  await canvasReady(page);
+  // The held save holds the 444 edit, so there may be nothing left to recover; if there is, Keep must work.
+  if (await recovered.isVisible().catch(() => false)) {
+    await recovered.getByRole("button", { name: "Keep" }).click();
+    const keepError = page.locator(".banner", { hasText: "Couldn't keep the recovered changes" });
+    const kept = await Promise.race([
+      recovered.waitFor({ state: "detached", timeout: T(5_000) }).then(() => true),
+      keepError.waitFor({ timeout: T(5_000) }).then(() => false),
+    ]).catch(() => false);
+    const why = kept ? "" : `: ${((await keepError.innerText().catch(() => "")) || "Keep never finished").replace(/\s+/g, " ").trim()}`;
+    check(kept, `Keep should work after the closed editor's save finished${why}`);
+    await canvasReady(page);
+  }
+  check((await errorBanner.count()) === 0, "no save error should show after reopening");
+  await layerRow(page, "Hero").click();
+  check((await field(page, "Y position")) === 444, "the edit saved by the closed editor should be in the reopened file");
+  await waitSaved(page, T(5_000));
+  await page.reload();
+  await canvasReady(page);
+  await layerRow(page, "Hero").click();
+  check((await field(page, "Y position")) === 444, "the edit should still be there after a reload");
   await context.close();
 });

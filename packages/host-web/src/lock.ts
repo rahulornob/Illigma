@@ -8,6 +8,11 @@
 export interface FileLock {
   /** Let another tab edit the file. Safe to call more than once. */
   release(): void;
+  /**
+   * Settles once the lock is free again after `release()`, so this tab can
+   * take it again (reopening the file) instead of opening it read-only.
+   */
+  readonly released?: Promise<void>;
 }
 
 interface LockManagerLike {
@@ -20,19 +25,22 @@ interface LockManagerLike {
  */
 export function acquireFileLock(fileId: string): Promise<FileLock | null> {
   const locks = (globalThis as { navigator?: { locks?: LockManagerLike } }).navigator?.locks;
-  if (typeof locks?.request !== "function") return Promise.resolve({ release() {} });
+  if (typeof locks?.request !== "function") return Promise.resolve({ release() {}, released: Promise.resolve() });
   return new Promise((resolve, reject) => {
     let release!: () => void;
     const held = new Promise<void>((r) => (release = r));
-    locks
-      .request(`illigma:${fileId}`, { ifAvailable: true }, (lock) => {
-        if (!lock) {
-          resolve(null);
-          return;
-        }
-        resolve({ release });
-        return held; // the lock is held until this settles
-      })
-      .catch(reject);
+    // The request settles only once the lock was given back. The callback may run before `request` is assigned.
+    let freed!: () => void;
+    const released = new Promise<void>((r) => (freed = r));
+    const request = locks.request(`illigma:${fileId}`, { ifAvailable: true }, (lock) => {
+      if (!lock) {
+        resolve(null);
+        return;
+      }
+      resolve({ release, released });
+      return held; // the lock is held until this settles
+    });
+    request.then(freed, freed);
+    request.catch(reject);
   });
 }

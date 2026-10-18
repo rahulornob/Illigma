@@ -4,7 +4,7 @@ import { Document } from "@illigma/core";
 import { readPackage, writePackage } from "@illigma/format";
 import { Autosaver, opfsBackend, RecoveryJournal } from "@illigma/host-web";
 import { FakeFileSystem, installFakeOpfs } from "@illigma/host-web/testing";
-import { closeSession, discardRecovered, keepRecovered, openStoredFile, replayRecovered } from "./files";
+import { closeSession, discardRecovered, keepRecovered, openStoredFile, replayRecovered, whileClosing } from "./files";
 
 let fs: FakeFileSystem;
 let restore: () => void;
@@ -177,5 +177,26 @@ describe("recovery in the web app", () => {
     const third = await openStoredFile(doc.fileId, "T");
     expect(third.lock).not.toBeNull();
     expect(third.recovered).toHaveLength(1);
+  });
+});
+
+describe("closing and reopening a file", () => {
+  it("reopening waits for the closed editor's last save", async () => {
+    const { doc } = base();
+    await opfsBackend(doc.fileId, "T").write(writePackage(doc.toFile()));
+    const s = await openStoredFile(doc.fileId, "T");
+    let finish!: () => void;
+    const lastSave = new Promise<void>((r) => (finish = r));
+    const closed = closeSession(s);
+    whileClosing(doc.fileId, lastSave);
+    let opened = false;
+    const next = openStoredFile(doc.fileId, "T").then((x) => ((opened = true), x));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(opened).toBe(false);
+    finish();
+    await closed;
+    const s2 = await next;
+    expect(s2.lock).not.toBeNull(); // this tab edits it again, not read-only
+    await closeSession(s2);
   });
 });

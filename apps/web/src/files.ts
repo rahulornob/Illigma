@@ -103,6 +103,7 @@ export async function createFile(): Promise<Session> {
 
 /** Open a file from this browser's storage. Read-only if another tab is editing it. */
 export async function openStoredFile(fileId: string, name: string): Promise<Session> {
+  await settled(fileId); // the file's last editor may still be saving
   const lock = await acquireFileLock(fileId);
   return holding(lock, async () => {
     const backend = opfsBackend(fileId, name);
@@ -138,6 +139,7 @@ export async function openFolder(locations: LocationStore = (locationStore ??= i
   let doc = Document.fromFile(readPackage(tree));
   const copy = await isCopyOfAnother(doc.fileId, backend.dir, locations).catch(() => false);
   if (copy) doc = Document.fromFile(withNewFileId(doc.toFile()));
+  await settled(doc.fileId); // the file's last editor may still be saving
   const lock = await acquireFileLock(doc.fileId);
   return holding(lock, async () => {
     if (copy && lock) {
@@ -149,9 +151,60 @@ export async function openFolder(locations: LocationStore = (locationStore ??= i
   });
 }
 
-/** Let another tab edit the file. */
-export function closeSession(session: Session): void {
-  session.lock?.release();
+/** Work a closing editor still has running, per file id: its last save and journal flush. */
+const closingWork = new Map<string, Set<Promise<unknown>>>();
+/** Files being closed, per file id: settles once their last writes are done and the lock is free. */
+const closing = new Map<string, Promise<void>>();
+
+/**
+ * Note work the editor of `fileId` still runs while it closes (its last
+ * save, its journal flush). Closing the file waits for it before the lock is
+ * given up, and opening the file again waits for that, so the closed
+ * editor's last save never runs next to the reopened file's first one.
+ */
+export function whileClosing(fileId: string, work: Promise<unknown>): void {
+  let set = closingWork.get(fileId);
+  if (!set) closingWork.set(fileId, (set = new Set()));
+  const done = work.then(
+    () => {},
+    () => {},
+  );
+  set.add(done);
+  void done.then(() => {
+    set.delete(done);
+    if (!set.size && closingWork.get(fileId) === set) closingWork.delete(fileId);
+  });
+}
+
+/** Wait for every write a closing editor of `fileId` still runs, including work noted while waiting. */
+async function closingDone(fileId: string): Promise<void> {
+  for (let set = closingWork.get(fileId); set?.size; set = closingWork.get(fileId)) await Promise.all(set);
+}
+
+/** Wait until `fileId` is fully closed (see whileClosing). Resolves at once if it isn't closing. */
+function settled(fileId: string): Promise<void> {
+  return closing.get(fileId) ?? Promise.resolve();
+}
+
+/**
+ * Let another tab edit the file, once the closing editor's last writes are
+ * done. Resolves when the lock is free.
+ */
+export function closeSession(session: Session): Promise<void> {
+  const fileId = session.doc.fileId;
+  const done = (async () => {
+    await settled(fileId).catch(() => {});
+    // The editor unmounts right after this call; let its cleanup note its last save first.
+    await new Promise((r) => setTimeout(r, 0));
+    await closingDone(fileId);
+    session.lock?.release();
+    await session.lock?.released;
+  })();
+  closing.set(fileId, done);
+  void done.then(() => {
+    if (closing.get(fileId) === done) closing.delete(fileId);
+  });
+  return done;
 }
 
 /** Sibling index keys under `parentId` in `doc`, leaving out `except`. */

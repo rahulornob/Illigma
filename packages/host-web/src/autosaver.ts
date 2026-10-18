@@ -128,7 +128,11 @@ export class Autosaver {
     await this.save();
   }
 
-  /** Stop watching the document. Unsaved changes are not written; call flushNow() first. */
+  /**
+   * Stop watching the document. Unsaved changes are not written; call
+   * flushNow() first. A save already started still finishes, unless the file
+   * was opened again and saved before its turn came (WriteOptions.retired).
+   */
   dispose(): void {
     this.disposed = true;
     this.unsubscribe();
@@ -173,9 +177,12 @@ export class Autosaver {
       const tree = this.serialize(this.doc);
       // Marks which journal lines this save holds; if marking fails they are only offered again later, never lost.
       await this.journal?.markSave(saveId, mark).catch(() => {});
-      await this.backend.write(tree, overwrite ? { saveId, overwrite } : { saveId });
+      // A save still queued when this autosaver is disposed (its editor closed) is dropped if the file was opened
+      // again and saved meanwhile, so it never replaces newer content; its edits stay in the journal.
+      const retired = () => this.disposed;
+      await this.backend.write(tree, overwrite ? { saveId, overwrite, retired } : { saveId, retired });
     } catch (err) {
-      if (this.disposed) return;
+      if (this.disposed) return; // e.g. SupersededError: the journal still holds these edits
       if (isChangedOnDisk(err)) {
         this.held = false; // let holdForDisk report it
         this.holdForDisk();
