@@ -20,6 +20,20 @@ export function layoutTransact<T>(doc: Document, label: string, fn: (tx: Transac
   return doc.transact(label, fn);
 }
 
+/** Where a panel reports an edit the document refused (rolled back: nothing changed). */
+export type OnEditError = (error: unknown) => void;
+
+/** Run a panel command; an edit the document refuses goes to `onError` instead of being thrown (without one, it throws). */
+export function guard<T>(onError: OnEditError | undefined, fn: () => T): T | undefined {
+  try {
+    return fn();
+  } catch (e) {
+    if (!onError) throw e;
+    onError(e);
+    return undefined;
+  }
+}
+
 /** Apply `patch` (or a patch per node) to each of `ids`, as one undo step. */
 export function setLayoutProps(
   doc: Document,
