@@ -14,7 +14,9 @@ const NO_CHANGES = () => () => {};
 
 /** A read-only view of an export source, as the renderer reads documents. */
 export function renderSource(source: ExportSource): RenderSource {
-  return { get: (id) => source.get(id), children: (id) => source.children(id), subscribe: NO_CHANGES };
+  const view: RenderSource = { get: (id) => source.get(id), children: (id) => source.children(id), subscribe: NO_CHANGES };
+  if (source.image) view.image = (hash) => source.image?.(hash);
+  return view;
 }
 
 /**
@@ -137,12 +139,13 @@ function toCanvasMatrix(m: Matrix): number[] {
 }
 
 /**
- * RGBA pixels (unpremultiplied) of one leaf layer in its own space
- * (unrotated): the `area` from its top-left, fitted to `width` × `height`
- * pixels, for the PDF writer's text fallback. The layer's opacity is in the
+ * RGBA pixels (unpremultiplied) of one layer and its children in its own
+ * space (unrotated): the `area` (from its top-left unless `x`, `y` say
+ * otherwise), fitted to `width` × `height` pixels, for the PDF writer's text
+ * and effects fallback. The layer's opacity is in the
  * pixels. `null` if the surface can't be made.
  */
-export function rasterizeLeaf(ctx: RasterContext, n: ReadonlyNode, width: number, height: number, area: { width: number; height: number }): Uint8Array | null {
+export function rasterizeLeaf(ctx: RasterContext, n: ReadonlyNode, width: number, height: number, area: { x?: number; y?: number; width: number; height: number }): Uint8Array | null {
   if (!(area.width > 0) || !(area.height > 0)) return null;
   const ck = ctx.ck;
   const surface = ck.MakeSurface(width, height);
@@ -151,6 +154,7 @@ export function rasterizeLeaf(ctx: RasterContext, n: ReadonlyNode, width: number
     const canvas = surface.getCanvas();
     canvas.clear(ck.TRANSPARENT);
     canvas.scale(width / area.width, height / area.height);
+    canvas.translate(-(area.x ?? 0), -(area.y ?? 0));
     // drawSubtree applies the layer's x, y and rotation; undo them.
     canvas.concat(toCanvasMatrix(invert(localMatrix(n))));
     ctx.pageRenderer.drawSubtree(canvas, n.id);

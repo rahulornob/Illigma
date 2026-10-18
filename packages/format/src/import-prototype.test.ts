@@ -318,6 +318,53 @@ describe("importPrototypeJson: every prototype feature", () => {
     expect(byName(file, "hidden")).toMatchObject({ visible: false, opacity: 1 });
   });
 
+  it("brings effects over, with shadow offsets turned into the layer's own space", () => {
+    expect(byName(file, "Desktop").effects).toEqual([
+      { type: "DROP_SHADOW", color: { r: 0, g: 0, b: 0, a: 0.2 }, offset: { x: 0, y: 4 }, radius: 8, spread: 0, visible: true },
+    ]);
+    expect(byName(file, "loose").effects).toEqual([
+      { type: "LAYER_BLUR", radius: 4, visible: true },
+      { type: "LAYER_BLUR", radius: 2, visible: true },
+    ]);
+    expect(byName(file, "bottom").effects).toBeUndefined();
+    const rotated = importPrototypeJson(
+      {
+        title: "Rotated",
+        version: 1,
+        pages: [
+          {
+            id: "p",
+            name: "P",
+            artboards: [],
+            objects: [
+              {
+                id: "r", type: "rect", name: "r", x: 0, y: 0, w: 100, h: 50, opacity: 1, fill: "#ff0000", visible: true, locked: false,
+                frameId: null,
+                rotation: 90,
+                effects: [
+                  { type: "drop-shadow", x: 0, y: 10, blur: 2, color: "#ff0000", opacity: 0.5, visible: false },
+                  { type: "inner-shadow" },
+                  { type: "background-blur", blur: 30 },
+                  { type: "glow" },
+                  { type: "drop-shadow", color: "teal-ish" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      stable(),
+    );
+    // 10 down on the page is 10 along +x for a layer turned 90° clockwise (its x axis points down).
+    expect(byName(rotated.file, "r").effects).toEqual([
+      { type: "DROP_SHADOW", color: { r: 1, g: 0, b: 0, a: 0.5 }, offset: { x: 10, y: 0 }, radius: 2, spread: 0, visible: false },
+      { type: "INNER_SHADOW", color: { r: 0, g: 0, b: 0, a: 0.25 }, offset: { x: 4, y: 0 }, radius: 4, spread: 0, visible: true },
+      { type: "BACKGROUND_BLUR", radius: 30, visible: true },
+    ]);
+    expect(rotated.warnings).toContain("Left out 2 effects (1 effect, 1 drop shadow) on 1 layer that couldn't be read.");
+    expect(validateFile(rotated.file)).toEqual([]);
+  });
+
   it("warns once per kind, with counts", () => {
     expect(warnings).toEqual([
       "Skipped 1 page that couldn't be read.",
@@ -326,8 +373,7 @@ describe("importPrototypeJson: every prototype feature", () => {
       "1 layer pointed to a frame that doesn't exist, so it was placed on the page.",
       "Broke 1 loop of frames nested inside each other by moving one frame onto the page.",
       "Reset 1 broken value (such as a non-number opacity) to its default.",
-      "Left out 3 effects (1 drop shadow, 2 layer blurs) on 2 layers: format v0 has no effects yet.",
-      "Left out 1 gradient: format v0 holds solid colours only.",
+      "Left out 1 gradient: the prototype never saved gradient fills, so CSS gradients aren't read.",
       "Left out letter spacing on 1 text layer: format v0 has no letter spacing yet.",
       "1 text layer was stretched unevenly; the font size now matches the height, so it may look narrower or wider.",
       "1 frame didn't clip its content; in format v0 frames always clip.",
