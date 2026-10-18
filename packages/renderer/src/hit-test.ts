@@ -55,8 +55,8 @@ function hitNode(doc: NodeSource, n: ReadonlyNode, px: number, py: number, toler
   if (!n.visible || n.locked) return null;
   const [lx, ly] = toLocal(n, px, py);
   const inside = insideShape(n, lx, ly, tolerance);
-  // A clipping frame hides everything outside its shape, children included.
-  if (CLIPPING.has(n.type) && !inside) return null;
+  // A clipping frame hides everything outside its shape, children included (its own stroke may reach further).
+  if (CLIPPING.has(n.type) && !(boxStrokeReach(n) > 0 ? insideBox(n, lx, ly, 0) : inside)) return inside ? n.id : null;
   const kids = doc.children(n.id);
   for (let i = kids.length - 1; i >= 0; i--) {
     const hit = hitNode(doc, kids[i] as ReadonlyNode, lx, ly, tolerance);
@@ -79,29 +79,51 @@ export function toLocal(n: ReadonlyNode, px: number, py: number): [number, numbe
 /**
  * Whether the local point is on `n`'s shape: inside a rectangle, rounded
  * rectangle, ellipse, polygon or star, or for lines and paths on their fill
- * or within half the stroke weight plus `tolerance` of their stroke.
+ * or within half the stroke weight plus `tolerance` of their stroke. A
+ * visible centred or outside stroke on a rectangle, ellipse or frame widens
+ * it by how far the stroke reaches past the box.
  */
 export function insideShape(n: ReadonlyNode, x: number, y: number, tolerance = DEFAULT_HIT_TOLERANCE): boolean {
   const geo = shapeGeometry(n);
   if (geo) return onGeometry(n, geo, x, y, tolerance);
+  return insideBox(n, x, y, boxStrokeReach(n));
+}
+
+/** How far a box shape's visible stroke reaches past its box: half the weight centred, the whole weight outside, 0 inside. */
+function boxStrokeReach(n: ReadonlyNode): number {
+  if (n.type === "TEXT" || NO_AREA.has(n.type)) return 0;
+  if (!(n.strokeWeight > 0) || !n.strokes.some((p) => p.visible)) return 0;
+  const align = n.strokeAlign ?? "CENTER";
+  return align === "CENTER" ? n.strokeWeight / 2 : align === "OUTSIDE" ? n.strokeWeight : 0;
+}
+
+/** Inside the (rounded) box or ellipse of `n`, grown by `grow` on every side. */
+function insideBox(n: ReadonlyNode, x: number, y: number, grow: number): boolean {
   const w = n.width;
   const h = n.height;
-  if (x < 0 || y < 0 || x > w || y > h) return false;
+  if (x < -grow || y < -grow || x > w + grow || y > h + grow) return false;
   if (n.type === "ELLIPSE") {
-    if (w <= 0 || h <= 0) return false;
-    const ex = (x - w / 2) / (w / 2);
-    const ey = (y - h / 2) / (h / 2);
+    if (w <= 0 || h <= 0) return grow > 0 && insideBoxCorners(x, y, w, h, 0, grow);
+    // The stroke's outer edge, close enough: the ellipse with each semi-axis grown.
+    const ex = (x - w / 2) / (w / 2 + grow);
+    const ey = (y - h / 2) / (h / 2 + grow);
     return ex * ex + ey * ey <= 1;
   }
   // Text has no corners; its radius field is ignored when drawing too.
   const r = n.type === "TEXT" ? 0 : Math.min(n.cornerRadius, w / 2, h / 2);
+  // A square corner's stroke stays square (miter); a rounded one grows round.
   if (r <= 0) return true;
-  // Only the four corner squares can miss: test against the corner's circle.
+  return insideBoxCorners(x, y, w, h, r, grow);
+}
+
+/** Inside a box with corner radius `r`, grown by `grow`: only the corner squares can miss. */
+function insideBoxCorners(x: number, y: number, w: number, h: number, r: number, grow: number): boolean {
   const cx = x < r ? r : x > w - r ? w - r : x;
   const cy = y < r ? r : y > h - r ? h - r : y;
   const dx = x - cx;
   const dy = y - cy;
-  return dx * dx + dy * dy <= r * r;
+  const rr = r + grow;
+  return dx * dx + dy * dy <= rr * rr;
 }
 
 /**
@@ -118,15 +140,23 @@ function onGeometry(n: ReadonlyNode, geo: ShapeGeometry, x: number, y: number, t
     for (const f of geo.fills) if (insideFill(flatten(f.commands), x, y, f.evenOdd)) return true;
   }
   if (testStroke && geo.stroke.length) {
-    // Strokes aligned inside or outside a closed shape (strokeAlign) reach the full weight on that side.
     const closed = n.type === "STAR" || n.type === "POLYGON" || (n.type === "VECTOR" && (n.vectorNetwork?.regions.length ?? 0) > 0);
-    const align = closed ? (n.strokeAlign ?? "CENTER") : "CENTER";
+    const align = closed && hasStroke ? (n.strokeAlign ?? "CENTER") : "CENTER";
     const weight = Math.max(0, n.strokeWeight);
-    const half = align === "CENTER" ? weight / 2 : align === "OUTSIDE" ? weight : 0;
-    const reach = half + tolerance;
+    const flat = flatten(geo.stroke);
+    // The outline itself is always within reach of `tolerance`, so thin strokes can be picked from either side.
+    if (nearStroke(flat, x, y, tolerance)) return true;
     // A drawn stroke also reaches out with square caps and miter joins (lines have no joins).
-    const shape = hasStroke && half > 0 ? { half, cap: n.strokeCap, join: n.type === "LINE" ? ("ROUND" as const) : n.strokeJoin } : undefined;
-    if (nearStroke(flatten(geo.stroke), x, y, reach, shape)) return true;
+    const join = n.type === "LINE" ? ("ROUND" as const) : n.strokeJoin;
+    if (align === "CENTER") {
+      const half = weight / 2;
+      return nearStroke(flat, x, y, half + tolerance, hasStroke && half > 0 ? { half, cap: n.strokeCap, join } : undefined);
+    }
+    // Inside and outside strokes are drawn at double width and clipped to the outline (as the renderer does):
+    // they reach the whole weight, on one side only.
+    const insideOutline = geo.fills.some((f) => insideFill(flatten(f.commands), x, y, f.evenOdd));
+    if (align === "INSIDE") return insideOutline && nearStroke(flat, x, y, weight + tolerance);
+    return !insideOutline && nearStroke(flat, x, y, weight + tolerance, weight > 0 ? { half: weight, cap: n.strokeCap, join } : undefined);
   }
   return false;
 }

@@ -27,6 +27,20 @@ describe("Document images", () => {
     expect(doc.toFile().images?.size).toBe(1);
   });
 
+  it("tells image listeners about each new image once, and keeps the first copy of the bytes (QC round 7)", () => {
+    const doc = new Document("Images");
+    const seen: string[] = [];
+    const stop = doc.subscribeImages((hash, bytes) => seen.push(`${hash}:${bytes.length}`));
+    const hash = doc.addImage(PNG);
+    doc.addImage(PNG.slice());
+    expect(seen).toEqual([`${hash}:${PNG.length}`]);
+    expect(doc.image(hash)).toBe(PNG);
+    expect(doc.imageHashes()).toEqual([hash]);
+    stop();
+    doc.addImage(Uint8Array.from([...PNG, 0]));
+    expect(seen).toHaveLength(1);
+  });
+
   it("refuses files that aren't images", () => {
     const doc = new Document("Images");
     expect(() => doc.addImage(new TextEncoder().encode("<svg/>"))).toThrow(FormatError);

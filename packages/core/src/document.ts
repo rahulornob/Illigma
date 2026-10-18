@@ -111,6 +111,7 @@ export class Document {
   #live: LiveEdit | null = null;
   /** Image files by hash (content-addressed, never changed). */
   #images = new Map<string, Uint8Array>();
+  #imageListeners = new Set<(hash: string, bytes: Uint8Array) => void>();
 
   static {
     applyOp = (doc, o) => doc.#apply(o);
@@ -165,8 +166,26 @@ export class Document {
    */
   addImage(bytes: Uint8Array): string {
     const hash = hashImage(bytes);
-    if (!this.#images.has(hash)) this.#images.set(hash, bytes);
+    if (this.#images.has(hash)) return hash; // the bytes already held are kept: no second copy
+    this.#images.set(hash, bytes);
+    for (const listener of this.#imageListeners) listener(hash, bytes);
     return hash;
+  }
+
+  /**
+   * Call `listener` for each image added from now on (`addImage` with bytes
+   * the document didn't hold yet), synchronously, before any edit can use
+   * it. The recovery journal keeps a copy, so an image added after the last
+   * save survives a crash. Returns a function that stops listening.
+   */
+  subscribeImages(listener: (hash: string, bytes: Uint8Array) => void): () => void {
+    this.#imageListeners.add(listener);
+    return () => this.#imageListeners.delete(listener);
+  }
+
+  /** Hashes of every image the document holds, used or not. */
+  imageHashes(): string[] {
+    return [...this.#images.keys()];
   }
 
   /** The image file for an `imageHash`, if this document has it. */

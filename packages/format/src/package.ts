@@ -10,7 +10,7 @@
  * file twice gives identical bytes and Git diffs stay small.
  */
 
-import { imagePath, imageProblem, isBinaryPackagePath, parseImagePath, referencedImageHashes, sha256Hex, sniffImageFormat } from "./images.js";
+import { imagePath, imageProblem, isBinaryPackagePath, parseImagePath, referencedImageHashes, sha256Hex, sha256HexAsync, sniffImageFormat } from "./images.js";
 import { FORMAT_NAME, FORMAT_VERSION, type IlligmaFile, type Manifest, type Node, type NodeId } from "./schema.js";
 import { isSafePageId, validateFile } from "./validate.js";
 import { migrate } from "./migrations.js";
@@ -46,6 +46,8 @@ export function checkImage(hash: string, bytes: Uint8Array): void {
 export function hashImage(bytes: Uint8Array): string {
   const problem = imageProblem(bytes);
   if (problem) throw new FormatError(`This image can't be used: it ${problem}.`);
+  const known = verified.get(bytes);
+  if (known) return known;
   const hash = sha256Hex(bytes);
   verified.set(bytes, hash);
   return hash;
@@ -112,9 +114,13 @@ export function writePackage(file: IlligmaFile): FileTree {
     const lines = nodes.map((n) => canonicalJson(n));
     tree.set(`pages/${pageId}.json`, lines.length ? `[\n${lines.join(",\n")}\n]\n` : "[]\n");
   }
-  // Only images some paint uses. A paint whose image isn't in memory keeps its hash (a missing image, reported on reading).
+  // Every image the file holds, used or not: an edit that undo may bring back, or that the recovery journal holds, may
+  // use one again (see docs/design/save-states.md, "Images"). Images some paint uses come first, in first-use order.
+  // A paint whose image isn't in memory keeps its hash (a missing image, reported on reading).
   if (file.images?.size) {
-    for (const hash of referencedImageHashes(file.nodes)) {
+    const used = referencedImageHashes(file.nodes);
+    const rest = [...file.images.keys()].filter((h) => !used.includes(h)).sort();
+    for (const hash of [...used, ...rest]) {
       const bytes = file.images.get(hash);
       if (!bytes) continue;
       checkImage(hash, bytes);
@@ -134,10 +140,41 @@ export interface ReadReport {
   file: IlligmaFile;
   /** Things that didn't stop the file opening but may mean lost work, e.g. page files the manifest doesn't list. */
   warnings: string[];
+  /**
+   * Image files no layer uses that are sound images, named by Illigma for
+   * their own bytes: the only image files a host may remove (see
+   * docs/design/save-states.md, "Images"). Damaged, oversized, unknown and
+   * used files are never listed.
+   */
+  unusedImages: string[];
+}
+
+export interface ReadPackageOptions {
+  /** SHA-256 of image files by path, already computed (`readPackageWithReportAsync` hashes them natively first). */
+  hashes?: ReadonlyMap<string, string>;
+  /**
+   * Images no layer uses: "skip" (default) leaves them out of the file;
+   * "load" keeps the sound ones in `file.images`, e.g. when recovered edits
+   * may use them again.
+   */
+  unusedImages?: "skip" | "load";
+}
+
+/**
+ * `readPackageWithReport`, with every image hashed by the platform's native
+ * SHA-256 first (`crypto.subtle`), so opening a file with large images
+ * doesn't hash them in JavaScript on the main thread.
+ */
+export async function readPackageWithReportAsync(tree: FileTree, opts: Omit<ReadPackageOptions, "hashes"> = {}): Promise<ReadReport> {
+  const hashes = new Map<string, string>();
+  for (const [path, data] of tree) {
+    if (data instanceof Uint8Array && parseImagePath(path) && !imageProblem(data)) hashes.set(path, await sha256HexAsync(data));
+  }
+  return readPackageWithReport(tree, { ...opts, hashes });
 }
 
 /** `readPackage`, plus warnings about content the file ignores. */
-export function readPackageWithReport(tree: FileTree): ReadReport {
+export function readPackageWithReport(tree: FileTree, opts: ReadPackageOptions = {}): ReadReport {
   const manifestText = fileText(tree.get("manifest.json"));
   if (manifestText === undefined) throw new FormatError("This is not an Illigma file: manifest.json is missing.");
 
@@ -189,23 +226,35 @@ export function readPackageWithReport(tree: FileTree): ReadReport {
   for (const path of [...tree.keys()].sort()) {
     if (path.startsWith("pages/") && !listed.has(path)) warnings.push(`${path} is not listed in manifest.json, so it was not opened.`);
   }
-  const images = readImages(tree, file, warnings);
+  const unusedImages: string[] = [];
+  const images = readImages(tree, file, warnings, unusedImages, opts);
   if (images.size) file.images = images;
-  return { file, warnings };
+  return { file, warnings, unusedImages };
 }
 
 /** At most this many warnings about images, then one summary line. */
 const MAX_IMAGE_WARNINGS = 20;
 
 /**
- * The package's images that some paint uses. A damaged, unknown or oversized
+ * The package's images that some paint uses (and, with `unusedImages:
+ * "load"`, the sound ones no paint uses). A damaged, unknown or oversized
  * image is left out with a warning (its layers show a missing image, and the
- * rest of the file still opens), as are images no paint uses.
+ * rest of the file still opens), as are images no paint uses. Sound images
+ * no paint uses are listed in `unused`.
  */
-function readImages(tree: FileTree, file: IlligmaFile, warnings: string[]): Map<string, Uint8Array> {
+function readImages(tree: FileTree, file: IlligmaFile, warnings: string[], unused: string[], opts: ReadPackageOptions): Map<string, Uint8Array> {
   const used = new Set(referencedImageHashes(file.nodes));
   const images = new Map<string, Uint8Array>();
+  const spare = new Map<string, Uint8Array>();
   const notes: string[] = [];
+  /** Why the image file at `path` can't be opened as image `hash`, or null if it can. */
+  const problemWith = (path: string, hash: string, data: unknown): string | null => {
+    const problem = data instanceof Uint8Array ? imageProblem(data) : "was read as text, not bytes";
+    if (problem || !(data instanceof Uint8Array)) return problem;
+    if ((opts.hashes?.get(path) ?? sha256Hex(data)) !== hash) return "is damaged (its contents don't match its name)";
+    verified.set(data, hash);
+    return null;
+  };
   for (const path of [...tree.keys()].sort()) {
     if (!isBinaryPackagePath(path)) continue;
     const parsed = parseImagePath(path);
@@ -213,23 +262,24 @@ function readImages(tree: FileTree, file: IlligmaFile, warnings: string[]): Map<
       notes.push(`${path} is not an image file Illigma stores, so it was ignored.`);
       continue;
     }
+    const data = tree.get(path);
     if (!used.has(parsed.hash)) {
-      notes.push(`${path} is not used by any layer, so it was ignored.`);
+      // Only a sound image, under its own name, may ever be removed; anything else stays as it is.
+      const ok = !spare.has(parsed.hash) && problemWith(path, parsed.hash, data) === null;
+      if (ok) {
+        unused.push(path);
+        spare.set(parsed.hash, data as Uint8Array);
+      }
+      if (!ok || opts.unusedImages !== "load") notes.push(`${path} is not used by any layer, so it was ignored.`);
       continue;
     }
     if (images.has(parsed.hash)) continue; // the same image under two extensions
-    const data = tree.get(path);
-    const problem = data instanceof Uint8Array ? imageProblem(data) : "was read as text, not bytes";
-    if (problem || !(data instanceof Uint8Array)) {
+    const problem = problemWith(path, parsed.hash, data);
+    if (problem) {
       notes.push(`${path} ${problem}, so it was not opened.`);
       continue;
     }
-    if (sha256Hex(data) !== parsed.hash) {
-      notes.push(`${path} is damaged (its contents don't match its name), so it was not opened.`);
-      continue;
-    }
-    verified.set(data, parsed.hash);
-    images.set(parsed.hash, data);
+    images.set(parsed.hash, data as Uint8Array);
   }
   // In first-use order, as writePackage writes them.
   const ordered = new Map<string, Uint8Array>();
@@ -238,6 +288,7 @@ function readImages(tree: FileTree, file: IlligmaFile, warnings: string[]): Map<
     if (bytes) ordered.set(hash, bytes);
     else notes.push(`Image ${hash.slice(0, 12)}… is missing, so the layers that use it show no image.`);
   }
+  if (opts.unusedImages === "load") for (const [hash, bytes] of [...spare].sort(([a], [b]) => (a < b ? -1 : 1))) ordered.set(hash, bytes);
   warnings.push(...notes.slice(0, MAX_IMAGE_WARNINGS));
   if (notes.length > MAX_IMAGE_WARNINGS) warnings.push(`…and ${notes.length - MAX_IMAGE_WARNINGS} more problems with images.`);
   return ordered;

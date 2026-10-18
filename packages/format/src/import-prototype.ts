@@ -189,6 +189,11 @@ class Notes {
       });
       w.push(`Left out ${plural(total, "effect", "effects")} (${parts.join(", ")}) on ${plural(n("effectLayers"), "layer", "layers")} that couldn't be read.`);
     }
+    if (n("tooManyEffects")) {
+      w.push(
+        `Left out ${plural(n("tooManyEffects"), "effect", "effects")} on ${plural(n("tooManyEffectLayers"), "layer", "layers")} with more than ${PAINT_LIMITS.maxEffects}: a layer keeps its first ${PAINT_LIMITS.maxEffects}.`,
+      );
+    }
     if (n("gradients")) w.push(`Left out ${plural(n("gradients"), "gradient", "gradients")}: the prototype never saved gradient fills, so CSS gradients aren't read.`);
     if (n("badColors")) w.push(`Left out ${plural(n("badColors"), "colour", "colours")} that couldn't be read.`);
     if (n("letterSpacing")) w.push(`Left out letter spacing on ${plural(n("letterSpacing"), "text layer", "text layers")}: format v0 has no letter spacing yet.`);
@@ -657,6 +662,10 @@ function effectsOf(raw: Obj, rotation: number, notes: Notes): Effect[] {
     }
   }
   if (skipped) notes.add("effectLayers");
+  if (out.length > PAINT_LIMITS.maxEffects) {
+    notes.add("tooManyEffects", out.length - PAINT_LIMITS.maxEffects);
+    notes.add("tooManyEffectLayers");
+  }
   return out.slice(0, PAINT_LIMITS.maxEffects);
 }
 

@@ -227,6 +227,14 @@ export const IMAGE_FORMATS: readonly ImageFormat[] = ["png", "jpg", "webp", "gif
 export const IMAGE_LIMITS = {
   /** One image file, in bytes. */
   maxBytes: 32 * 1024 * 1024,
+  /**
+   * Pixels a side. A small file can hold a huge picture (a 1.5 MB PNG of
+   * 20,000 × 20,000 pixels decodes to 1.6 GB), so the size in pixels is
+   * capped too, before anything decodes it.
+   */
+  maxSide: 16_384,
+  /** Pixels in all (64 megapixels, 256 MB decoded). */
+  maxPixels: 64 * 1024 * 1024,
 } as const;
 
 /** Fields every node has. */

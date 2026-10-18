@@ -39,11 +39,86 @@ export function sniffImageFormat(bytes: Uint8Array): ImageFormat | null {
   return null;
 }
 
-/** Why `bytes` can't be stored as an image, or null if it can. */
+/** Why `bytes` can't be stored as an image, or null if it can. Checks the size in pixels too (`imageDimensions`), without decoding. */
 export function imageProblem(bytes: unknown): string | null {
   if (!(bytes instanceof Uint8Array)) return "is not binary data";
   if (bytes.length > IMAGE_LIMITS.maxBytes) return `is larger than ${IMAGE_LIMITS.maxBytes / (1024 * 1024)} MB`;
   if (!sniffImageFormat(bytes)) return "is not a PNG, JPEG, WebP or GIF image";
+  return imageSizeProblem(imageDimensions(bytes));
+}
+
+/** Why an image of this size in pixels can't be used (null if it can), or that its size can't be read. */
+export function imageSizeProblem(size: { width: number; height: number } | null): string | null {
+  if (!size) return "is damaged (its size in pixels can't be read)";
+  const { width, height } = size;
+  if (width < 1 || height < 1) return "is damaged (it has no pixels)";
+  if (width > IMAGE_LIMITS.maxSide || height > IMAGE_LIMITS.maxSide || width * height > IMAGE_LIMITS.maxPixels) {
+    return `is too big (${width.toLocaleString("en-US")} × ${height.toLocaleString("en-US")} pixels; Illigma opens images up to ${IMAGE_LIMITS.maxSide.toLocaleString("en-US")} pixels a side and 64 megapixels)`;
+  }
+  return null;
+}
+
+/**
+ * The size in pixels an image file declares in its header, read without
+ * decoding it: PNG (IHDR), JPEG (the SOF marker), WebP (VP8, VP8L or VP8X)
+ * and GIF (the logical screen). Null if the header is missing or damaged.
+ */
+export function imageDimensions(bytes: Uint8Array): { width: number; height: number } | null {
+  const format = sniffImageFormat(bytes);
+  const u16be = (i: number) => ((bytes[i] as number) << 8) | (bytes[i + 1] as number);
+  const u16le = (i: number) => (bytes[i] as number) | ((bytes[i + 1] as number) << 8);
+  const u24le = (i: number) => u16le(i) | ((bytes[i + 2] as number) << 16);
+  const u32be = (i: number) => (((bytes[i] as number) << 24) >>> 0) + (((bytes[i + 1] as number) << 16) | ((bytes[i + 2] as number) << 8) | (bytes[i + 3] as number));
+  if (format === "png") {
+    // Signature, then the IHDR chunk first: length (13), "IHDR", width, height.
+    if (bytes.length < 24 || !startsWith(bytes, [0x49, 0x48, 0x44, 0x52], 12)) return null;
+    return { width: u32be(16), height: u32be(20) };
+  }
+  if (format === "gif") {
+    if (bytes.length < 10) return null;
+    return { width: u16le(6), height: u16le(8) };
+  }
+  if (format === "webp") {
+    if (bytes.length < 30) return null;
+    const chunk = String.fromCharCode(bytes[12] as number, bytes[13] as number, bytes[14] as number, bytes[15] as number);
+    if (chunk === "VP8X") return { width: u24le(24) + 1, height: u24le(27) + 1 };
+    if (chunk === "VP8L") {
+      if (bytes[20] !== 0x2f) return null;
+      const b = (i: number) => bytes[21 + i] as number;
+      return { width: 1 + (((b(1) & 0x3f) << 8) | b(0)), height: 1 + (((b(3) & 0x0f) << 10) | (b(2) << 2) | ((b(1) & 0xc0) >> 6)) };
+    }
+    if (chunk === "VP8 ") {
+      // Frame tag (3 bytes), then the start code 9d 01 2a, then 14-bit width and height.
+      if (!startsWith(bytes, [0x9d, 0x01, 0x2a], 23)) return null;
+      return { width: u16le(26) & 0x3fff, height: u16le(28) & 0x3fff };
+    }
+    return null;
+  }
+  if (format === "jpg") {
+    // Walk the markers to the first start-of-frame (SOF0–SOF15, except DHT C4, JPG C8 and DAC CC).
+    let i = 2;
+    while (i + 3 < bytes.length) {
+      if (bytes[i] !== 0xff) return null;
+      const marker = bytes[i + 1] as number;
+      if (marker === 0xff) {
+        i++; // fill byte
+        continue;
+      }
+      if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd8)) {
+        i += 2; // no length
+        continue;
+      }
+      if (marker === 0xd9 || marker === 0xda) return null; // end of image, or scan data before any frame header
+      const length = u16be(i + 2);
+      if (length < 2) return null;
+      if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+        if (i + 9 > bytes.length) return null;
+        return { width: u16be(i + 7), height: u16be(i + 5) };
+      }
+      i += 2 + length;
+    }
+    return null;
+  }
   return null;
 }
 
@@ -69,6 +144,24 @@ const K = new Uint32Array([
   0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
   0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
 ]);
+
+/**
+ * SHA-256 of `bytes` as 64 lowercase hex digits, through the platform's
+ * native `crypto.subtle` when there is one (browsers, Node), off the main
+ * thread's JavaScript; otherwise `sha256Hex`.
+ */
+export async function sha256HexAsync(bytes: Uint8Array): Promise<string> {
+  const subtle = (globalThis as { crypto?: { subtle?: SubtleCrypto } }).crypto?.subtle;
+  if (!subtle) return sha256Hex(bytes);
+  try {
+    const digest = new Uint8Array(await subtle.digest("SHA-256", bytes as Uint8Array<ArrayBuffer>));
+    let out = "";
+    for (const b of digest) out += b.toString(16).padStart(2, "0");
+    return out;
+  } catch {
+    return sha256Hex(bytes); // e.g. an insecure context, where subtle is missing or refuses
+  }
+}
 
 /**
  * SHA-256 of `bytes`, as 64 lowercase hex digits. Synchronous, so reading a

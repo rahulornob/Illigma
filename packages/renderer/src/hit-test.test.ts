@@ -190,3 +190,66 @@ describe("hitTest: path shapes", () => {
     expect(hitTest(doc, page, 250, 50)).toBeNull();
   });
 });
+
+describe("hitTest: stroke alignment (QC round 7)", () => {
+  const blue = [{ type: "SOLID" as const, visible: true, color: { r: 0, g: 0, b: 1, a: 1 } }];
+  // A 100 × 100 square path at (0, 0), closed into one region, with no fill: only its 10-unit stroke can be hit.
+  const square = (strokeAlign: "INSIDE" | "OUTSIDE" | "CENTER") =>
+    setup((add, p) => {
+      add("VECTOR", p, {
+        width: 100,
+        height: 100,
+        fills: [],
+        strokes: blue,
+        strokeWeight: 10,
+        strokeAlign,
+        vectorNetwork: vectorNetworkFromSvgPath("M0 0 L100 0 L100 100 L0 100 Z"),
+      });
+    });
+
+  it("inside strokes reach the whole weight inward, and nothing outward", () => {
+    const { doc, page } = square("INSIDE");
+    expect(hitTest(doc, page, 50, 8, { tolerance: 0 })).not.toBeNull(); // the visible band, 0–10 inside
+    expect(hitTest(doc, page, 50, -4, { tolerance: 0 })).toBeNull(); // nothing is drawn outside
+    expect(hitTest(doc, page, 50, 14, { tolerance: 0 })).toBeNull();
+    expect(hitTest(doc, page, 50, -1, { tolerance: 2 })).not.toBeNull(); // the outline itself, within tolerance
+  });
+
+  it("outside strokes reach the whole weight outward, and nothing inward", () => {
+    const { doc, page } = square("OUTSIDE");
+    expect(hitTest(doc, page, 50, -8, { tolerance: 0 })).not.toBeNull();
+    expect(hitTest(doc, page, 50, 4, { tolerance: 0 })).toBeNull(); // no phantom inner band
+    expect(hitTest(doc, page, 50, -12, { tolerance: 0 })).toBeNull();
+    // Miter corners reach past the corner on the outside.
+    expect(hitTest(doc, page, -8, -8, { tolerance: 0 })).not.toBeNull();
+  });
+
+  it("centred strokes reach half the weight either side", () => {
+    const { doc, page } = square("CENTER");
+    expect(hitTest(doc, page, 50, 4, { tolerance: 0 })).not.toBeNull();
+    expect(hitTest(doc, page, 50, -4, { tolerance: 0 })).not.toBeNull();
+    expect(hitTest(doc, page, 50, 7, { tolerance: 0 })).toBeNull();
+  });
+
+  it("rectangles, ellipses and frames can be picked on a centred or outside stroke past their box", () => {
+    let rect = "", ellipse = "", frame = "", inner = "", child = "";
+    const { doc, page } = setup((add, p) => {
+      rect = add("RECTANGLE", p, { x: 0, y: 0, width: 100, height: 100, fills: blue, strokes: blue, strokeWeight: 20, strokeAlign: "OUTSIDE" });
+      ellipse = add("ELLIPSE", p, { x: 200, y: 0, width: 100, height: 100, fills: blue, strokes: blue, strokeWeight: 20, strokeAlign: "CENTER" });
+      inner = add("RECTANGLE", p, { x: 400, y: 0, width: 100, height: 100, fills: blue, strokes: blue, strokeWeight: 20, strokeAlign: "INSIDE" });
+      frame = add("FRAME", p, { x: 0, y: 200, width: 100, height: 100, strokes: blue, strokeWeight: 20, strokeAlign: "OUTSIDE" });
+      child = add("RECTANGLE", frame, { x: 90, y: 0, width: 30, height: 30, fills: blue });
+    });
+    expect(hitTest(doc, page, -15, 50)).toBe(rect);
+    expect(hitTest(doc, page, -25, 50)).toBeNull();
+    expect(hitTest(doc, page, 118, 118)).toBe(rect); // the square corner of the outside stroke
+    expect(hitTest(doc, page, 191, 50)).toBe(ellipse); // half of 20 past the left edge
+    expect(hitTest(doc, page, 187, 50)).toBeNull();
+    expect(hitTest(doc, page, 395, 50)).toBeNull(); // inside strokes don't reach out
+    expect(hitTest(doc, page, 405, 50)).toBe(inner);
+    expect(hitTest(doc, page, 50, 185)).toBe(frame);
+    // The frame still clips its children to its box, not to its stroke.
+    expect(hitTest(doc, page, 110, 210, { deep: true })).toBe(frame);
+    expect(hitTest(doc, page, 95, 210, { deep: true })).toBe(child);
+  });
+});

@@ -6,12 +6,15 @@ export { migrate, MIGRATIONS, type RawFile } from "./migrations.js";
 export * from "./zip.js";
 export {
   IMAGE_HASH_PATTERN,
+  imageDimensions,
   imagePath,
   imageProblem,
+  imageSizeProblem,
   isBinaryPackagePath,
   parseImagePath,
   referencedImageHashes,
   sha256Hex,
+  sha256HexAsync,
   sniffImageFormat,
 } from "./images.js";
 export { importPrototypeJson, parsePrototypeColor, PROTOTYPE_IMPORT_LIMITS, type PrototypeImport, type PrototypeImportOptions } from "./import-prototype.js";

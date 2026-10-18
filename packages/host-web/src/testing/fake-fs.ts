@@ -96,6 +96,21 @@ export class FakeFileSystem {
     dir.children.set(name, new FileEntry(encoder.encode(text)));
   }
 
+  /** Bytes of the file at `path`, or undefined if there is none. */
+  readBytes(path: string): Uint8Array | undefined {
+    const e = this.lookup(path);
+    return e instanceof FileEntry ? e.data.slice() : undefined;
+  }
+
+  /** Create or replace the file at `path` with bytes, making folders as needed. Not subject to `failWhen`. */
+  writeBytes(path: string, bytes: Uint8Array): void {
+    this.writeText(path, "");
+    const parts = path.split("/");
+    const name = parts.pop() as string;
+    const dir = this.lookup(parts.join("/")) as DirEntry;
+    dir.children.set(name, new FileEntry(bytes.slice()));
+  }
+
   /** True if a file or folder exists at `path`. */
   exists(path: string): boolean {
     return this.lookup(path) !== undefined;

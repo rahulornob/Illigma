@@ -418,7 +418,8 @@ export function Canvas(props: CanvasProps) {
       }
       teardown();
       gpu = GpuCanvas.create(ck, canvasEl, dpr);
-      live.current.renderer = new PageRenderer(ck, gpu.surface, live.current.props.doc, live.current.props.pageId, dpr, { fonts });
+      // An image decodes after the recording that first needs it: draw again once it is ready, with no interaction needed.
+      live.current.renderer = new PageRenderer(ck, gpu.surface, live.current.props.doc, live.current.props.pageId, dpr, { fonts, onImageReady: requestDraw });
       if (!live.current.fitted) {
         live.current.fitted = true;
         fit(1);

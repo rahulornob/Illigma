@@ -365,6 +365,33 @@ describe("importPrototypeJson: every prototype feature", () => {
     expect(validateFile(rotated.file)).toEqual([]);
   });
 
+  it("keeps the first 100 effects of a layer and says how many it left out (QC round 7)", () => {
+    const many = importPrototypeJson(
+      {
+        title: "Many",
+        version: 1,
+        pages: [
+          {
+            id: "p",
+            name: "P",
+            artboards: [],
+            objects: [
+              {
+                id: "r", type: "rect", name: "r", x: 0, y: 0, w: 10, h: 10, opacity: 1, fill: "#ff0000", visible: true, locked: false, frameId: null,
+                effects: Array.from({ length: 103 }, (_, i) => ({ type: "layer-blur", blur: i })),
+              },
+            ],
+          },
+        ],
+      },
+      stable(),
+    );
+    expect(byName(many.file, "r").effects).toHaveLength(100);
+    expect(byName(many.file, "r").effects?.[99]).toEqual({ type: "LAYER_BLUR", radius: 99, visible: true });
+    expect(many.warnings).toContain("Left out 3 effects on 1 layer with more than 100: a layer keeps its first 100.");
+    expect(validateFile(many.file)).toEqual([]);
+  });
+
   it("warns once per kind, with counts", () => {
     expect(warnings).toEqual([
       "Skipped 1 page that couldn't be read.",
