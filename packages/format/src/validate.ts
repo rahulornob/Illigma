@@ -6,7 +6,22 @@
  */
 
 import { isValidKey } from "./fractional-index.js";
-import { FORMAT_NAME, NODE_ID_PATTERN, NODE_TYPES, type IlligmaFile, type Node } from "./schema.js";
+import {
+  AXIS_SIZING_MODES,
+  CONSTRAINT_TYPES,
+  COUNTER_AXIS_ALIGN_CONTENTS,
+  COUNTER_AXIS_ALIGNS,
+  FORMAT_NAME,
+  LAYOUT_MODES,
+  LAYOUT_POSITIONINGS,
+  LAYOUT_SIZINGS,
+  LAYOUT_WRAPS,
+  NODE_ID_PATTERN,
+  NODE_TYPES,
+  PRIMARY_AXIS_ALIGNS,
+  type IlligmaFile,
+  type Node,
+} from "./schema.js";
 
 const MAX_PROBLEMS = 50;
 const isId = (v: unknown): v is string => typeof v === "string" && NODE_ID_PATTERN.test(v);
@@ -43,6 +58,22 @@ const optional =
   (rule: Rule): Rule =>
   (v) =>
     v === undefined ? null : rule(v);
+const notNegative: Rule = (v) => (isFinite(v) && v >= 0 ? null : "must be a number, 0 or more");
+/** One of a fixed list of words, e.g. "HORIZONTAL". */
+const oneOf = (values: readonly string[]): Rule => {
+  const set = new Set<unknown>(values);
+  const message = `must be one of ${values.map((x) => `"${x}"`).join(", ")}`;
+  return (v) => (set.has(v) ? null : message);
+};
+const constraintType = oneOf(CONSTRAINT_TYPES);
+const constraints: Rule = (v) => {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return "must be { horizontal, vertical }";
+  const o = v as Record<string, unknown>;
+  const keys = Object.keys(o);
+  if (keys.length !== 2 || !("horizontal" in o) || !("vertical" in o)) return "must have exactly a horizontal and a vertical constraint";
+  const p = constraintType(o.horizontal) ?? constraintType(o.vertical);
+  return p && `horizontal and vertical ${p}`;
+};
 
 /** One rule per node field. Typed against `Node`, so a new field can't be forgotten here. */
 const RULES: { [K in keyof Node]-?: Rule } = {
@@ -69,6 +100,27 @@ const RULES: { [K in keyof Node]-?: Rule } = {
   fontStyle: optional(text),
   fontSize: optional(number),
   lineHeight: optional(number),
+  layoutMode: optional(oneOf(LAYOUT_MODES)),
+  itemSpacing: optional(number),
+  counterAxisSpacing: optional(notNegative),
+  paddingLeft: optional(notNegative),
+  paddingRight: optional(notNegative),
+  paddingTop: optional(notNegative),
+  paddingBottom: optional(notNegative),
+  primaryAxisAlignItems: optional(oneOf(PRIMARY_AXIS_ALIGNS)),
+  counterAxisAlignItems: optional(oneOf(COUNTER_AXIS_ALIGNS)),
+  counterAxisAlignContent: optional(oneOf(COUNTER_AXIS_ALIGN_CONTENTS)),
+  primaryAxisSizingMode: optional(oneOf(AXIS_SIZING_MODES)),
+  counterAxisSizingMode: optional(oneOf(AXIS_SIZING_MODES)),
+  layoutWrap: optional(oneOf(LAYOUT_WRAPS)),
+  layoutPositioning: optional(oneOf(LAYOUT_POSITIONINGS)),
+  layoutSizingHorizontal: optional(oneOf(LAYOUT_SIZINGS)),
+  layoutSizingVertical: optional(oneOf(LAYOUT_SIZINGS)),
+  constraints: optional(constraints),
+  minWidth: optional(notNegative),
+  maxWidth: optional(notNegative),
+  minHeight: optional(notNegative),
+  maxHeight: optional(notNegative),
 };
 
 /** Every node field name, required and optional. */

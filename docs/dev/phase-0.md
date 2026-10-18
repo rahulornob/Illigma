@@ -25,7 +25,7 @@ Started 18 October 2026, after the design sign-off. Planned to run through Decem
 | 0.4 Renderer spike | **Done 2026-10-18; with 0.3 this meets the Phase 0 gate.** 10,000 layers: median 60 fps, 100% of frames within 16.7 ms, 4.8 ms draw per frame at 2× pixel density, page recorded once in 24 ms (Chromium, ANGLE Metal, Apple M1, 1440×900). Run `npm run bench` (opens the benchmark) or `npm run bench:measure` (headless, prints JSON). Text, hit-testing and per-frame picture caching added 2026-10-18 (below); tiles come next |
 | 0.5 Offline web app | Done 2026-10-18 (`apps/web`, `@illigma/host-web`): installable PWA with service worker and update prompt, OPFS store, folder access in Chromium, atomic multi-file saves, autosave, recovery journal with Keep/Discard, editing lock per tab, changed-on-disk detection, per-file write queue shared across sessions. 256 unit tests; 7 Playwright suites, 241 checks, no known bugs (`npm run test:e2e`) |
 | 0.6 Design tokens in code | Done 2026-10-18 (`@illigma/tokens`: `tokens.json` in DTCG form, `tokens.css` with Dark and Light, `npm run build:tokens -w @illigma/tokens`) |
-| 0.7 Layout engine | In progress: auto layout and constraints in `@illigma/layout`, ported from the prototype's tested logic (PRD section 9) |
+| 0.7 Layout engine | Done 2026-10-18 (`@illigma/layout`, MPL-2.0): Figma auto layout (horizontal, vertical, wrap; padding, gap incl. negative and Auto; 9-point alignment; Fixed, Hug, Fill; min and max; ignore auto layout) and constraints (left, right, left and right, centre, scale; through groups). Optional layout fields added to format v0. Every geometry case of the prototype's two Playwright specs ported as unit tests; the grid case waits for grid auto layout (P1). 10,000 nested auto layout nodes lay out in about 30 ms; one edit in under 1 ms. See below |
 | 0.8 Prototype import | In progress: read the old prototype's JSON into `.illigma` (PRD section 9) |
 
 ## How the renderer spike works
@@ -38,6 +38,17 @@ Each top-level child of the page (each screen) is recorded into its own Skia pic
 - **Opacity** is drawn as a layer, so a 50% frame fades its children too. Pictures are culled by what they actually drew, never by node boxes.
 - **`GpuCanvas`** keeps one WebGL context per canvas and swaps only the surface on resize (`makeSurface` leaked a context per call and is deprecated).
 
+## How the layout engine works
+
+`@illigma/layout` is pure functions with no DOM. It reads the document and returns `{ id, key, value }` changes to `x`, `y`, `width` and `height`; the caller applies them with `tx.set` inside the same `Document.transact` as the edit, so one undo reverts the edit and its layout together.
+
+- **Fields** (format v0, all optional, named after Figma's Plugin API; absent = Figma's default): on frames `layoutMode`, `itemSpacing`, `counterAxisSpacing`, `paddingLeft/Right/Top/Bottom`, `primaryAxisAlignItems` (incl. `SPACE_BETWEEN`, `SPACE_AROUND`, `SPACE_EVENLY`), `counterAxisAlignItems`, `counterAxisAlignContent`, `primaryAxisSizingMode`, `counterAxisSizingMode`, `layoutWrap`; on any layer `layoutPositioning`, `layoutSizingHorizontal/Vertical`, `constraints`, `minWidth/maxWidth/minHeight/maxHeight`. Files without them save byte for byte as before.
+- **`layoutFrame(frame, children)`** lays out one auto layout frame, following Figma's flexbox-aligned version: Fill children share space by content box with min/max freezing as in CSS, Auto gaps never go negative, a frame is never smaller than its padding, hidden and absolute children take no space. Children at 0° or 180° can fill; other angles are placed by their rotated bounding box.
+- **`relayout(doc, ids)`** climbs from each changed node to the outermost auto layout frame it is nested in, then lays that out top-down. Hug sizes are measured bottom-up and cached per node and forced size; frames off the changed paths keep their last layout, so an edit costs about its path, not the page. `changedIds(ops)` turns a transaction's operations into the ids to pass. `{ deep: true }` lays out everything, for content never laid out (imports).
+- **`resize(doc, id, box)`** is Figma's resize: the node's new box, its children following their constraints from the old size (taken from the document before the change), and any auto layout reflow around it. `{ constraints: false }` is Cmd/Ctrl-resize. Groups take no constraints: their layers follow the frame and the group refits.
+- **Tests:** 63 unit tests, including the ported prototype cases, a seeded check that 2,000 random edits on 100 random trees always match a full layout, and the 10,000-node budget.
+- **Not yet:** grid auto layout (P1), text Hug (needs text measurement), baseline alignment, strokes in layout, reverse z-order (a renderer concern). Known limit: wrapped content inside a child stretched across a hugging or wrapping frame can need a second pass for its Fill siblings. Not wired into `apps/web` (no layout UI is designed yet).
+
 ## Choices made for Phase 0
 
 - **npm workspaces** (Node 22), so contributors need nothing beyond Node.
@@ -48,4 +59,4 @@ Each top-level child of the page (each screen) is recorded into its own Skia pic
 
 ## Not in Phase 0
 
-Drawing tools, auto layout, text, components and the rest of the editor are Phase 1+ (PRD roadmap).
+Drawing tools, the auto layout and constraints UI, text, components and the rest of the editor are Phase 1+ (PRD roadmap).

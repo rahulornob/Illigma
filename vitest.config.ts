@@ -9,6 +9,7 @@ export default defineConfig({
     alias: {
       "@illigma/format": src("format"),
       "@illigma/core": src("core"),
+      "@illigma/layout": src("layout"),
       "@illigma/tokens": src("tokens"),
       // Sub-path first: Vite matches aliases by prefix, in order.
       "@illigma/host-web/testing": fileURLToPath(new URL("./packages/host-web/src/testing/fake-fs.ts", import.meta.url)),

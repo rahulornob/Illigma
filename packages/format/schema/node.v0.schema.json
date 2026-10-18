@@ -32,9 +32,41 @@
     "fontFamily": { "type": "string" },
     "fontStyle": { "type": "string" },
     "fontSize": { "type": "number" },
-    "lineHeight": { "type": "number" }
+    "lineHeight": { "type": "number" },
+    "layoutMode": { "enum": ["NONE", "HORIZONTAL", "VERTICAL"], "description": "Auto layout direction. Default NONE" },
+    "itemSpacing": { "type": "number", "description": "Gap between children along the stack; may be negative. Default 0" },
+    "counterAxisSpacing": { "type": "number", "minimum": 0, "description": "Gap between wrapped rows or columns. Default: itemSpacing, never negative" },
+    "paddingLeft": { "type": "number", "minimum": 0, "description": "Default 0" },
+    "paddingRight": { "type": "number", "minimum": 0, "description": "Default 0" },
+    "paddingTop": { "type": "number", "minimum": 0, "description": "Default 0" },
+    "paddingBottom": { "type": "number", "minimum": 0, "description": "Default 0" },
+    "primaryAxisAlignItems": { "enum": ["MIN", "CENTER", "MAX", "SPACE_BETWEEN", "SPACE_AROUND", "SPACE_EVENLY"], "description": "Default MIN" },
+    "counterAxisAlignItems": { "enum": ["MIN", "CENTER", "MAX"], "description": "Default MIN" },
+    "counterAxisAlignContent": { "enum": ["AUTO", "SPACE_BETWEEN"], "description": "Wrapped frames only. Default AUTO" },
+    "primaryAxisSizingMode": { "enum": ["FIXED", "AUTO"], "description": "AUTO hugs the content. Default AUTO" },
+    "counterAxisSizingMode": { "enum": ["FIXED", "AUTO"], "description": "AUTO hugs the content. Default AUTO" },
+    "layoutWrap": { "enum": ["NO_WRAP", "WRAP"], "description": "Default NO_WRAP" },
+    "layoutPositioning": { "enum": ["AUTO", "ABSOLUTE"], "description": "ABSOLUTE = ignore the parent's auto layout. Default AUTO" },
+    "layoutSizingHorizontal": { "$ref": "#/$defs/layoutSizing" },
+    "layoutSizingVertical": { "$ref": "#/$defs/layoutSizing" },
+    "constraints": {
+      "type": "object",
+      "required": ["horizontal", "vertical"],
+      "additionalProperties": false,
+      "properties": {
+        "horizontal": { "$ref": "#/$defs/constraintType" },
+        "vertical": { "$ref": "#/$defs/constraintType" }
+      },
+      "description": "How the node follows its parent frame when that frame is resized. Default MIN and MIN (left and top)"
+    },
+    "minWidth": { "type": "number", "minimum": 0 },
+    "maxWidth": { "type": "number", "minimum": 0 },
+    "minHeight": { "type": "number", "minimum": 0 },
+    "maxHeight": { "type": "number", "minimum": 0 }
   },
   "$defs": {
+    "layoutSizing": { "enum": ["FIXED", "HUG", "FILL"], "description": "Default: HUG on an auto layout frame's AUTO axes, else FIXED" },
+    "constraintType": { "enum": ["MIN", "CENTER", "MAX", "STRETCH", "SCALE"] },
     "unit": { "type": "number", "minimum": 0, "maximum": 1 },
     "paint": {
       "type": "object",

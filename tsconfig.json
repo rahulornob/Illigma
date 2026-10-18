@@ -3,6 +3,7 @@
   "references": [
     { "path": "packages/format" },
     { "path": "packages/core" },
+    { "path": "packages/layout" },
     { "path": "packages/renderer" },
     { "path": "packages/tokens" },
     { "path": "packages/host-web" },
