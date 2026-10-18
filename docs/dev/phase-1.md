@@ -9,7 +9,7 @@ New screens and panels are still designed in Figma and approved before they are 
 | Work | Package | Status |
 |---|---|---|
 | Canvas: direct manipulation | `apps/web`, `@illigma/core` | Done 2026-10-18: move, resize with 8 handles, marquee, Shift/⌘ multi-select, nudge, delete, duplicate, select all; live drags as one undo step (`Document.beginLive`). QC rounds 1–5 closed |
-| Layout wiring | `@illigma/layout`, `apps/web` | Done 2026-10-18: relayout runs inside every edit, drag step and recovery replay (core `normalize` hook), constraints on resize, reorder by drag in auto layout. Auto layout and constraints inspector in progress |
+| Layout wiring | `@illigma/layout`, `apps/web` | Done 2026-10-18: relayout runs inside every edit, drag step and recovery replay (core `normalize` hook), constraints on resize, reorder by drag in auto layout. Auto layout and constraints inspector done (Properties: auto layout card, Fixed/Hug/Fill menus, absolute position, constraints card; Shift+A) |
 | Vector geometry | `@illigma/format`, `@illigma/renderer` | Done 2026-10-18 (geometry only, no editor UI): format fields, SVG path data in and out, drawing, hit-testing and prototype import. See below |
 | Vector editing (pen, edit mode, handles, corner radius per point) | `apps/web` | Not started; needs designs |
 | Booleans, flatten, outline stroke | `@illigma/renderer` (geometry) | Not started |
