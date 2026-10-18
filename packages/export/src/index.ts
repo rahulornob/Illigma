@@ -8,12 +8,13 @@ import type { ReadonlyNode } from "@illigma/core";
 import type { NodeId } from "@illigma/format";
 import type { FontSource } from "@illigma/renderer";
 import type { CanvasKit } from "canvaskit-wasm";
-import { exportFilename, uniqueFilename } from "./filename.js";
+import { exportFilename, takenNames, uniqueFilename } from "./filename.js";
 import { writePdf, type PdfWriterOptions, type RasterText } from "./pdf.js";
 import { exportRaster, rasterizeLeaf, rasterSize, RasterContext } from "./raster.js";
 import { exportScene, hasText, type ExportScene, type ExportSource, type Rect } from "./scene.js";
 import { checkSettings, DEFAULT_EXPORT_LIMITS, ExportError, MIME_TYPES, type ExportLimits, type ExportSettings, type ExportSettingsPDF } from "./settings.js";
 import { writeSvg } from "./svg.js";
+import { imageSize } from "./vector-common.js";
 
 export { exportFilename, sanitizeFilePart, uniqueFilename } from "./filename.js";
 export { pdfString, writePdf, type PdfWriterOptions, type RasterText } from "./pdf.js";
@@ -94,21 +95,23 @@ class Session {
 
   textLayout = (n: ReadonlyNode) => (this.hasTextEngine ? this.context().pageRenderer.layoutText(n.id) : null);
 
-  /** A layer with shadows or blurs, drawn by the renderer for PDF (4 px per pt, at most 4,096 on a side). */
-  rasterNode = (n: ReadonlyNode, area: Rect): RasterText | null => {
+  /** A layer with shadows or blurs, drawn by the renderer for PDF (`scale` px per pt, chosen by the writer; at most 4,096 on a side). */
+  rasterNode = (n: ReadonlyNode, area: Rect, scale = 2): RasterText | null => {
     if (!this.deps.canvasKit) return null;
     // Without fonts, text would come out as placeholder bars: draw it as vectors instead.
     if (!this.hasTextEngine && hasText(this.source, [n])) return null;
-    const k = Math.min(4, 4096 / Math.max(area.width, area.height, 1));
+    const k = Math.min(scale, 4096 / Math.max(area.width, area.height, 1));
     const width = Math.max(1, Math.ceil(area.width * k));
     const height = Math.max(1, Math.ceil(area.height * k));
     const rgba = rasterizeLeaf(this.context(), n, width, height, area);
     return rgba ? { width, height, rgba, area } : null;
   };
 
-  /** An image file as RGBA pixels, decoded by CanvasKit, for PDF. */
+  /** An image file as RGBA pixels, decoded by CanvasKit, for PDF. Null for files too big to decode (16,384 px a side, 64 million pixels, from the header). */
   decodeImage = (bytes: Uint8Array): { width: number; height: number; rgba: Uint8Array } | null => {
     const ck = this.deps.canvasKit;
+    const size = imageSize(bytes);
+    if (!size || size.rawWidth > 16_384 || size.rawHeight > 16_384 || size.rawWidth * size.rawHeight > 64_000_000) return null;
     const image = ck?.MakeImageFromEncoded(bytes);
     if (!ck || !image) return null;
     try {
@@ -183,10 +186,17 @@ function exportWith(session: Session, nodeId: NodeId, settings: ExportSettings, 
   return { nodeId, settings, filename, mime: MIME_TYPES[settings.format], bytes, width, height, warnings: [...warnings] };
 }
 
+/**
+ * The file name a request writes. Never throws: bad settings (an unknown
+ * format, a suffix that isn't text) still get a name, and `checkSettings`
+ * then fails that one export with an `ExportError`.
+ */
 function nameFor(source: ExportSource, req: ExportRequest): string {
   const node = source.get(req.nodeId);
   const format = req.settings?.format;
-  return exportFilename(node?.name ?? "Untitled", format && MIME_TYPES[format] ? format : "PNG", req.settings?.suffix ?? "");
+  const suffix = req.settings?.suffix;
+  const name = typeof node?.name === "string" ? node.name : "Untitled";
+  return exportFilename(name, format && Object.hasOwn(MIME_TYPES, format) ? format : "PNG", typeof suffix === "string" ? suffix : "");
 }
 
 /**
@@ -208,7 +218,7 @@ export async function exportNode(source: ExportSource, nodeId: NodeId, settings:
  * not replacing files) by adding `-1`, `-2`…
  */
 export function planExportFilenames(source: ExportSource, requests: readonly ExportRequest[], taken: Iterable<string> = []): string[] {
-  const used = new Set([...taken].map((t) => t.toLowerCase()));
+  const used = takenNames(taken);
   return requests.map((r) => uniqueFilename(nameFor(source, r), used));
 }
 
@@ -256,6 +266,7 @@ export async function exportPdf(
   settings: Omit<ExportSettingsPDF, "format"> = {},
 ): Promise<ExportedFile> {
   if (!nodeIds.length) throw new ExportError("Choose at least one layer to export to PDF.");
+  if (settings.suffix !== undefined && typeof settings.suffix !== "string") throw new ExportError("The suffix must be text.");
   const session = new Session(source, deps);
   try {
     const scenes: ExportScene[] = nodeIds.map((id) => exportScene(source, id, settings));

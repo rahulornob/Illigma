@@ -4,7 +4,7 @@ import type { CanvasKit, Surface } from "canvaskit-wasm";
 import type { Effect, Paint, Transform } from "@illigma/format";
 import { exportNode, exportPdf } from "./index.js";
 import { imageSize } from "./vector-common.js";
-import { assertWellFormedXml, BLUE, build, canvasKit, decode, parsePdf, RED, solid } from "./test.fixture.js";
+import { assertWellFormedXml, BLUE, build, canvasKit, decode, parsePdf, RED, solid, withoutIdPrefix } from "./test.fixture.js";
 
 let ck: CanvasKit;
 beforeAll(async () => {
@@ -49,7 +49,7 @@ const isBlue = ([r, , b, a]: number[]) => (r as number) < 60 && (b as number) > 
 const svgText = (bytes: Uint8Array) => {
   const text = new TextDecoder().decode(bytes);
   assertWellFormedXml(text);
-  return text;
+  return withoutIdPrefix(text);
 };
 
 describe("PNG and JPG export of paints and effects", () => {
@@ -97,13 +97,13 @@ describe("SVG export of paints and effects", () => {
       b: add("ELLIPSE", p, { x: 200, width: 40, height: 40, fills: [{ ...linear(IDENTITY, "GRADIENT_RADIAL"), opacity: 0.5 } as Paint] }),
     }));
     const a = svgText((await exportNode(doc, ids.a, { format: "SVG" })).bytes);
-    expect(a).toContain(`<rect width="100" height="50" fill="url(#linear)"/>`);
-    expect(a).toContain(`<linearGradient id="linear" x1="0" y1="0.5" x2="1" y2="0.5" gradientUnits="userSpaceOnUse" gradientTransform="matrix(100 0 0 50 0 0)">`);
+    expect(a).toContain(`<rect width="100" height="50" fill="url(#linear_${ids.a})"/>`);
+    expect(a).toContain(`<linearGradient id="linear_${ids.a}" x1="0" y1="0.5" x2="1" y2="0.5" gradientUnits="userSpaceOnUse" gradientTransform="matrix(100 0 0 50 0 0)">`);
     expect(a).toContain(`<stop offset="0" stop-color="#FF0000"/>`);
     expect(a).toContain(`<stop offset="1" stop-color="#0000FF"/>`);
     const b = svgText((await exportNode(doc, ids.b, { format: "SVG" })).bytes);
-    expect(b).toContain(`fill="url(#radial)" fill-opacity="0.5"`);
-    expect(b).toContain(`<radialGradient id="radial" cx="0.5" cy="0.5" r="0.5" gradientUnits="userSpaceOnUse" gradientTransform="matrix(40 0 0 40 0 0)">`);
+    expect(b).toContain(`fill="url(#radial_${ids.b})" fill-opacity="0.5"`);
+    expect(b).toContain(`<radialGradient id="radial_${ids.b}" cx="0.5" cy="0.5" r="0.5" gradientUnits="userSpaceOnUse" gradientTransform="matrix(40 0 0 40 0 0)">`);
   });
 
   it("writes angular and diamond gradients as radial ones, with a warning", async () => {
@@ -134,7 +134,7 @@ describe("SVG export of paints and effects", () => {
     // FILL: 20 × 10 scaled by 4 to cover 80 × 40.
     expect(text).toContain(`<use xlink:href="#image_${hash.slice(0, 12)}" transform="matrix(4 0 0 4 0 0)"/>`);
     // TILE at 2×: 40 × 20 tiles.
-    expect(text).toContain(`<pattern id="pattern_2" patternUnits="userSpaceOnUse" width="40" height="20">`);
+    expect(text).toContain(`<pattern id="pattern_${doc.children(ids.g)[1]?.id}" patternUnits="userSpaceOnUse" width="40" height="20">`);
     expect(Buffer.from(/base64,([^"]+)"/.exec(text)?.[1] ?? "", "base64").equals(Buffer.from(png))).toBe(true);
   });
 
@@ -267,7 +267,7 @@ describe("PDF export of paints and effects", () => {
   it("embeds JPEGs as they are, without CanvasKit", async () => {
     // A JPEG header up to its start-of-frame (8 × 4 pixels, 3 components) is all the writer reads.
     const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0, 4, 0, 0, 0xff, 0xc0, 0, 17, 8, 0, 4, 0, 8, 3, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1, 0xff, 0xd9]);
-    expect(imageSize(jpeg)).toEqual({ format: "jpg", width: 8, height: 4 });
+    expect(imageSize(jpeg)).toMatchObject({ format: "jpg", width: 8, height: 4, orientation: 1, rawWidth: 8, rawHeight: 4 });
     const { doc, ids } = build((add, p) => ({ r: add("RECTANGLE", p, { width: 8, height: 4 }) }));
     const hash = doc.addImage(jpeg);
     doc.transact("Image", (tx) => tx.set(ids.r, "fills", [{ type: "IMAGE", visible: true, imageHash: hash, scaleMode: "FILL" }]));
@@ -282,7 +282,7 @@ describe("PDF export of paints and effects", () => {
     const withCk = await exportNode(doc, ids.r, { format: "PDF" }, { canvasKit: ck });
     expect(withCk.warnings).toEqual(["Layers with shadows or blurs are drawn into the PDF as images, as on the canvas."]);
     expect([withCk.width, withCk.height]).toEqual([40, 50]);
-    expect(parsePdf(withCk.bytes).text).toContain("/Subtype /Image /Width 160 /Height 200");
+    expect(parsePdf(withCk.bytes).text).toContain("/Subtype /Image /Width 80 /Height 100"); // 2 px per pt
     const without = await exportNode(doc, ids.r, { format: "PDF" });
     expect(without.warnings).toEqual(["Shadows and blurs need the drawing engine to go into a PDF, so they were left out."]);
     expect(parsePdf(without.bytes).text).toContain("1 0 0 rg");

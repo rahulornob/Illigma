@@ -18,7 +18,7 @@ import {
   type PathCommands,
   type ShadowEffect,
 } from "@illigma/format";
-import { invertTransform, shapeGeometry, type FillPath, type TextLine } from "@illigma/renderer";
+import { CLIPPING, invertTransform, shapeGeometry, type FillPath, type TextLine } from "@illigma/renderer";
 import type { Matrix } from "./scene.js";
 
 /** Numbers in vector output: at most 4 decimals, no "-0", never exponent notation. */
@@ -55,10 +55,14 @@ export type ResolvedPaint = (
       hash: string;
       bytes: Uint8Array;
       format: "png" | "jpg" | "webp" | "gif";
-      /** The image's own size in pixels. */
+      /** The image's own size in pixels, as shown (after its Exif orientation). */
       width: number;
       height: number;
-      /** Image pixels to the node's own space. */
+      /** The header: stored size, orientation, JPEG details. */
+      info: ImageInfo;
+      /** The paint itself, to place the image again when a decoder reports another size. */
+      paint: DeepReadonly<ImagePaint>;
+      /** Image pixels (as shown) to the node's own space. */
       matrix: Matrix;
       /** TILE: repeat the image (at `matrix`'s scale) across the box. */
       tile: boolean;
@@ -116,7 +120,7 @@ export function resolvePaint(paint: DeepReadonly<Paint>, warn: (message: string)
       }
       const place = imagePlacement(paint, size.width, size.height, ctx.width, ctx.height);
       if (!place) return null;
-      return { kind: "image", hash: paint.imageHash, bytes, format: size.format, width: size.width, height: size.height, ...place, box: { width: ctx.width, height: ctx.height }, opacity, blend };
+      return { kind: "image", hash: paint.imageHash, bytes, format: size.format, width: size.width, height: size.height, info: size, paint, ...place, box: { width: ctx.width, height: ctx.height }, opacity, blend };
     }
   }
 }
@@ -143,10 +147,24 @@ export function imagePlacement(p: DeepReadonly<ImagePaint>, iw: number, ih: numb
   }
 }
 
-/** An image file's format and pixel size, from its header (PNG, JPEG, GIF, WebP); null if unreadable. */
-export function imageSize(b: Uint8Array): { format: "png" | "jpg" | "webp" | "gif"; width: number; height: number } | null {
+/** What `imageSize` reads from an image file's header. */
+export interface ImageInfo {
+  format: "png" | "jpg" | "webp" | "gif";
+  /** Pixel size as shown: for a JPEG with an Exif orientation of 5 to 8, the stored size turned a quarter. */
+  width: number;
+  height: number;
+  /** Exif orientation (JPEG only), 1 to 8; 1 when there is none. */
+  orientation: number;
+  /** Pixel size as stored in the file. */
+  rawWidth: number;
+  rawHeight: number;
+  /** JPEG only: start-of-frame marker (0xC0 to 0xCF), colour components, bits per sample, and where the orientation value is. */
+  jpeg?: { sof: number; components: number; precision: number; orientationAt: number | null };
+}
+
+/** An image file's format and pixel size, from its header (PNG, JPEG with its Exif orientation, GIF, WebP); null if unreadable. */
+export function imageSize(b: Uint8Array): ImageInfo | null {
   const format = sniffImageFormat(b);
-  const u16be = (i: number) => ((b[i] ?? 0) << 8) | (b[i + 1] ?? 0);
   const u16le = (i: number) => (b[i] ?? 0) | ((b[i + 1] ?? 0) << 8);
   const u24le = (i: number) => u16le(i) | ((b[i + 2] ?? 0) << 16);
   const u32be = (i: number) => ((b[i] ?? 0) * 0x1000000) + (((b[i + 1] ?? 0) << 16) | ((b[i + 2] ?? 0) << 8) | (b[i + 3] ?? 0));
@@ -176,28 +194,123 @@ export function imageSize(b: Uint8Array): { format: "png" | "jpg" | "webp" | "gi
       break;
     }
     case "jpg": {
-      // Walk the markers to the first start-of-frame.
-      for (let i = 2; i + 9 < b.length; ) {
-        if (b[i] !== 0xff) return null;
-        const marker = b[i + 1] as number;
-        if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
-          i += 2;
-          continue;
-        }
-        const len = u16be(i + 2);
-        if ((marker >= 0xc0 && marker <= 0xcf) && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
-          height = u16be(i + 5);
-          width = u16be(i + 7);
-          break;
-        }
-        i += 2 + len;
-      }
-      break;
+      const j = jpegHeader(b);
+      if (!j) return null;
+      const turned = j.orientation >= 5;
+      return {
+        format,
+        width: turned ? j.height : j.width,
+        height: turned ? j.width : j.height,
+        orientation: j.orientation,
+        rawWidth: j.width,
+        rawHeight: j.height,
+        jpeg: { sof: j.sof, components: j.components, precision: j.precision, orientationAt: j.orientationAt },
+      };
     }
     default:
       return null;
   }
-  return format && width > 0 && height > 0 ? { format, width, height } : null;
+  return format && width > 0 && height > 0 ? { format, width, height, orientation: 1, rawWidth: width, rawHeight: height } : null;
+}
+
+/**
+ * A JPEG's start-of-frame (size, components, precision) and its Exif
+ * orientation, with the offset of the orientation value (to rewrite it).
+ */
+function jpegHeader(b: Uint8Array): { width: number; height: number; sof: number; components: number; precision: number; orientation: number; orientationAt: number | null } | null {
+  const u16be = (i: number) => ((b[i] ?? 0) << 8) | (b[i + 1] ?? 0);
+  if (b[0] !== 0xff || b[1] !== 0xd8) return null;
+  let orientation = 1;
+  let orientationAt: number | null = null;
+  let exifSeen = false;
+  // Walk the markers to the first start-of-frame, reading the first Exif segment on the way.
+  for (let i = 2; i + 9 < b.length; ) {
+    if (b[i] !== 0xff) return null;
+    const marker = b[i + 1] as number;
+    if (marker === 0xff) {
+      i += 1; // a fill byte
+      continue;
+    }
+    if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+      i += 2;
+      continue;
+    }
+    const len = u16be(i + 2);
+    if (len < 2) return null;
+    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+      const height = u16be(i + 5);
+      const width = u16be(i + 7);
+      return width > 0 && height > 0 ? { width, height, sof: marker, components: b[i + 9] ?? 0, precision: b[i + 4] ?? 0, orientation, orientationAt } : null;
+    }
+    if (marker === 0xe1 && !exifSeen) {
+      const exif = exifOrientation(b, i + 4, Math.min(b.length, i + 2 + len));
+      if (exif) {
+        exifSeen = true;
+        orientation = exif.orientation;
+        orientationAt = exif.at;
+      }
+    }
+    i += 2 + len;
+  }
+  return null;
+}
+
+/** The orientation tag in the first image directory of an APP1 segment's data (`start` to `end`), or null when it isn't Exif or has none. */
+function exifOrientation(b: Uint8Array, start: number, end: number): { orientation: number; at: number } | null {
+  // "Exif\0\0", then a TIFF header: byte order, 42, offset of the first directory.
+  if (end - start < 14 || b[start] !== 0x45 || b[start + 1] !== 0x78 || b[start + 2] !== 0x69 || b[start + 3] !== 0x66 || b[start + 4] !== 0 || b[start + 5] !== 0) return null;
+  const t = start + 6;
+  const le = b[t] === 0x49 && b[t + 1] === 0x49;
+  if (!le && !(b[t] === 0x4d && b[t + 1] === 0x4d)) return null;
+  const u16 = (i: number) => (le ? (b[i] ?? 0) | ((b[i + 1] ?? 0) << 8) : ((b[i] ?? 0) << 8) | (b[i + 1] ?? 0));
+  const u32 = (i: number) => (le ? u16(i) + u16(i + 2) * 0x10000 : u16(i) * 0x10000 + u16(i + 2));
+  if (u16(t + 2) !== 42) return null;
+  const ifd = t + u32(t + 4);
+  if (ifd + 2 > end) return null;
+  const count = u16(ifd);
+  for (let k = 0; k < count; k++) {
+    const e = ifd + 2 + k * 12;
+    if (e + 12 > end) return null;
+    if (u16(e) !== 0x0112) continue;
+    if (u16(e + 2) !== 3) return null; // must be a SHORT
+    const v = u16(e + 8);
+    return v >= 1 && v <= 8 ? { orientation: v, at: e + 8 } : null;
+  }
+  return null;
+}
+
+/**
+ * Exif orientation `o` as a matrix from stored pixel space (`w` × `h`, y
+ * down) to shown pixel space, turning the image as decoders (CanvasKit's
+ * included) do. The identity for 1 or anything unknown.
+ */
+export function orientationMatrix(o: number, w: number, h: number): Matrix {
+  switch (o) {
+    case 2: return [-1, 0, 0, 1, w, 0];
+    case 3: return [-1, 0, 0, -1, w, h];
+    case 4: return [1, 0, 0, -1, 0, h];
+    case 5: return [0, 1, 1, 0, 0, 0];
+    case 6: return [0, 1, -1, 0, h, 0];
+    case 7: return [0, -1, -1, 0, h, w];
+    case 8: return [0, -1, 1, 0, 0, w];
+    default: return [1, 0, 0, 1, 0, 0];
+  }
+}
+
+/**
+ * The file with its Exif orientation set to 1 (stored as shown), for
+ * writers that turn the image themselves: SVG and PDF viewers disagree on
+ * whether to honour the tag. `bytes` itself when there is nothing to change.
+ */
+export function withoutOrientation(bytes: Uint8Array, info: ImageInfo): Uint8Array {
+  const at = info.jpeg?.orientationAt;
+  if (at === null || at === undefined || info.orientation === 1) return bytes;
+  const out = bytes.slice();
+  // A SHORT from 2 to 8: its non-zero byte says the byte order, 00 0n (big-endian) or 0n 00 (little-endian).
+  const le = (out[at] ?? 0) !== 0;
+  out[at] = le ? 1 : 0;
+  out[at + 1] = le ? 0 : 1;
+  return out;
 }
 
 /** Figma blend modes as CSS `mix-blend-mode` values; null for normal. LINEAR_BURN has no CSS mode (reported, then drawn as multiply). */
@@ -384,4 +497,69 @@ export function fallbackTextLines(n: ReadonlyNode): TextLine[] {
   const lh = n.lineHeight ?? content;
   const first = (lh - content) / 2 + ASCENT * size;
   return (n.characters ?? "").split(/\r\n|[\n\r\u2028\u2029]/).map((text, i) => ({ text, left: 0, baseline: first + i * lh }));
+}
+
+const blends = (mode: BlendMode | null | undefined): boolean => !!mode && mode !== "NORMAL" && mode !== "PASS_THROUGH";
+
+/**
+ * True if some visible descendant blends with a mode of its own (layer or
+ * paint), so a NORMAL parent must keep it from blending with what is under
+ * the parent. As the renderer decides.
+ */
+export function blendsInside(children: (id: string) => readonly ReadonlyNode[], kids: readonly ReadonlyNode[]): boolean {
+  for (const k of kids) {
+    if (!k.visible) continue;
+    if (blends(k.blendMode)) return true;
+    if ([...k.fills, ...k.strokes].some((p) => p.visible && blends(p.blendMode))) return true;
+    if (blendsInside(children, children(k.id))) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether the renderer casts `n`'s shadows from its outline (opaque
+ * geometry) rather than from the pixels it draws: shapes without children,
+ * and frames with children and a visible fill.
+ */
+export function shadowsFromOutline(n: ReadonlyNode, hasKids: boolean): boolean {
+  if (n.type === "GROUP" || n.type === "PAGE" || n.type === "TEXT") return false;
+  return !hasKids || (CLIPPING.has(n.type) && n.fills.some((p) => p.visible));
+}
+
+/**
+ * The least opacity of `n`'s visible fills and strokes (gradients: their
+ * most transparent stop; images count as opaque), from 0 to 1.
+ */
+export function leastPaintAlpha(n: ReadonlyNode): number {
+  let least = 1;
+  const stroked = n.strokeWeight > 0;
+  for (const p of [...n.fills, ...(stroked ? n.strokes : [])]) {
+    if (!p.visible) continue;
+    let a = clamp01(p.opacity ?? 1);
+    if (p.type === "SOLID") a *= clamp01(p.color.a);
+    else if (p.type !== "IMAGE") a *= Math.min(1, ...p.gradientStops.map((s) => clamp01(s.color.a)));
+    least = Math.min(least, a);
+  }
+  return least;
+}
+
+/** A small number written without exponent notation, to at least 4 significant digits (for scales far below 1). */
+export function fmtFine(v: number): string {
+  if (!Number.isFinite(v) || Math.abs(v) >= 1e-3 || v === 0) return fmt(v);
+  const digits = Math.min(20, 4 - Math.floor(Math.log10(Math.abs(v))));
+  const s = v.toFixed(digits).replace(/0+$/, "").replace(/\.$/, "");
+  return s === "-0" || /^-?0$/.test(s) ? "0" : s;
+}
+
+/** A 53-bit hash of a string (cyrb53), as base-36 text: a short, deterministic fingerprint. */
+export function hashText(s: string): string {
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 2654435761);
+    h2 = Math.imul(h2 ^ c, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
 }

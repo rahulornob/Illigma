@@ -23,6 +23,9 @@ export type Matrix = readonly [a: number, b: number, c: number, d: number, e: nu
 
 export const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
 
+/** Skia's default miter limit, which the renderer draws with: sharper corners are bevelled. */
+export const MITER_LIMIT = 4;
+
 export function multiply(m: Matrix, n: Matrix): Matrix {
   return [
     m[0] * n[0] + m[2] * n[1],
@@ -205,13 +208,14 @@ function ownBounds(n: ReadonlyNode, m: Matrix, b: Box): void {
       addPoints(s, m, geo.stroke);
       const r = s.rect();
       if (r) pts.addBox({ x: r.x - half, y: r.y - half, width: r.width + 2 * half, height: r.height + 2 * half });
+      if (half > 0) addStrokeTips(pts, m, geo.stroke, half, n.strokeJoin ?? "MITER", n.strokeCap === "SQUARE");
     }
     b.addBox(pts.rect());
     return;
   }
   if (n.type === "GROUP" || n.type === "PAGE") return;
   if (n.type === "TEXT") {
-    if (n.characters && n.fills[0]?.visible) b.addRect(m, 0, 0, n.width, n.height);
+    if (n.characters && n.fills.some((p) => p.visible)) b.addRect(m, 0, 0, n.width, n.height);
     return;
   }
   // Frames always cover their box (an empty frame exports at its size, as in Figma).
@@ -228,6 +232,63 @@ function ownBounds(n: ReadonlyNode, m: Matrix, b: Box): void {
     return;
   }
   b.addRect(m, -half, -half, n.width + half, n.height + half);
+}
+
+/**
+ * Where a stroke reaching `reach` past its centre line goes beyond a box
+ * around its points: miter tips (up to the miter limit; sharper corners are
+ * drawn bevelled) and square caps' outer corners (√2 × reach from an open
+ * end). Each point is added under `m`.
+ */
+function addStrokeTips(b: Box, m: Matrix, commands: readonly number[], reach: number, join: string, squareCaps: boolean): void {
+  const miter = join === "MITER";
+  if (!miter && !squareCaps) return;
+  const flat = flatten(commands);
+  flat.polys.forEach((poly, k) => {
+    const closed = flat.closed[k] ?? false;
+    // Drop repeated points (a closing point on the start, zero-length pieces): they have no direction.
+    const xs: number[] = [];
+    const ys: number[] = [];
+    for (let i = 0; i < poly.length; i += 2) {
+      const x = poly[i] as number, y = poly[i + 1] as number;
+      if (xs.length && Math.abs(x - (xs[xs.length - 1] as number)) < 1e-9 && Math.abs(y - (ys[ys.length - 1] as number)) < 1e-9) continue;
+      xs.push(x);
+      ys.push(y);
+    }
+    if (closed && xs.length > 1 && Math.abs((xs[0] as number) - (xs[xs.length - 1] as number)) < 1e-9 && Math.abs((ys[0] as number) - (ys[ys.length - 1] as number)) < 1e-9) {
+      xs.pop();
+      ys.pop();
+    }
+    const count = xs.length;
+    if (count < 2) return;
+    const dir = (from: number, to: number): [number, number] => {
+      const dx = (xs[to] as number) - (xs[from] as number), dy = (ys[to] as number) - (ys[from] as number);
+      const len = Math.hypot(dx, dy);
+      return [dx / len, dy / len];
+    };
+    if (miter) {
+      for (let i = closed ? 0 : 1; i < (closed ? count : count - 1); i++) {
+        const [ax, ay] = dir((i - 1 + count) % count, i);
+        const [bx, by] = dir(i, (i + 1) % count);
+        // The miter's length over the stroke's half width is 1 / sin(θ / 2), θ the corner's inside angle.
+        const sinHalf = Math.sqrt(Math.max(0, (1 + ax * bx + ay * by) / 2));
+        if (sinHalf < 1 / MITER_LIMIT || sinHalf > 1 - 1e-9) continue; // bevelled, or no corner
+        // The tip lies on the outer side of the turn, along the bisector.
+        const ox = ax - bx, oy = ay - by;
+        const ol = Math.hypot(ox, oy);
+        const d = reach / sinHalf;
+        b.add(...apply(m, (xs[i] as number) + (ox / ol) * d, (ys[i] as number) + (oy / ol) * d));
+      }
+    }
+    if (squareCaps && !closed) {
+      for (const [end, prev] of [[0, 1], [count - 1, count - 2]] as const) {
+        const [dx, dy] = dir(prev, end);
+        const ex = (xs[end] as number) + dx * reach, ey = (ys[end] as number) + dy * reach;
+        b.add(...apply(m, ex - dy * reach, ey + dx * reach));
+        b.add(...apply(m, ex + dy * reach, ey - dx * reach));
+      }
+    }
+  });
 }
 
 /** Every point of a flattened outline under `m`. */
