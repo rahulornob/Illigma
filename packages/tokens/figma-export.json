@@ -1,0 +1,3719 @@
+{
+  "file": "Illigma",
+  "fileKey": "K9mCPjBElVGiPOHJvZ4CWY",
+  "collections": [
+    {
+      "id": "VariableCollectionId:91:3140",
+      "name": "Illigma UI",
+      "defaultModeId": "91:0",
+      "modes": [
+        {
+          "name": "Dark",
+          "modeId": "91:0"
+        },
+        {
+          "name": "Light",
+          "modeId": "91:1"
+        }
+      ],
+      "variables": [
+        {
+          "id": "VariableID:91:3141",
+          "name": "bg/shell",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "neutral/1000",
+              "aliasId": "VariableID:94:11941",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.0470588244497776,
+                "g": 0.0470588244497776,
+                "b": 0.054901961237192154,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "neutral/150",
+              "aliasId": "VariableID:94:11925",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.9137254953384399,
+                "g": 0.9137254953384399,
+                "b": 0.9254902005195618,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3142",
+          "name": "bg/canvas",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "neutral/950",
+              "aliasId": "VariableID:94:11939",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.062745101749897,
+                "g": 0.062745101749897,
+                "b": 0.07058823853731155,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "neutral/50",
+              "aliasId": "VariableID:94:11922",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.95686274766922,
+                "g": 0.95686274766922,
+                "b": 0.9647058844566345,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3143",
+          "name": "bg/panel",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "neutral/900",
+              "aliasId": "VariableID:94:11937",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.09019608050584793,
+                "g": 0.09019608050584793,
+                "b": 0.10196078568696976,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "neutral/0",
+              "aliasId": "VariableID:94:11920",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3144",
+          "name": "bg/card",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "neutral/870",
+              "aliasId": "VariableID:94:11936",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.12156862765550613,
+                "g": 0.12156862765550613,
+                "b": 0.13725490868091583,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "neutral/25",
+              "aliasId": "VariableID:94:11921",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.9647058844566345,
+                "g": 0.9647058844566345,
+                "b": 0.9725490212440491,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3145",
+          "name": "bg/field",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "neutral/800",
+              "aliasId": "VariableID:94:11934",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.16470588743686676,
+                "g": 0.16470588743686676,
+                "b": 0.1882352977991104,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "neutral/100",
+              "aliasId": "VariableID:94:11924",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.9254902005195618,
+                "g": 0.9254902005195618,
+                "b": 0.9372549057006836,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3146",
+          "name": "bg/field-hover",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "neutral/700",
+              "aliasId": "VariableID:94:11932",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.20392157137393951,
+                "g": 0.20392157137393951,
+                "b": 0.23137255012989044,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "neutral/250",
+              "aliasId": "VariableID:94:11927",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.886274516582489,
+                "g": 0.886274516582489,
+                "b": 0.9058823585510254,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3147",
+          "name": "bg/recessed",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "neutral/960",
+              "aliasId": "VariableID:94:11940",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.05882352963089943,
+                "g": 0.05882352963089943,
+                "b": 0.06666667014360428,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "neutral/75",
+              "aliasId": "VariableID:94:11923",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.9450980424880981,
+                "g": 0.9450980424880981,
+                "b": 0.9529411792755127,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3148",
+          "name": "bg/button",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "neutral/850",
+              "aliasId": "VariableID:94:11935",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.14901961386203766,
+                "g": 0.14901961386203766,
+                "b": 0.16862745583057404,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "neutral/100",
+              "aliasId": "VariableID:94:11924",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.9254902005195618,
+                "g": 0.9254902005195618,
+                "b": 0.9372549057006836,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3149",
+          "name": "border/default",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "alpha/white-8",
+              "aliasId": "VariableID:94:11988",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0.07999999821186066
+              }
+            },
+            "Light": {
+              "alias": "alpha/black-8",
+              "aliasId": "VariableID:94:11997",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 0.07999999821186066
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3150",
+          "name": "text/primary",
+          "type": "COLOR",
+          "scopes": [
+            "SHAPE_FILL",
+            "TEXT_FILL",
+            "STROKE_COLOR"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "alpha/white-92",
+              "aliasId": "VariableID:94:11995",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0.9200000166893005
+              }
+            },
+            "Light": {
+              "alias": "alpha/black-90",
+              "aliasId": "VariableID:94:12004",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 0.8999999761581421
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3151",
+          "name": "text/secondary",
+          "type": "COLOR",
+          "scopes": [
+            "SHAPE_FILL",
+            "TEXT_FILL",
+            "STROKE_COLOR"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "alpha/white-70",
+              "aliasId": "VariableID:94:11994",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0.699999988079071
+              }
+            },
+            "Light": {
+              "alias": "alpha/black-68",
+              "aliasId": "VariableID:94:12003",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 0.6800000071525574
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3152",
+          "name": "text/tertiary",
+          "type": "COLOR",
+          "scopes": [
+            "SHAPE_FILL",
+            "TEXT_FILL",
+            "STROKE_COLOR"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "alpha/white-50",
+              "aliasId": "VariableID:94:11993",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0.5
+              }
+            },
+            "Light": {
+              "alias": "alpha/black-55",
+              "aliasId": "VariableID:94:12002",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 0.550000011920929
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3153",
+          "name": "accent/default",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "blue/500",
+              "aliasId": "VariableID:94:11957",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.239215686917305,
+                "g": 0.545098066329956,
+                "b": 1,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "blue/600",
+              "aliasId": "VariableID:94:11958",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.18431372940540314,
+                "g": 0.48235294222831726,
+                "b": 0.9607843160629272,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3154",
+          "name": "accent/row",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "blue/800",
+              "aliasId": "VariableID:94:11960",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.11764705926179886,
+                "g": 0.16862745583057404,
+                "b": 0.2666666805744171,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "blue/100",
+              "aliasId": "VariableID:94:11953",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.8901960849761963,
+                "g": 0.929411768913269,
+                "b": 1,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3155",
+          "name": "accent/on",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "neutral/0",
+              "aliasId": "VariableID:94:11920",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "neutral/0",
+              "aliasId": "VariableID:94:11920",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3156",
+          "name": "tool/active",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "blue/500",
+              "aliasId": "VariableID:94:11957",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.239215686917305,
+                "g": 0.545098066329956,
+                "b": 1,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "blue/600",
+              "aliasId": "VariableID:94:11958",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.18431372940540314,
+                "g": 0.48235294222831726,
+                "b": 0.9607843160629272,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3157",
+          "name": "tool/on",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "neutral/0",
+              "aliasId": "VariableID:94:11920",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "neutral/0",
+              "aliasId": "VariableID:94:11920",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3158",
+          "name": "state/success",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "green/400",
+              "aliasId": "VariableID:94:11974",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.23529411852359772,
+                "g": 0.7960784435272217,
+                "b": 0.49803921580314636,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "green/600",
+              "aliasId": "VariableID:94:11976",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.12156862765550613,
+                "g": 0.6431372761726379,
+                "b": 0.38823530077934265,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3159",
+          "name": "state/danger",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "red/400",
+              "aliasId": "VariableID:94:11979",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 0.3529411852359772,
+                "b": 0.37254902720451355,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "red/600",
+              "aliasId": "VariableID:94:11980",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.8980392217636108,
+                "g": 0.2823529541492462,
+                "b": 0.3019607961177826,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3160",
+          "name": "guide/smart",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "pink/500",
+              "aliasId": "VariableID:94:11985",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 0.239215686917305,
+                "b": 0.49803921580314636,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "pink/600",
+              "aliasId": "VariableID:94:11986",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.9411764740943909,
+                "g": 0.1882352977991104,
+                "b": 0.4313725531101227,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3161",
+          "name": "type/frame-bg",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "blue/850",
+              "aliasId": "VariableID:96:21330",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.09019608050584793,
+                "g": 0.16078431904315948,
+                "b": 0.29019609093666077,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "blue/75",
+              "aliasId": "VariableID:96:21332",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.8823529481887817,
+                "g": 0.9215686321258545,
+                "b": 1,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3162",
+          "name": "type/frame",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "blue/400",
+              "aliasId": "VariableID:94:11956",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.43529412150382996,
+                "g": 0.658823549747467,
+                "b": 1,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "blue/700",
+              "aliasId": "VariableID:94:11959",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.18431372940540314,
+                "g": 0.43529412150382996,
+                "b": 0.8784313797950745,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3163",
+          "name": "type/text-bg",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "blue/820",
+              "aliasId": "VariableID:96:21331",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.13725490868091583,
+                "g": 0.1882352977991104,
+                "b": 0.29019609093666077,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "blue/60",
+              "aliasId": "VariableID:96:21333",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.8980392217636108,
+                "g": 0.9254902005195618,
+                "b": 0.9725490212440491,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3164",
+          "name": "type/text",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "blue/300",
+              "aliasId": "VariableID:94:11955",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.5607843399047852,
+                "g": 0.7058823704719543,
+                "b": 1,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "blue/700",
+              "aliasId": "VariableID:94:11959",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.18431372940540314,
+                "g": 0.43529412150382996,
+                "b": 0.8784313797950745,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3165",
+          "name": "type/shape-bg",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "amber/900",
+              "aliasId": "VariableID:94:11984",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.29019609093666077,
+                "g": 0.2078431397676468,
+                "b": 0.08627451211214066,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "amber/50",
+              "aliasId": "VariableID:94:11981",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 0.9450980424880981,
+                "b": 0.8627451062202454,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3166",
+          "name": "type/shape",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "amber/300",
+              "aliasId": "VariableID:94:11982",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 0.7568627595901489,
+                "b": 0.3686274588108063,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "amber/700",
+              "aliasId": "VariableID:94:11983",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.6980392336845398,
+                "g": 0.41960784792900085,
+                "b": 0,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3167",
+          "name": "type/image-bg",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "green/900",
+              "aliasId": "VariableID:94:11978",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.09019608050584793,
+                "g": 0.22745098173618317,
+                "b": 0.1725490242242813,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "green/50",
+              "aliasId": "VariableID:94:11973",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.886274516582489,
+                "g": 0.9647058844566345,
+                "b": 0.9254902005195618,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3168",
+          "name": "type/image",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "green/500",
+              "aliasId": "VariableID:94:11975",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.37254902720451355,
+                "g": 0.8274509906768799,
+                "b": 0.6274510025978088,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "green/700",
+              "aliasId": "VariableID:94:11977",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.08627451211214066,
+                "g": 0.5254902243614197,
+                "b": 0.3529411852359772,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3169",
+          "name": "type/component-bg",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "blue/800",
+              "aliasId": "VariableID:94:11960",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.11764705926179886,
+                "g": 0.16862745583057404,
+                "b": 0.2666666805744171,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "blue/100",
+              "aliasId": "VariableID:94:11953",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.8901960849761963,
+                "g": 0.929411768913269,
+                "b": 1,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3170",
+          "name": "type/component",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "blue/300",
+              "aliasId": "VariableID:94:11955",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.5607843399047852,
+                "g": 0.7058823704719543,
+                "b": 1,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "blue/700",
+              "aliasId": "VariableID:94:11959",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.18431372940540314,
+                "g": 0.43529412150382996,
+                "b": 0.8784313797950745,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3171",
+          "name": "radius/panel",
+          "type": "FLOAT",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "value": 16
+            },
+            "Light": {
+              "value": 16
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3172",
+          "name": "radius/card",
+          "type": "FLOAT",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "value": 12
+            },
+            "Light": {
+              "value": 12
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3173",
+          "name": "radius/tool",
+          "type": "FLOAT",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "value": 8
+            },
+            "Light": {
+              "value": 8
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3174",
+          "name": "radius/button",
+          "type": "FLOAT",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "value": 8
+            },
+            "Light": {
+              "value": 8
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3175",
+          "name": "radius/field",
+          "type": "FLOAT",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "value": 8
+            },
+            "Light": {
+              "value": 8
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3176",
+          "name": "radius/chip",
+          "type": "FLOAT",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "value": 8
+            },
+            "Light": {
+              "value": 8
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3177",
+          "name": "size/field",
+          "type": "FLOAT",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "value": 28
+            },
+            "Light": {
+              "value": 28
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3178",
+          "name": "size/row",
+          "type": "FLOAT",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "value": 32
+            },
+            "Light": {
+              "value": 32
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3179",
+          "name": "size/tool",
+          "type": "FLOAT",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "value": 36
+            },
+            "Light": {
+              "value": 36
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3180",
+          "name": "space/card",
+          "type": "FLOAT",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "value": 12
+            },
+            "Light": {
+              "value": 12
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:3181",
+          "name": "space/gap",
+          "type": "FLOAT",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "value": 8
+            },
+            "Light": {
+              "value": 8
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:7627",
+          "name": "bg/inverse",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "neutral/0",
+              "aliasId": "VariableID:94:11920",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "neutral/900",
+              "aliasId": "VariableID:94:11937",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.09019608050584793,
+                "g": 0.09019608050584793,
+                "b": 0.10196078568696976,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:7628",
+          "name": "text/on-inverse",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "neutral/930",
+              "aliasId": "VariableID:94:11938",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.07058823853731155,
+                "g": 0.07058823853731155,
+                "b": 0.07058823853731155,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "neutral/0",
+              "aliasId": "VariableID:94:11920",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:8332",
+          "name": "selection/component",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "blue/500",
+              "aliasId": "VariableID:94:11957",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.239215686917305,
+                "g": 0.545098066329956,
+                "b": 1,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "blue/600",
+              "aliasId": "VariableID:94:11958",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.18431372940540314,
+                "g": 0.48235294222831726,
+                "b": 0.9607843160629272,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:8333",
+          "name": "selection/on",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "neutral/0",
+              "aliasId": "VariableID:94:11920",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "neutral/0",
+              "aliasId": "VariableID:94:11920",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:8382",
+          "name": "canvas/dot",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "alpha/white-8",
+              "aliasId": "VariableID:94:11988",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0.07999999821186066
+              }
+            },
+            "Light": {
+              "alias": "alpha/black-8",
+              "aliasId": "VariableID:94:11997",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 0.07999999821186066
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:91:8383",
+          "name": "accent/row-parent",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "blue/900",
+              "aliasId": "VariableID:94:11961",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.08627451211214066,
+                "g": 0.11764705926179886,
+                "b": 0.18039216101169586,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "blue/50",
+              "aliasId": "VariableID:94:11952",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.9411764740943909,
+                "g": 0.9607843160629272,
+                "b": 1,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:12005",
+          "name": "text/disabled",
+          "type": "COLOR",
+          "scopes": [
+            "TEXT_FILL",
+            "STROKE_COLOR"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "alpha/white-32",
+              "aliasId": "VariableID:94:11992",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0.3199999928474426
+              }
+            },
+            "Light": {
+              "alias": "alpha/black-32",
+              "aliasId": "VariableID:94:12001",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 0.3199999928474426
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:12006",
+          "name": "border/strong",
+          "type": "COLOR",
+          "scopes": [
+            "FRAME_FILL",
+            "SHAPE_FILL",
+            "STROKE_COLOR"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "alpha/white-16",
+              "aliasId": "VariableID:94:11990",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0.1599999964237213
+              }
+            },
+            "Light": {
+              "alias": "alpha/black-16",
+              "aliasId": "VariableID:94:11999",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 0.1599999964237213
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:12007",
+          "name": "bg/hover",
+          "type": "COLOR",
+          "scopes": [
+            "FRAME_FILL",
+            "SHAPE_FILL"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "alpha/white-4",
+              "aliasId": "VariableID:94:11987",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0.03999999910593033
+              }
+            },
+            "Light": {
+              "alias": "alpha/black-4",
+              "aliasId": "VariableID:94:11996",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 0.03999999910593033
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:12008",
+          "name": "bg/pressed",
+          "type": "COLOR",
+          "scopes": [
+            "FRAME_FILL",
+            "SHAPE_FILL"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "alpha/white-8",
+              "aliasId": "VariableID:94:11988",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0.07999999821186066
+              }
+            },
+            "Light": {
+              "alias": "alpha/black-8",
+              "aliasId": "VariableID:94:11997",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 0.07999999821186066
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:12009",
+          "name": "brand/default",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "ember/500",
+              "aliasId": "VariableID:94:11947",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 0.35686275362968445,
+                "b": 0.18039216101169586,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "ember/500",
+              "aliasId": "VariableID:94:11947",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 0.35686275362968445,
+                "b": 0.18039216101169586,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:12010",
+          "name": "brand/hover",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "ember/400",
+              "aliasId": "VariableID:94:11946",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 0.47843137383461,
+                "b": 0.30980393290519714,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "ember/600",
+              "aliasId": "VariableID:94:11948",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.8980392217636108,
+                "g": 0.26274511218070984,
+                "b": 0.10196078568696976,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:12011",
+          "name": "brand/tint",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "ember/900",
+              "aliasId": "VariableID:94:11951",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.29019609093666077,
+                "g": 0.08627451211214066,
+                "b": 0.03529411926865578,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "ember/50",
+              "aliasId": "VariableID:94:11942",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 0.9450980424880981,
+                "b": 0.9254902005195618,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:12012",
+          "name": "state/warning",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "amber/300",
+              "aliasId": "VariableID:94:11982",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 0.7568627595901489,
+                "b": 0.3686274588108063,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "amber/700",
+              "aliasId": "VariableID:94:11983",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.6980392336845398,
+                "g": 0.41960784792900085,
+                "b": 0,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:12871",
+          "name": "accent/hover",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "blue/750",
+              "aliasId": "VariableID:94:13549",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.16470588743686676,
+                "g": 0.3843137323856354,
+                "b": 0.7843137383460999,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "blue/750",
+              "aliasId": "VariableID:94:13549",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.16470588743686676,
+                "g": 0.3843137323856354,
+                "b": 0.7843137383460999,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:13535",
+          "name": "accent/fill",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "blue/700",
+              "aliasId": "VariableID:94:11959",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.18431372940540314,
+                "g": 0.43529412150382996,
+                "b": 0.8784313797950745,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "blue/700",
+              "aliasId": "VariableID:94:11959",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.18431372940540314,
+                "g": 0.43529412150382996,
+                "b": 0.8784313797950745,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:13536",
+          "name": "state/danger-fill",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "red/700",
+              "aliasId": "VariableID:94:13534",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.7882353067398071,
+                "g": 0.22745098173618317,
+                "b": 0.250980406999588,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "red/700",
+              "aliasId": "VariableID:94:13534",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.7882353067398071,
+                "g": 0.22745098173618317,
+                "b": 0.250980406999588,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:13551",
+          "name": "state/danger-hover",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "red/800",
+              "aliasId": "VariableID:94:13550",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.6901960968971252,
+                "g": 0.18431372940540314,
+                "b": 0.2078431397676468,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "red/800",
+              "aliasId": "VariableID:94:13550",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.6901960968971252,
+                "g": 0.18431372940540314,
+                "b": 0.2078431397676468,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:96:21334",
+          "name": "state/success-on-inverse",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "green/700",
+              "aliasId": "VariableID:94:11977",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.08627451211214066,
+                "g": 0.5254902243614197,
+                "b": 0.3529411852359772,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "green/400",
+              "aliasId": "VariableID:94:11974",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.23529411852359772,
+                "g": 0.7960784435272217,
+                "b": 0.49803921580314636,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:96:21335",
+          "name": "state/danger-on-inverse",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "red/700",
+              "aliasId": "VariableID:94:13534",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.7882353067398071,
+                "g": 0.22745098173618317,
+                "b": 0.250980406999588,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "red/400",
+              "aliasId": "VariableID:94:11979",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 0.3529411852359772,
+                "b": 0.37254902720451355,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:96:21336",
+          "name": "state/success-tint",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "green/900",
+              "aliasId": "VariableID:94:11978",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.09019608050584793,
+                "g": 0.22745098173618317,
+                "b": 0.1725490242242813,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "green/50",
+              "aliasId": "VariableID:94:11973",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.886274516582489,
+                "g": 0.9647058844566345,
+                "b": 0.9254902005195618,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:96:21337",
+          "name": "state/warning-tint",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "amber/900",
+              "aliasId": "VariableID:94:11984",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.29019609093666077,
+                "g": 0.2078431397676468,
+                "b": 0.08627451211214066,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "amber/50",
+              "aliasId": "VariableID:94:11981",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 0.9450980424880981,
+                "b": 0.8627451062202454,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:96:21338",
+          "name": "accent/text",
+          "type": "COLOR",
+          "scopes": [
+            "TEXT_FILL",
+            "STROKE_COLOR"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "blue/300",
+              "aliasId": "VariableID:94:11955",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.5607843399047852,
+                "g": 0.7058823704719543,
+                "b": 1,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "blue/700",
+              "aliasId": "VariableID:94:11959",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.18431372940540314,
+                "g": 0.43529412150382996,
+                "b": 0.8784313797950745,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:96:21339",
+          "name": "radius/xs",
+          "type": "FLOAT",
+          "scopes": [
+            "CORNER_RADIUS"
+          ],
+          "values": {
+            "Dark": {
+              "value": 4
+            },
+            "Light": {
+              "value": 4
+            }
+          }
+        },
+        {
+          "id": "VariableID:96:21340",
+          "name": "radius/full",
+          "type": "FLOAT",
+          "scopes": [
+            "CORNER_RADIUS"
+          ],
+          "values": {
+            "Dark": {
+              "value": 999
+            },
+            "Light": {
+              "value": 999
+            }
+          }
+        },
+        {
+          "id": "VariableID:96:22396",
+          "name": "state/danger-tint",
+          "type": "COLOR",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "values": {
+            "Dark": {
+              "alias": "red/900",
+              "aliasId": "VariableID:96:22394",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 0.23137255012989044,
+                "g": 0.07058823853731155,
+                "b": 0.0784313753247261,
+                "a": 1
+              }
+            },
+            "Light": {
+              "alias": "red/50",
+              "aliasId": "VariableID:96:22395",
+              "aliasCollection": "Illigma Primitives",
+              "value": {
+                "r": 1,
+                "g": 0.8980392217636108,
+                "b": 0.8980392217636108,
+                "a": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "VariableCollectionId:94:11919",
+      "name": "Illigma Primitives",
+      "defaultModeId": "94:0",
+      "modes": [
+        {
+          "name": "Value",
+          "modeId": "94:0"
+        }
+      ],
+      "variables": [
+        {
+          "id": "VariableID:94:11920",
+          "name": "neutral/0",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11921",
+          "name": "neutral/25",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.9647058844566345,
+                "g": 0.9647058844566345,
+                "b": 0.9725490212440491,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11922",
+          "name": "neutral/50",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.95686274766922,
+                "g": 0.95686274766922,
+                "b": 0.9647058844566345,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11923",
+          "name": "neutral/75",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.9450980424880981,
+                "g": 0.9450980424880981,
+                "b": 0.9529411792755127,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11924",
+          "name": "neutral/100",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.9254902005195618,
+                "g": 0.9254902005195618,
+                "b": 0.9372549057006836,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11925",
+          "name": "neutral/150",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.9137254953384399,
+                "g": 0.9137254953384399,
+                "b": 0.9254902005195618,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11926",
+          "name": "neutral/200",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.886274516582489,
+                "g": 0.886274516582489,
+                "b": 0.9019607901573181,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11927",
+          "name": "neutral/250",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.886274516582489,
+                "g": 0.886274516582489,
+                "b": 0.9058823585510254,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11928",
+          "name": "neutral/300",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.7843137383460999,
+                "g": 0.7843137383460999,
+                "b": 0.8117647171020508,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11929",
+          "name": "neutral/400",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.6274510025978088,
+                "g": 0.6274510025978088,
+                "b": 0.6666666865348816,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11930",
+          "name": "neutral/500",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.41960784792900085,
+                "g": 0.41960784792900085,
+                "b": 0.4588235318660736,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11931",
+          "name": "neutral/600",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.29019609093666077,
+                "g": 0.29019609093666077,
+                "b": 0.32156863808631897,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11932",
+          "name": "neutral/700",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.20392157137393951,
+                "g": 0.20392157137393951,
+                "b": 0.23137255012989044,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11933",
+          "name": "neutral/750",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.1725490242242813,
+                "g": 0.1725490242242813,
+                "b": 0.19607843458652496,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11934",
+          "name": "neutral/800",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.16470588743686676,
+                "g": 0.16470588743686676,
+                "b": 0.1882352977991104,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11935",
+          "name": "neutral/850",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.14901961386203766,
+                "g": 0.14901961386203766,
+                "b": 0.16862745583057404,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11936",
+          "name": "neutral/870",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.12156862765550613,
+                "g": 0.12156862765550613,
+                "b": 0.13725490868091583,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11937",
+          "name": "neutral/900",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.09019608050584793,
+                "g": 0.09019608050584793,
+                "b": 0.10196078568696976,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11938",
+          "name": "neutral/930",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.07058823853731155,
+                "g": 0.07058823853731155,
+                "b": 0.07058823853731155,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11939",
+          "name": "neutral/950",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.062745101749897,
+                "g": 0.062745101749897,
+                "b": 0.07058823853731155,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11940",
+          "name": "neutral/960",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.05882352963089943,
+                "g": 0.05882352963089943,
+                "b": 0.06666667014360428,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11941",
+          "name": "neutral/1000",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.0470588244497776,
+                "g": 0.0470588244497776,
+                "b": 0.054901961237192154,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11942",
+          "name": "ember/50",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 1,
+                "g": 0.9450980424880981,
+                "b": 0.9254902005195618,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11943",
+          "name": "ember/100",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 1,
+                "g": 0.8784313797950745,
+                "b": 0.8352941274642944,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11944",
+          "name": "ember/200",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 1,
+                "g": 0.7568627595901489,
+                "b": 0.6705882549285889,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11945",
+          "name": "ember/300",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 1,
+                "g": 0.6117647290229797,
+                "b": 0.47843137383461,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11946",
+          "name": "ember/400",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 1,
+                "g": 0.47843137383461,
+                "b": 0.30980393290519714,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11947",
+          "name": "ember/500",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 1,
+                "g": 0.35686275362968445,
+                "b": 0.18039216101169586,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11948",
+          "name": "ember/600",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.8980392217636108,
+                "g": 0.26274511218070984,
+                "b": 0.10196078568696976,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11949",
+          "name": "ember/700",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.7490196228027344,
+                "g": 0.20000000298023224,
+                "b": 0.06666667014360428,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11950",
+          "name": "ember/800",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.5411764979362488,
+                "g": 0.14509804546833038,
+                "b": 0.05098039284348488,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11951",
+          "name": "ember/900",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.29019609093666077,
+                "g": 0.08627451211214066,
+                "b": 0.03529411926865578,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11952",
+          "name": "blue/50",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.9411764740943909,
+                "g": 0.9607843160629272,
+                "b": 1,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11953",
+          "name": "blue/100",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.8901960849761963,
+                "g": 0.929411768913269,
+                "b": 1,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11954",
+          "name": "blue/200",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.7490196228027344,
+                "g": 0.8392156958580017,
+                "b": 1,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11955",
+          "name": "blue/300",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.5607843399047852,
+                "g": 0.7058823704719543,
+                "b": 1,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11956",
+          "name": "blue/400",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.43529412150382996,
+                "g": 0.658823549747467,
+                "b": 1,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11957",
+          "name": "blue/500",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.239215686917305,
+                "g": 0.545098066329956,
+                "b": 1,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11958",
+          "name": "blue/600",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.18431372940540314,
+                "g": 0.48235294222831726,
+                "b": 0.9607843160629272,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11959",
+          "name": "blue/700",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.18431372940540314,
+                "g": 0.43529412150382996,
+                "b": 0.8784313797950745,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11960",
+          "name": "blue/800",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.11764705926179886,
+                "g": 0.16862745583057404,
+                "b": 0.2666666805744171,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11961",
+          "name": "blue/900",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.08627451211214066,
+                "g": 0.11764705926179886,
+                "b": 0.18039216101169586,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11973",
+          "name": "green/50",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.886274516582489,
+                "g": 0.9647058844566345,
+                "b": 0.9254902005195618,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11974",
+          "name": "green/400",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.23529411852359772,
+                "g": 0.7960784435272217,
+                "b": 0.49803921580314636,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11975",
+          "name": "green/500",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.37254902720451355,
+                "g": 0.8274509906768799,
+                "b": 0.6274510025978088,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11976",
+          "name": "green/600",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.12156862765550613,
+                "g": 0.6431372761726379,
+                "b": 0.38823530077934265,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11977",
+          "name": "green/700",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.08627451211214066,
+                "g": 0.5254902243614197,
+                "b": 0.3529411852359772,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11978",
+          "name": "green/900",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.09019608050584793,
+                "g": 0.22745098173618317,
+                "b": 0.1725490242242813,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11979",
+          "name": "red/400",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 1,
+                "g": 0.3529411852359772,
+                "b": 0.37254902720451355,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11980",
+          "name": "red/600",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.8980392217636108,
+                "g": 0.2823529541492462,
+                "b": 0.3019607961177826,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11981",
+          "name": "amber/50",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 1,
+                "g": 0.9450980424880981,
+                "b": 0.8627451062202454,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11982",
+          "name": "amber/300",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 1,
+                "g": 0.7568627595901489,
+                "b": 0.3686274588108063,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11983",
+          "name": "amber/700",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.6980392336845398,
+                "g": 0.41960784792900085,
+                "b": 0,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11984",
+          "name": "amber/900",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.29019609093666077,
+                "g": 0.2078431397676468,
+                "b": 0.08627451211214066,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11985",
+          "name": "pink/500",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 1,
+                "g": 0.239215686917305,
+                "b": 0.49803921580314636,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11986",
+          "name": "pink/600",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.9411764740943909,
+                "g": 0.1882352977991104,
+                "b": 0.4313725531101227,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11987",
+          "name": "alpha/white-4",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0.03999999910593033
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11988",
+          "name": "alpha/white-8",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0.07999999821186066
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11989",
+          "name": "alpha/white-12",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0.11999999731779099
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11990",
+          "name": "alpha/white-16",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0.1599999964237213
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11991",
+          "name": "alpha/white-24",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0.23999999463558197
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11992",
+          "name": "alpha/white-32",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0.3199999928474426
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11993",
+          "name": "alpha/white-50",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0.5
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11994",
+          "name": "alpha/white-70",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0.699999988079071
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11995",
+          "name": "alpha/white-92",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0.9200000166893005
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11996",
+          "name": "alpha/black-4",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 0.03999999910593033
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11997",
+          "name": "alpha/black-8",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 0.07999999821186066
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11998",
+          "name": "alpha/black-12",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 0.11999999731779099
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:11999",
+          "name": "alpha/black-16",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 0.1599999964237213
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:12000",
+          "name": "alpha/black-24",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 0.23999999463558197
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:12001",
+          "name": "alpha/black-32",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 0.3199999928474426
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:12002",
+          "name": "alpha/black-55",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 0.550000011920929
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:12003",
+          "name": "alpha/black-68",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 0.6800000071525574
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:12004",
+          "name": "alpha/black-90",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0,
+                "g": 0,
+                "b": 0,
+                "a": 0.8999999761581421
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:13534",
+          "name": "red/700",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.7882353067398071,
+                "g": 0.22745098173618317,
+                "b": 0.250980406999588,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:13549",
+          "name": "blue/750",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.16470588743686676,
+                "g": 0.3843137323856354,
+                "b": 0.7843137383460999,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:94:13550",
+          "name": "red/800",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.6901960968971252,
+                "g": 0.18431372940540314,
+                "b": 0.2078431397676468,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:96:21330",
+          "name": "blue/850",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.09019608050584793,
+                "g": 0.16078431904315948,
+                "b": 0.29019609093666077,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:96:21331",
+          "name": "blue/820",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.13725490868091583,
+                "g": 0.1882352977991104,
+                "b": 0.29019609093666077,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:96:21332",
+          "name": "blue/75",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.8823529481887817,
+                "g": 0.9215686321258545,
+                "b": 1,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:96:21333",
+          "name": "blue/60",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.8980392217636108,
+                "g": 0.9254902005195618,
+                "b": 0.9725490212440491,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:96:22394",
+          "name": "red/900",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 0.23137255012989044,
+                "g": 0.07058823853731155,
+                "b": 0.0784313753247261,
+                "a": 1
+              }
+            }
+          }
+        },
+        {
+          "id": "VariableID:96:22395",
+          "name": "red/50",
+          "type": "COLOR",
+          "scopes": [],
+          "values": {
+            "Value": {
+              "value": {
+                "r": 1,
+                "g": 0.8980392217636108,
+                "b": 0.8980392217636108,
+                "a": 1
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "textStyles": [
+    {
+      "id": "S:dfacadf1039a719ed7ed1ae3dc82433ac18d7b34,",
+      "name": "Default/Regular",
+      "fontName": {
+        "family": "Inter",
+        "style": "Regular",
+        "variationSettings": {
+          "slnt": 0,
+          "wght": 400
+        }
+      },
+      "fontSize": 12,
+      "lineHeight": {
+        "unit": "PIXELS",
+        "value": 16
+      },
+      "letterSpacing": {
+        "unit": "PERCENT",
+        "value": 0
+      },
+      "paragraphSpacing": 0,
+      "textCase": "ORIGINAL",
+      "textDecoration": "NONE"
+    },
+    {
+      "id": "S:06159bdeab00d102c4bc249fa846927560c6cca5,",
+      "name": "Default/Medium",
+      "fontName": {
+        "family": "Inter",
+        "style": "Medium",
+        "variationSettings": {
+          "slnt": 0,
+          "wght": 500
+        }
+      },
+      "fontSize": 12,
+      "lineHeight": {
+        "unit": "PIXELS",
+        "value": 16
+      },
+      "letterSpacing": {
+        "unit": "PERCENT",
+        "value": 0
+      },
+      "paragraphSpacing": 0,
+      "textCase": "ORIGINAL",
+      "textDecoration": "NONE"
+    },
+    {
+      "id": "S:88dd81d3f38092a0da19be7a083abd7adddd35f1,",
+      "name": "UI/Title",
+      "fontName": {
+        "family": "Inter",
+        "style": "Semi Bold",
+        "variationSettings": {
+          "slnt": 0,
+          "wght": 600
+        }
+      },
+      "fontSize": 16,
+      "lineHeight": {
+        "unit": "PIXELS",
+        "value": 24
+      },
+      "letterSpacing": {
+        "unit": "PERCENT",
+        "value": 0
+      },
+      "paragraphSpacing": 0,
+      "textCase": "ORIGINAL",
+      "textDecoration": "NONE"
+    },
+    {
+      "id": "S:7096c05535c63288f812b6726e63599381d447a9,",
+      "name": "UI/Heading",
+      "fontName": {
+        "family": "Inter",
+        "style": "Semi Bold",
+        "variationSettings": {
+          "slnt": 0,
+          "wght": 600
+        }
+      },
+      "fontSize": 12,
+      "lineHeight": {
+        "unit": "PIXELS",
+        "value": 16
+      },
+      "letterSpacing": {
+        "unit": "PERCENT",
+        "value": 0
+      },
+      "paragraphSpacing": 0,
+      "textCase": "ORIGINAL",
+      "textDecoration": "NONE"
+    },
+    {
+      "id": "S:15fed7136684ec7369c93037d777eb0e069017ae,",
+      "name": "UI/Button",
+      "fontName": {
+        "family": "Inter",
+        "style": "Semi Bold",
+        "variationSettings": {
+          "slnt": 0,
+          "wght": 600
+        }
+      },
+      "fontSize": 12,
+      "lineHeight": {
+        "unit": "PIXELS",
+        "value": 16
+      },
+      "letterSpacing": {
+        "unit": "PERCENT",
+        "value": 0
+      },
+      "paragraphSpacing": 0,
+      "textCase": "ORIGINAL",
+      "textDecoration": "NONE"
+    },
+    {
+      "id": "S:8cff84f2db397f84adb1ef85160c8b9c5b2fc12b,",
+      "name": "UI/Value",
+      "fontName": {
+        "family": "Inter",
+        "style": "Medium",
+        "variationSettings": {
+          "slnt": 0,
+          "wght": 500
+        }
+      },
+      "fontSize": 12,
+      "lineHeight": {
+        "unit": "PIXELS",
+        "value": 16
+      },
+      "letterSpacing": {
+        "unit": "PERCENT",
+        "value": 0
+      },
+      "paragraphSpacing": 0,
+      "textCase": "ORIGINAL",
+      "textDecoration": "NONE"
+    },
+    {
+      "id": "S:31e24be0677fecbfe57aaf094a4a8e37299821b7,",
+      "name": "UI/Body",
+      "fontName": {
+        "family": "Inter",
+        "style": "Regular",
+        "variationSettings": {
+          "slnt": 0,
+          "wght": 400
+        }
+      },
+      "fontSize": 12,
+      "lineHeight": {
+        "unit": "PIXELS",
+        "value": 16
+      },
+      "letterSpacing": {
+        "unit": "PERCENT",
+        "value": 0
+      },
+      "paragraphSpacing": 0,
+      "textCase": "ORIGINAL",
+      "textDecoration": "NONE"
+    },
+    {
+      "id": "S:624301245a4c70eec0ee3d83d3a62228793468b9,",
+      "name": "UI/Label",
+      "fontName": {
+        "family": "Inter",
+        "style": "Regular",
+        "variationSettings": {
+          "slnt": 0,
+          "wght": 400
+        }
+      },
+      "fontSize": 12,
+      "lineHeight": {
+        "unit": "PIXELS",
+        "value": 16
+      },
+      "letterSpacing": {
+        "unit": "PERCENT",
+        "value": 0
+      },
+      "paragraphSpacing": 0,
+      "textCase": "ORIGINAL",
+      "textDecoration": "NONE"
+    },
+    {
+      "id": "S:5dd55c001df57eb3d4cc025e9b8ea8d510bfbd87,",
+      "name": "UI/Caption",
+      "fontName": {
+        "family": "Inter",
+        "style": "Regular",
+        "variationSettings": {
+          "slnt": 0,
+          "wght": 400
+        }
+      },
+      "fontSize": 12,
+      "lineHeight": {
+        "unit": "PIXELS",
+        "value": 16
+      },
+      "letterSpacing": {
+        "unit": "PERCENT",
+        "value": 0
+      },
+      "paragraphSpacing": 0,
+      "textCase": "ORIGINAL",
+      "textDecoration": "NONE"
+    },
+    {
+      "id": "S:ad0e7f2b0f9ef27740f21429ec184478ec3c17e9,",
+      "name": "UI/Tab",
+      "fontName": {
+        "family": "Inter",
+        "style": "Medium",
+        "variationSettings": {
+          "slnt": 0,
+          "wght": 500
+        }
+      },
+      "fontSize": 12,
+      "lineHeight": {
+        "unit": "PIXELS",
+        "value": 16
+      },
+      "letterSpacing": {
+        "unit": "PERCENT",
+        "value": 0
+      },
+      "paragraphSpacing": 0,
+      "textCase": "ORIGINAL",
+      "textDecoration": "NONE"
+    },
+    {
+      "id": "S:c03abb6ea044659b148f890b6e9aa7aa19b3b573,",
+      "name": "UI/Micro",
+      "fontName": {
+        "family": "Inter",
+        "style": "Medium",
+        "variationSettings": {
+          "slnt": 0,
+          "wght": 500
+        }
+      },
+      "fontSize": 12,
+      "lineHeight": {
+        "unit": "PIXELS",
+        "value": 16
+      },
+      "letterSpacing": {
+        "unit": "PERCENT",
+        "value": 0
+      },
+      "paragraphSpacing": 0,
+      "textCase": "ORIGINAL",
+      "textDecoration": "NONE"
+    },
+    {
+      "id": "S:057bfa68e60493e65afa69be445624eda65ca816,",
+      "name": "Doc/Display",
+      "fontName": {
+        "family": "Inter",
+        "style": "Semi Bold",
+        "variationSettings": {
+          "slnt": 0,
+          "wght": 600
+        }
+      },
+      "fontSize": 48,
+      "lineHeight": {
+        "unit": "PIXELS",
+        "value": 56
+      },
+      "letterSpacing": {
+        "unit": "PERCENT",
+        "value": -2
+      },
+      "paragraphSpacing": 0,
+      "textCase": "ORIGINAL",
+      "textDecoration": "NONE"
+    },
+    {
+      "id": "S:06755accd72d402ec8fb63a0e1ba0a0cd850751b,",
+      "name": "Doc/Heading",
+      "fontName": {
+        "family": "Inter",
+        "style": "Semi Bold",
+        "variationSettings": {
+          "slnt": 0,
+          "wght": 600
+        }
+      },
+      "fontSize": 24,
+      "lineHeight": {
+        "unit": "PIXELS",
+        "value": 32
+      },
+      "letterSpacing": {
+        "unit": "PERCENT",
+        "value": -2
+      },
+      "paragraphSpacing": 0,
+      "textCase": "ORIGINAL",
+      "textDecoration": "NONE"
+    },
+    {
+      "id": "S:1d3e265588397d04032635ce0017af7d1a6ccbba,",
+      "name": "Code/Body",
+      "description": "Code snippets in Inspect and export. JetBrains Mono (OFL).",
+      "fontName": {
+        "family": "JetBrains Mono",
+        "style": "Regular",
+        "variationSettings": {
+          "wght": 400
+        }
+      },
+      "fontSize": 12,
+      "lineHeight": {
+        "unit": "PIXELS",
+        "value": 16
+      },
+      "letterSpacing": {
+        "unit": "PERCENT",
+        "value": 0
+      },
+      "paragraphSpacing": 0,
+      "textCase": "ORIGINAL",
+      "textDecoration": "NONE"
+    }
+  ],
+  "effectStyles": [
+    {
+      "id": "S:df6387cc99e29bf60917c3ee9f232ef275546038,",
+      "name": "Elevation/1 island",
+      "effects": [
+        {
+          "type": "DROP_SHADOW",
+          "visible": true,
+          "radius": 32,
+          "color": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0.44999998807907104
+          },
+          "offset": {
+            "x": 0,
+            "y": 12
+          },
+          "spread": 0,
+          "blendMode": "NORMAL",
+          "showShadowBehindNode": true
+        },
+        {
+          "type": "DROP_SHADOW",
+          "visible": true,
+          "radius": 3,
+          "color": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0.30000001192092896
+          },
+          "offset": {
+            "x": 0,
+            "y": 1
+          },
+          "spread": 0,
+          "blendMode": "NORMAL",
+          "showShadowBehindNode": true
+        }
+      ]
+    },
+    {
+      "id": "S:d8af26766a920df5997bb1e6599468fdc68adc18,",
+      "name": "Elevation/2 popover",
+      "effects": [
+        {
+          "type": "DROP_SHADOW",
+          "visible": true,
+          "radius": 40,
+          "color": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0.5
+          },
+          "offset": {
+            "x": 0,
+            "y": 16
+          },
+          "spread": 0,
+          "blendMode": "NORMAL",
+          "showShadowBehindNode": true
+        }
+      ]
+    }
+  ],
+  "paintStylesCount": 0
+}

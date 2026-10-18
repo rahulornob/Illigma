@@ -1,0 +1,19 @@
+{
+  "name": "@illigma/tokens",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Illigma UI design tokens exported from Figma: W3C Design Tokens JSON, CSS custom properties and a typed TS object.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./tokens.css": "./tokens.css",
+    "./tokens.json": "./tokens.json"
+  },
+  "scripts": {
+    "build:tokens": "node scripts/build.mjs",
+    "check:tokens": "node scripts/build.mjs --check"
+  }
+}
