@@ -50,6 +50,16 @@ After v1.0: a Tauri desktop app in v1.x, then optional multiplayer (CRDT over LA
 - PDF is written by a small built-in PDF 1.7 writer, as vector paths with transparency groups and clipping. Text is embedded as an image for now (it can't be selected yet).
 - `@illigma/renderer` (additive): `PageRenderer.drawSubtree(canvas, id)` draws one layer and its children onto any canvas. `PageRenderer.layoutText(id)` returns a text layer's lines and baselines. The renderer reads documents through the `RenderSource` interface (a `Document` is one). `CLIPPING` is exported.
 - Tests: 44 export tests (pixel checks after decoding, golden SVG and PDF output, well-formed XML, PDF cross-reference checks, file names, size guard, batch failures) and 2 renderer tests.
+### Fixed (2026-10-18, editor behaviour QC round 6)
+- Shift+A on absolute children of an auto layout frame no longer makes them vanish: they join the new frame's flow, and the new frame is absolute at their bounds when all of them were.
+- Files are laid out once as they open (deep, every page, no undo step), so the first unrelated edit no longer makes layers jump and recovery replays onto the same layout.
+- Constraints on a group set its children's (the card shows their common value or Mixed).
+- The Fill and Hug cascades apply only along a frame's stack; across it, Fill and Hug live together.
+- Auto gap on a frame hugging its stack makes that axis Fixed at its size, so the spacing stays visible.
+- Removing auto layout from nested frames leaves no stale Fill.
+- Arrow-key reordering of a non-contiguous selection steps each layer past its neighbour (A, C of ABCD down: BADC).
+- Number fields: an arrow step followed at once by Tab is kept (one undo step); typed values stay in range (positions and sizes ±1,000,000, padding and gaps up to 100,000); an edit the document refuses shows a short alert and changes nothing, never an uncaught error.
+- Hit tolerance follows zoom (3 screen pixels); Shift+A follows the character typed (AZERTY); on macOS only ⌘ skips constraints while resizing; dragging an auto layout child far outside its frame drops nothing; a `#/file/<id>` hash change opens that file.
 
 ### Added (2026-10-18, layout engine wired into editing)
 - `@illigma/core`: `Document` takes a `normalize` hook (`DocumentOptions.normalize`, type `Normalizer`). It completes every edit inside the edit itself: at the end of each top-level `transact`, after each `LiveEdit.update` step, and after `replay`. Its operations join the same undo step, so one undo reverts an edit and what the hook added. Undo and redo never run it again; they restore exact values. If it throws, the edit is rolled back. `doc.normalizer` reads it back.

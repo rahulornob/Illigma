@@ -5,8 +5,10 @@ import {
   addAutoLayout,
   alignmentCell,
   alignmentPatch,
+  autoGapPatch,
   autoLayoutSelection,
   cellName,
+  constraintTargets,
   directionPatch,
   effectiveSizing,
   guessCounterAlign,
@@ -257,15 +259,29 @@ describe("sizing", () => {
     expect(sizingOptions(doc, doc.get(hero)!)).toEqual(["FIXED"]);
   });
 
-  it("Fill on a child makes a hugging parent Fixed; Hug on the parent makes Fill children Fixed", () => {
+  it("Fill on a child makes a parent hugging along its stack Fixed; Hug on the parent makes Fill children Fixed", () => {
     const { doc, frame, avatar } = setup();
-    autoLayoutSelection(doc, [frame]);
+    autoLayoutSelection(doc, [frame]); // horizontal: width is the stack's axis
+    setSizing(doc, [avatar], "width", "FILL");
+    expect(effectiveSizing(doc, doc.get(frame)!, "width")).toBe("FIXED");
+    expect(box(doc, avatar)?.width).toBe(1440 - 120 - 560 - 520 - 144);
+    expect(doc.undoLabel).toBe("Width: Fill container");
+    setSizing(doc, [frame], "width", "HUG");
+    expect(effectiveSizing(doc, doc.get(avatar)!, "width")).toBe("FIXED");
+  });
+
+  it("across the stack, Fill and Hug live together (no cascade either way)", () => {
+    const { doc, frame, avatar } = setup();
+    autoLayoutSelection(doc, [frame]); // horizontal: height is across the stack
     setSizing(doc, [avatar], "height", "FILL");
-    expect(effectiveSizing(doc, doc.get(frame)!, "height")).toBe("FIXED");
-    expect(box(doc, avatar)?.height).toBe(780 - 40 - 420);
-    expect(doc.undoLabel).toBe("Height: Fill container");
+    // The frame keeps hugging its other children (Hero, 320 high); the Fill one stretches to it.
+    expect(effectiveSizing(doc, doc.get(frame)!, "height")).toBe("HUG");
+    expect(box(doc, frame)?.height).toBe(40 + 320 + 420);
+    expect(box(doc, avatar)?.height).toBe(320);
+    setSizing(doc, [frame], "height", "FIXED");
     setSizing(doc, [frame], "height", "HUG");
-    expect(effectiveSizing(doc, doc.get(avatar)!, "height")).toBe("FIXED");
+    expect(effectiveSizing(doc, doc.get(avatar)!, "height")).toBe("FILL");
+    expect(box(doc, avatar)?.height).toBe(320);
   });
 
   it("typing a size on a Hug axis makes it Fixed", () => {
@@ -299,5 +315,108 @@ describe("constraints", () => {
     doc.undo();
     expect(box(doc, hero)?.width).toBe(560);
     expect(box(doc, avatar)?.x).toBe(1200);
+  });
+});
+
+describe("QC round 6", () => {
+  /** A vertical auto layout frame with one layer in its flow and two absolute ones. */
+  function stackWithAbsolutes() {
+    const s = setup();
+    const ids = s.doc.transact("Add", (tx) => {
+      const stack = tx.create("FRAME", s.page, { name: "Stack", x: 0, y: 1000, width: 300, height: 300, layoutMode: "VERTICAL", itemSpacing: 10 });
+      const flow = tx.create("RECTANGLE", stack, { name: "Flow", width: 100, height: 40 });
+      const a = tx.create("RECTANGLE", stack, { name: "A", x: 150, y: 120, width: 50, height: 30, layoutPositioning: "ABSOLUTE" });
+      const b = tx.create("RECTANGLE", stack, { name: "B", x: 150, y: 170, width: 80, height: 30, layoutPositioning: "ABSOLUTE" });
+      return { stack, flow, a, b };
+    });
+    return { ...s, ...ids };
+  }
+
+  it("Shift+A on absolute children: they join the new frame's flow, and the frame stays absolute where they were", () => {
+    const { doc, stack, flow, a, b } = stackWithAbsolutes();
+    const stackBefore = box(doc, stack);
+    const [w] = autoLayoutSelection(doc, [a, b]);
+    const wrapper = doc.get(w as NodeId)!;
+    expect(wrapper.parentId).toBe(stack);
+    expect(wrapper.layoutPositioning).toBe("ABSOLUTE");
+    expect(wrapper.layoutMode).toBe("VERTICAL");
+    // Hugging both, at their bounds: nothing moved on the canvas.
+    expect(box(doc, wrapper.id)).toEqual({ x: 150, y: 120, width: 80, height: 80 });
+    expect(doc.get(a)?.layoutPositioning).toBeUndefined();
+    expect(doc.get(b)?.layoutPositioning).toBeUndefined();
+    expect(box(doc, a)).toEqual({ x: 0, y: 0, width: 50, height: 30 });
+    expect(box(doc, b)).toEqual({ x: 0, y: 50, width: 80, height: 30 });
+    // The stack's own flow didn't change.
+    expect(box(doc, stack)).toEqual(stackBefore);
+    expect(box(doc, flow)).toEqual({ x: 0, y: 0, width: 100, height: 40 });
+    doc.undo();
+    expect(doc.get(a)?.layoutPositioning).toBe("ABSOLUTE");
+    expect(box(doc, a)).toEqual({ x: 150, y: 120, width: 50, height: 30 });
+  });
+
+  it("Shift+A on a mix of flow and absolute children: the wrapper takes the flow layer's place", () => {
+    const { doc, stack, flow, a } = stackWithAbsolutes();
+    const [w] = autoLayoutSelection(doc, [flow, a]);
+    const wrapper = doc.get(w as NodeId)!;
+    expect(wrapper.layoutPositioning).toBeUndefined();
+    expect(doc.children(stack)[0]?.id).toBe(w);
+    expect(doc.get(a)?.layoutPositioning).toBeUndefined();
+    expect(doc.children(w as NodeId).map((n) => n.id)).toEqual([flow, a]);
+    expect(box(doc, w as NodeId)?.width).toBeGreaterThan(1);
+    expect(box(doc, w as NodeId)?.height).toBeGreaterThan(1);
+  });
+
+  it("constraints on a group are its children's: shown in common, set on each", () => {
+    const { doc, frame, hero, avatar } = setup();
+    const group = doc.transact("Group", (tx) => {
+      const g = tx.create("GROUP", frame, { name: "Group", x: 120, y: 40, width: 1176, height: 440 });
+      tx.move(hero, g);
+      tx.move(avatar, g);
+      return g;
+    });
+    expect(constraintTargets(doc, [group])).toEqual([hero, avatar]);
+    setLayoutProps(doc, constraintTargets(doc, [group]), { constraints: { horizontal: "MAX", vertical: "MIN" } });
+    expect(doc.get(hero)?.constraints).toEqual({ horizontal: "MAX", vertical: "MIN" });
+    expect(doc.get(avatar)?.constraints).toEqual({ horizontal: "MAX", vertical: "MIN" });
+    expect(doc.get(group)?.constraints).toBeUndefined();
+    // Nested groups reach their leaves; a plain layer is itself.
+    const outer = doc.transact("Group again", (tx) => {
+      const g = tx.create("GROUP", frame, { name: "Outer" });
+      tx.move(group, g);
+      return g;
+    });
+    expect(constraintTargets(doc, [outer, frame])).toEqual([hero, avatar, frame]);
+  });
+
+  it("an Auto gap on a frame hugging along its stack makes that axis Fixed at its size", () => {
+    const { doc, frame, hero } = setup();
+    autoLayoutSelection(doc, [frame]);
+    const before = box(doc, frame)!;
+    const patch = autoGapPatch(doc.get(frame)!);
+    expect(patch).toEqual({ primaryAxisAlignItems: "SPACE_BETWEEN", layoutSizingHorizontal: "FIXED" });
+    setLayoutProps(doc, [frame], patch, "Gap: auto");
+    expect(effectiveSizing(doc, doc.get(frame)!, "width")).toBe("FIXED");
+    expect(effectiveSizing(doc, doc.get(frame)!, "height")).toBe("HUG");
+    expect(box(doc, frame)).toEqual(before);
+    expect(box(doc, hero)?.x).toBe(120);
+    // Already Fixed along the stack: only the gap changes.
+    expect(autoGapPatch(doc.get(frame)!)).toEqual({ primaryAxisAlignItems: "SPACE_BETWEEN" });
+  });
+
+  it("removing auto layout from nested frames leaves no Fill behind, whichever comes first", () => {
+    for (const order of ["outer first", "inner first"] as const) {
+      const { doc, page } = setup();
+      const { outer, inner } = doc.transact("Add", (tx) => {
+        const outer = tx.create("FRAME", page, { x: 0, y: 0, width: 400, height: 200, layoutMode: "HORIZONTAL", layoutSizingHorizontal: "FIXED", layoutSizingVertical: "FIXED" });
+        const inner = tx.create("FRAME", outer, { width: 100, height: 100, layoutMode: "VERTICAL", layoutSizingHorizontal: "FILL", layoutSizingVertical: "HUG" });
+        tx.create("RECTANGLE", inner, { width: 50, height: 50 });
+        return { outer, inner };
+      });
+      removeAutoLayout(doc, order === "outer first" ? [outer, inner] : [inner, outer]);
+      expect(doc.get(inner)?.layoutSizingHorizontal, order).toBe("FIXED");
+      expect(doc.get(inner)?.layoutSizingVertical, order).toBe("FIXED");
+      expect(doc.get(inner)?.layoutMode, order).toBeUndefined();
+      expect(box(doc, inner)?.width, order).toBe(400);
+    }
   });
 });

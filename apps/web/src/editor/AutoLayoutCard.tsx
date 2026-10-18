@@ -3,11 +3,12 @@ import type { Document, ReadonlyNode } from "@illigma/core";
 import type { NodeId } from "@illigma/format";
 import { Icon, type IconName } from "../ui/Icon";
 import { MenuButton } from "../ui/Menu";
-import { NumberField } from "../ui/NumberField";
+import { LIMITS, NumberField } from "../ui/NumberField";
 import {
   addAutoLayout,
   alignmentCell,
   alignmentPatch,
+  autoGapPatch,
   cellName,
   directionOf,
   directionPatch,
@@ -16,7 +17,7 @@ import {
   type Cell,
   type Direction,
 } from "./layout-model";
-import { setLayoutProps, type LayoutPatch } from "./layout-props";
+import { guard, setLayoutProps, type LayoutPatch, type OnEditError } from "./layout-props";
 
 const DIRECTIONS: { value: Direction; label: string; icon: IconName }[] = [
   { value: "HORIZONTAL", label: "Horizontal", icon: "arrow-right" },
@@ -139,11 +140,13 @@ export function AutoLayoutCard({
   nodes,
   readOnly,
   onSelect,
+  onError,
 }: {
   doc: Document;
   nodes: readonly ReadonlyNode[];
   readOnly: boolean;
   onSelect?: ((ids: NodeId[]) => void) | undefined;
+  onError?: OnEditError | undefined;
 }) {
   const ids = nodes.map((n) => n.id);
   const all = nodes.length > 0 && nodes.every((n) => isAutoLayoutNode(n));
@@ -153,7 +156,10 @@ export function AutoLayoutCard({
   const [chosen, setSides] = useState<boolean | null>(null);
   const sides = chosen ?? differ;
 
+  /** For number fields: an edit the document refuses throws, and the field says why. */
   const set = (patch: LayoutPatch | ((id: NodeId) => LayoutPatch), label: string) => setLayoutProps(doc, ids, patch, label);
+  /** For buttons and menus: a refused edit goes to `onError`. */
+  const command = (patch: LayoutPatch | ((id: NodeId) => LayoutPatch), label: string) => guard(onError, () => set(patch, label));
   const byId = (id: NodeId) => doc.get(id) as ReadonlyNode;
 
   const direction = all ? same(nodes.map((n) => directionOf(n) as Direction)) : undefined;
@@ -174,7 +180,7 @@ export function AutoLayoutCard({
           Auto layout
         </h2>
         {all ? (
-          <button type="button" className="icon-button" aria-label="Remove auto layout" title="Remove auto layout  ⌥⇧A" disabled={readOnly} onClick={() => removeAutoLayout(doc, ids)}>
+          <button type="button" className="icon-button" aria-label="Remove auto layout" title="Remove auto layout  ⌥⇧A" disabled={readOnly} onClick={() => guard(onError, () => removeAutoLayout(doc, ids))}>
             <Icon name="minus" />
           </button>
         ) : (
@@ -185,8 +191,8 @@ export function AutoLayoutCard({
             title="Add auto layout  ⇧A"
             disabled={readOnly}
             onClick={() => {
-              const next = addAutoLayout(doc, ids);
-              if (next.join() !== ids.join()) onSelect?.(next);
+              const next = guard(onError, () => addAutoLayout(doc, ids));
+              if (next && next.join() !== ids.join()) onSelect?.(next);
             }}
           >
             <Icon name="plus" />
@@ -195,14 +201,14 @@ export function AutoLayoutCard({
       </div>
       {all && (
         <>
-          <DirectionGroup value={direction} disabled={readOnly} onChange={(d) => set((id) => directionPatch(byId(id), d), `Direction: ${d.toLowerCase()}`)} />
+          <DirectionGroup value={direction} disabled={readOnly} onChange={(d) => command((id) => directionPatch(byId(id), d), `Direction: ${d.toLowerCase()}`)} />
           <div className="autolayout-body">
             <AlignmentGrid
               direction={direction}
               cell={cell}
               spread={spread}
               disabled={readOnly}
-              onPick={(c) => set((id) => alignmentPatch(directionOf(byId(id)) ?? "HORIZONTAL", c, alignmentCell(byId(id)).spread), `Align ${cellName(c).toLowerCase()}`)}
+              onPick={(c) => command((id) => alignmentPatch(directionOf(byId(id)) ?? "HORIZONTAL", c, alignmentCell(byId(id)).spread), `Align ${cellName(c).toLowerCase()}`)}
             />
             <div className="autolayout-spacing">
               <NumberField
@@ -212,10 +218,13 @@ export function AutoLayoutCard({
                 prefix={<Icon name={vertical ? "gap-vertical" : "gap"} size={12} />}
                 values={nodes.map((n) => n.itemSpacing ?? 0)}
                 text={spread ? "Auto" : undefined}
+                // A negative gap overlaps the items, as in Figma.
+                min={-LIMITS.spacing}
+                max={LIMITS.spacing}
                 readOnly={readOnly}
                 onText={(t) => {
                   if (t.toLowerCase() !== "auto") return false;
-                  set({ primaryAxisAlignItems: "SPACE_BETWEEN" }, "Gap: auto");
+                  set((id) => autoGapPatch(byId(id)), "Gap: auto");
                   return true;
                 }}
                 onChange={(next) => set((id) => ({ itemSpacing: next(byId(id).itemSpacing ?? 0), ...(alignmentCell(byId(id)).spread ? { primaryAxisAlignItems: "MIN" } : {}) }), "Change gap")}
@@ -231,8 +240,8 @@ export function AutoLayoutCard({
                     ]}
                     onSelect={(v) =>
                       v === "auto"
-                        ? set({ primaryAxisAlignItems: "SPACE_BETWEEN" }, "Gap: auto")
-                        : set((id) => (alignmentCell(byId(id)).spread ? { primaryAxisAlignItems: "MIN" } : {}), "Gap: fixed")
+                        ? command((id) => autoGapPatch(byId(id)), "Gap: auto")
+                        : command((id) => (alignmentCell(byId(id)).spread ? { primaryAxisAlignItems: "MIN" } : {}), "Gap: fixed")
                     }
                   >
                     <Icon name="chevron-down" size={12} />
@@ -247,6 +256,7 @@ export function AutoLayoutCard({
                   prefix={<Icon name="gap-vertical" size={12} />}
                   values={nodes.map((n) => n.counterAxisSpacing ?? Math.max(0, n.itemSpacing ?? 0))}
                   min={0}
+                  max={LIMITS.spacing}
                   readOnly={readOnly}
                   onChange={(next) => set((id) => ({ counterAxisSpacing: next(byId(id).counterAxisSpacing ?? Math.max(0, byId(id).itemSpacing ?? 0)) }), "Change row gap")}
                 />
@@ -262,6 +272,7 @@ export function AutoLayoutCard({
                         prefix={<Icon name={s.icon} size={12} />}
                         values={nodes.map((n) => pad(n, s.key))}
                         min={0}
+                        max={LIMITS.spacing}
                         readOnly={readOnly}
                         onChange={(next) => set((id) => ({ [s.key]: next(pad(byId(id), s.key)) }), `Change ${s.label.toLowerCase()}`)}
                       />
@@ -282,6 +293,7 @@ export function AutoLayoutCard({
                         prefix={<Icon name={icon} size={12} />}
                         values={nodes.flatMap((n) => [pad(n, a), pad(n, b)])}
                         min={0}
+                        max={LIMITS.spacing}
                         readOnly={readOnly}
                         onChange={(next) => set((nid) => ({ [a]: next(pad(byId(nid), a)), [b]: next(pad(byId(nid), b)) }), `Change ${label.toLowerCase()}`)}
                       />

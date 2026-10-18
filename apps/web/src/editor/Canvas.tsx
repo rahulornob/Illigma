@@ -97,15 +97,21 @@ const sameIds = (a: readonly NodeId[], b: readonly NodeId[]) => a.length === b.l
 const plural = (n: number, verb: string) => (n === 1 ? `${verb} layer` : `${verb} ${n} layers`);
 
 /** Where the pointer is during a drag, and which modifiers are held (they can change without the pointer moving). */
-type Pointer = { sx: number; sy: number; shift: boolean; alt: boolean; /** ⌘ or Ctrl: resize without constraints. */ meta: boolean };
+type Pointer = { sx: number; sy: number; shift: boolean; alt: boolean; /** ⌘ on macOS, Ctrl elsewhere: resize without constraints. */ meta: boolean };
+
+/** macOS: ⌘ is the command key, and Ctrl is kept for suspending snapping (interactions.md §4). */
+const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
 const pointerOf = (sx: number, sy: number, e: { shiftKey: boolean; altKey: boolean; metaKey: boolean; ctrlKey: boolean }): Pointer => ({
   sx,
   sy,
   shift: e.shiftKey,
   alt: e.altKey,
-  meta: e.metaKey || e.ctrlKey,
+  meta: IS_MAC ? e.metaKey : e.ctrlKey,
 });
+
+/** How far outside an auto layout frame (screen pixels) a dragged child still reorders; further out, dropping does nothing. */
+const REORDER_REACH = 24;
 
 /**
  * What the pointer is doing. A press on the canvas waits until the pointer
@@ -626,7 +632,8 @@ export function Canvas(props: CanvasProps) {
       g.last = p;
       g.dx = dx;
       g.dy = dy;
-      g.slot = reorderSlot(l.props.doc, g.parent, g.ids, w.x, w.y);
+      // Far outside the frame there is no slot (no line), and letting go puts the layers back.
+      g.slot = reorderSlot(l.props.doc, g.parent, g.ids, w.x, w.y, REORDER_REACH / l.camera.zoom);
       requestDraw();
     } else if (g.kind === "marquee") {
       g.rect = rectFromPoints(g.wx, g.wy, w.x, w.y);
