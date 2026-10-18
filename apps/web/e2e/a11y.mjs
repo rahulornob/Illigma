@@ -144,9 +144,29 @@ await runE2E("a11y", {}, async ({ browser, url, log, check, knownBug, outDir, er
   await page.getByRole("button", { name: "Rectangle (R)" }).focus();
   await page.screenshot({ path: `${outDir}/a11y-focus.png` });
 
+  log("editor: auto layout card, sizing menu and constraints (names and axe)");
+  await layerRow(page, "Desktop").click();
+  await page.getByRole("button", { name: "Add auto layout" }).click();
+  await page.getByRole("radiogroup", { name: "Direction" }).waitFor();
+  await namesPass("auto layout card");
+  const autoOther = await axe("auto layout card");
+  await page.getByRole("button", { name: "Individual padding" }).click();
+  await namesPass("auto layout card, individual padding");
+  const sidesOther = await axe("auto layout card, individual padding");
+  await layerRow(page, "Hero").click();
+  await page.getByRole("button", { name: /^Horizontal resizing/ }).click();
+  await page.getByRole("menu").waitFor();
+  await namesPass("sizing menu open");
+  const menuOther = await axe("sizing menu open");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Absolute position" }).click();
+  await page.getByLabel("Horizontal constraint").waitFor();
+  await namesPass("constraints card");
+  const constraintsOther = await axe("constraints card");
+
   log("other axe findings (contrast, landmarks, …)");
   const others = new Map();
-  for (const v of [...homeOther, ...editorOther, ...selectedOther]) {
+  for (const v of [...homeOther, ...editorOther, ...selectedOther, ...autoOther, ...sidesOther, ...menuOther, ...constraintsOther]) {
     const k = v.id;
     const prev = others.get(k);
     const targets = v.nodes.map((n) => n.target.join(" "));

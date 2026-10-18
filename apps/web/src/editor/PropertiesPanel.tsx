@@ -1,110 +1,53 @@
-import { useEffect, useRef, useState } from "react";
-import type { Document } from "@illigma/core";
-import type { NodeId } from "@illigma/format";
+import type { Document, ReadonlyNode } from "@illigma/core";
+import type { LayoutSizing, NodeId } from "@illigma/format";
+import { Icon } from "../ui/Icon";
+import { MenuButton, type MenuEntry } from "../ui/Menu";
+import { fmt, NumberField } from "../ui/NumberField";
+import { AutoLayoutCard } from "./AutoLayoutCard";
+import { ConstraintsCard } from "./ConstraintsCard";
+import { effectiveSizing, hasConstraints, isAutoLayoutNode, setSizing, sizingOptions, type Axis } from "./layout-model";
+import { setBoxField, setLayoutProps, type BoxField } from "./layout-props";
 
-type Field = "x" | "y" | "width" | "height";
-
-const FIELDS: { key: Field; letter: string; label: string; min?: number }[] = [
+const FIELDS: { key: BoxField; letter: string; label: string; min?: number }[] = [
   { key: "x", letter: "X", label: "X position" },
   { key: "y", letter: "Y", label: "Y position" },
   { key: "width", letter: "W", label: "Width", min: 0.01 },
   { key: "height", letter: "H", label: "Height", min: 0.01 },
 ];
 
-const fmt = (v: number) => String(Math.round(v * 100) / 100);
+const SIZING_NAME: Record<LayoutSizing, string> = { FIXED: "Fixed", HUG: "Hug", FILL: "Fill" };
+const SHORT: Record<LayoutSizing, string> = { FIXED: "Fixed", HUG: "Hug contents", FILL: "Fill container" };
 
-/**
- * One number for every selected layer. When the layers differ, the field is
- * empty with "Mixed" as its placeholder (as in Figma); a typed value or an
- * arrow-key step then applies to each of them.
- */
-function NumberField({
-  doc,
-  ids,
-  field,
-  letter,
-  label,
-  min,
-  readOnly,
-}: {
-  doc: Document;
-  ids: readonly NodeId[];
-  field: Field;
-  letter: string;
-  label: string;
-  min?: number | undefined;
-  readOnly: boolean;
-}) {
-  const values = ids.map((id) => doc.get(id)?.[field] ?? 0);
-  const value = values[0] ?? 0;
-  const mixed = values.some((v) => v !== value);
-  const shown = mixed ? "" : fmt(value);
-  const [draft, setDraft] = useState(shown);
-  useEffect(() => setDraft(shown), [shown]);
-  // Escape blurs the field; the blur that follows must not commit the draft it just threw away.
-  const cancelled = useRef(false);
-
-  const clamp = (v: number) => (min === undefined ? v : Math.max(min, v));
-  const apply = (next: (current: number) => number) => {
-    // Never during a canvas drag: it owns the document until it ends.
-    if (doc.live) return;
-    const changes = ids.map((id, i) => [id, clamp(next(values[i] ?? 0))] as const).filter(([, v], i) => v !== values[i]);
-    if (changes.length) doc.transact(`Change ${label.toLowerCase()}`, (tx) => changes.forEach(([id, v]) => tx.set(id, field, v)));
-  };
-
-  const commit = () => {
-    if (readOnly) return;
-    const parsed = Number.parseFloat(draft.replace(",", "."));
-    if (!Number.isFinite(parsed)) {
-      setDraft(shown);
-      return;
-    }
-    apply(() => parsed);
-    setDraft(fmt(clamp(parsed)));
-  };
-
-  const inputId = `prop-${field}`;
+/** The sizing menu on W or H (Figma board "21 · width sizing menu"): only the options that apply to every selected layer. */
+function SizingMenu({ doc, nodes, axis, readOnly }: { doc: Document; nodes: readonly ReadonlyNode[]; axis: Axis; readOnly: boolean }) {
+  const options = (["FIXED", "HUG", "FILL"] as const).filter((s) => nodes.every((n) => sizingOptions(doc, n).includes(s)));
+  if (options.length < 2) return null;
+  const current = nodes.map((n) => effectiveSizing(doc, n, axis));
+  const same = current.every((s) => s === current[0]) ? current[0] : undefined;
+  const word = axis === "width" ? "width" : "height";
+  const size = nodes.length === 1 ? ` · ${fmt((nodes[0] as ReadonlyNode)[axis])}` : "";
+  const label: Record<LayoutSizing, string> = { FIXED: `Fixed ${word}${size}`, HUG: "Hug contents", FILL: "Fill container" };
+  const entries: MenuEntry<LayoutSizing>[] = [{ kind: "heading", label: axis === "width" ? "Width" : "Height" }, ...options.map((s) => ({ value: s, label: label[s], checked: s === same }))];
+  const name = axis === "width" ? "Horizontal resizing" : "Vertical resizing";
   return (
-    <div className="field">
-      <label className="field-letter" htmlFor={inputId} title={label}>
-        {letter}
-        <span className="sr-only"> {label}</span>
-      </label>
-      <input
-        id={inputId}
-        className="field-input"
-        type="text"
-        inputMode="decimal"
-        autoComplete="off"
-        spellCheck={false}
-        value={draft}
-        placeholder={mixed ? "Mixed" : undefined}
-        readOnly={readOnly}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => {
-          if (cancelled.current) {
-            cancelled.current = false;
-            return;
-          }
-          commit();
-        }}
-        onFocus={(e) => e.currentTarget.select()}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            commit();
-            e.currentTarget.select();
-          } else if (e.key === "Escape") {
-            cancelled.current = true;
-            setDraft(shown);
-            e.currentTarget.blur();
-          } else if ((e.key === "ArrowUp" || e.key === "ArrowDown") && !readOnly) {
-            e.preventDefault();
-            const step = (e.shiftKey ? 10 : 1) * (e.key === "ArrowUp" ? 1 : -1);
-            apply((v) => v + step);
-          }
-        }}
-      />
-    </div>
+    <MenuButton
+      // Never "width" or "height" in the name: the W and H fields own those labels.
+      label={`${name}: ${same ? SHORT[same] : "Mixed"}`}
+      title={name}
+      className="field-menu"
+      disabled={readOnly}
+      entries={entries}
+      onSelect={(s) =>
+        setSizing(
+          doc,
+          nodes.map((n) => n.id),
+          axis,
+          s,
+        )
+      }
+    >
+      <Icon name="chevron-down" size={12} />
+    </MenuButton>
   );
 }
 
@@ -113,45 +56,108 @@ export function PropertiesPanel({
   pageId,
   selection,
   readOnly = false,
+  onSelect,
 }: {
   doc: Document;
   pageId: NodeId;
   selection: readonly NodeId[];
   readOnly?: boolean;
+  /** The selection after a command that makes a new layer (wrapping layers in an auto layout frame). */
+  onSelect?(ids: NodeId[]): void;
 }) {
   const ids = selection.filter((id) => doc.has(id));
-  const node = ids.length === 1 ? doc.get(ids[0] as NodeId) : undefined;
+  const nodes = ids.map((id) => doc.get(id) as ReadonlyNode);
+  const node = nodes.length === 1 ? nodes[0] : undefined;
   const page = doc.get(pageId);
+
+  // "Absolute position" applies to children of auto layout frames.
+  const inAutoLayout = nodes.length > 0 && nodes.every((n) => isAutoLayoutNode(n.parentId ? doc.get(n.parentId) : undefined));
+  const absolute = inAutoLayout && nodes.every((n) => n.layoutPositioning === "ABSOLUTE");
+  const constrained = nodes.length > 0 && nodes.every((n) => hasConstraints(doc, n));
 
   return (
     <aside className="panel panel-right" aria-label="Properties">
       <div className="panel-tabs" role="presentation">
         <span className="panel-tab is-active">Design</span>
       </div>
-      {ids.length ? (
-        <section className="card" aria-labelledby="position-heading">
-          <div className="card-head">
-            <h2 id="position-heading" className="section-heading">
-              Position and size
-            </h2>
-            <span className="muted">{node ? node.name : `${ids.length} layers`}</span>
-          </div>
-          <div className="field-grid">
-            {FIELDS.map((f) => (
-              <NumberField key={`${ids.join(",")}-${f.key}`} doc={doc} ids={ids} field={f.key} letter={f.letter} label={f.label} min={f.min} readOnly={readOnly} />
-            ))}
-          </div>
-        </section>
-      ) : (
-        <section className="card" aria-labelledby="page-heading">
-          <div className="card-head">
-            <h2 id="page-heading" className="section-heading">
-              {page?.name ?? "Page"}
-            </h2>
-          </div>
-          <p className="muted">Select a layer to see its position and size.</p>
-        </section>
-      )}
+      <div className="panel-scroll">
+        {ids.length ? (
+          <>
+            <section className="card" aria-labelledby="position-heading">
+              <div className="card-head">
+                <h2 id="position-heading" className="section-heading">
+                  Position and size
+                </h2>
+                <span className="muted">{node ? node.name : `${ids.length} layers`}</span>
+                {inAutoLayout && (
+                  <button
+                    type="button"
+                    className="icon-button toggle-button"
+                    aria-label="Absolute position"
+                    title="Absolute position (ignore auto layout)"
+                    aria-pressed={absolute}
+                    disabled={readOnly}
+                    onClick={() => setLayoutProps(doc, ids, { layoutPositioning: absolute ? undefined : "ABSOLUTE" }, absolute ? "Use auto layout position" : "Absolute position")}
+                  >
+                    <Icon name="square-dashed-mouse-pointer" />
+                  </button>
+                )}
+              </div>
+              <div className="field-grid">
+                {FIELDS.map((f) => {
+                  const values = nodes.map((n) => n[f.key]);
+                  const axis = f.key === "width" || f.key === "height" ? f.key : null;
+                  const sizing = axis ? nodes.map((n) => effectiveSizing(doc, n, axis)) : [];
+                  const unit = sizing.length && sizing.every((s) => s === sizing[0]) && sizing[0] !== "FIXED" ? SIZING_NAME[sizing[0] as LayoutSizing] : null;
+                  return (
+                    <NumberField
+                      key={`${ids.join(",")}-${f.key}`}
+                      id={`prop-${f.key}`}
+                      label={f.label}
+                      prefix={f.letter}
+                      values={values}
+                      min={f.min}
+                      readOnly={readOnly}
+                      onChange={(next) =>
+                        setBoxField(
+                          doc,
+                          ids,
+                          f.key,
+                          values.map((v) => next(v)),
+                          `Change ${f.label.toLowerCase()}`,
+                        )
+                      }
+                      suffix={
+                        axis && (
+                          <>
+                            {unit && (
+                              <span className="field-unit" aria-hidden="true">
+                                {unit}
+                              </span>
+                            )}
+                            <SizingMenu doc={doc} nodes={nodes} axis={axis} readOnly={readOnly} />
+                          </>
+                        )
+                      }
+                    />
+                  );
+                })}
+              </div>
+            </section>
+            <AutoLayoutCard key={ids.join(",")} doc={doc} nodes={nodes} readOnly={readOnly} onSelect={onSelect} />
+            {constrained && <ConstraintsCard doc={doc} nodes={nodes} readOnly={readOnly} />}
+          </>
+        ) : (
+          <section className="card" aria-labelledby="page-heading">
+            <div className="card-head">
+              <h2 id="page-heading" className="section-heading">
+                {page?.name ?? "Page"}
+              </h2>
+            </div>
+            <p className="muted">Select a layer to see its position and size.</p>
+          </section>
+        )}
+      </div>
     </aside>
   );
 }
