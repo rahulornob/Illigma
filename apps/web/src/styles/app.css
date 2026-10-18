@@ -329,6 +329,9 @@ ul {
 .save-status.tone-error {
   color: var(--state-danger);
 }
+.save-status.tone-warning {
+  color: var(--state-warning);
+}
 .zoom-value {
   min-width: 48px;
   height: 28px;

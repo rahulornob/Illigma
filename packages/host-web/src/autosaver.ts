@@ -4,20 +4,24 @@
  * turns to "error" with a plain message and the save is retried every 30
  * seconds until it works.
  *
+ * If the package changed on disk since it was last read or written here
+ * (rule 4), nothing is written: the status turns to "changed-on-disk" and
+ * saving waits until the person chooses (`overwriteDisk`, or reopening).
+ *
  * The status is reported as it is. Hiding a short "saving" state, so the
  * title bar never flickers, is the title bar's job.
  */
 
 import type { Document } from "@illigma/core";
 import { writePackage, type FileTree } from "@illigma/format";
-import { newSaveId, type Backend } from "./backend.js";
+import { isChangedOnDisk, newSaveId, type Backend } from "./backend.js";
 import type { RecoveryJournal } from "./journal.js";
 
-export type SaveState = "saved" | "saving" | "unsaved" | "error";
+export type SaveState = "saved" | "saving" | "unsaved" | "error" | "changed-on-disk";
 
 export interface SaveStatus {
   state: SaveState;
-  /** Why the last save failed, in plain words. Only with "error". */
+  /** Why the last save failed, in plain words. With "error" and "changed-on-disk", and "unsaved" when started with unsaved changes. */
   message?: string;
   /** Just the cause, e.g. "there isn't enough storage space left.", for UI that words the rest itself. Only with "error". */
   reason?: string;
@@ -33,9 +37,15 @@ export interface AutosaverOptions {
   /**
    * Marked before and cleared up to the saved state after each successful
    * save. Safe while recovered changes are undecided: clearing never drops
-   * them (only Keep or Discard does), and the save marker doesn't cover them.
+   * them (only Keep or Discard does), and the save marker keeps them carried.
    */
   journal?: RecoveryJournal;
+  /**
+   * Start with unsaved changes: the document holds edits no save has written
+   * yet (e.g. an earlier autosaver was stopped before it saved them). They
+   * are saved after the usual delay, and the status never claims "saved" first.
+   */
+  unsaved?: boolean;
 }
 
 export const RETRY_MS = 30_000;
@@ -55,6 +65,10 @@ export class Autosaver {
   private inFlight: Promise<void> | null = null;
   private savedAt: number | undefined;
   private disposed = false;
+  /** The package changed on disk: write nothing until `overwriteDisk()`. */
+  private held = false;
+  /** The next write replaces the package even though it changed on disk. */
+  private overwrite = false;
 
   constructor(
     private readonly doc: Document,
@@ -65,6 +79,36 @@ export class Autosaver {
     this.serialize = opts.serialize ?? ((d) => writePackage(d.toFile()));
     this.journal = opts.journal;
     this.unsubscribe = doc.subscribe(() => this.onChange());
+    if (opts.unsaved) {
+      this.version = 1;
+      this.current = { state: "unsaved", message: "Some edits aren't saved to the file yet. They are safe in the recovery journal." };
+      this.timer = setTimeout(() => void this.save(), this.delayMs);
+    }
+  }
+
+  /** True if the document has changes no save holds yet. */
+  get hasUnsavedChanges(): boolean {
+    return this.dirty;
+  }
+
+  /**
+   * The package changed on disk while this document has unsaved changes
+   * (found by the caller, e.g. a check when the window gets focus): stop
+   * saving until the person chooses.
+   */
+  holdForDisk(): void {
+    if (this.disposed || this.held) return;
+    this.held = true;
+    this.clearTimers();
+    this.setStatus("changed-on-disk", "The file changed on disk. Your edits are safe in this window and in the recovery journal.");
+  }
+
+  /** The person chose to keep their version: replace what is on disk with it now, and save normally again. */
+  async overwriteDisk(): Promise<void> {
+    this.held = false;
+    this.overwrite = true;
+    if (!this.dirty) this.version++; // write even if nothing changed since the last save attempt
+    await this.save();
   }
 
   get status(): SaveStatus {
@@ -100,13 +144,14 @@ export class Autosaver {
     if (this.disposed) return;
     this.version++;
     if (this.current.state === "saved") this.setStatus("unsaved");
+    if (this.held) return;
     clearTimeout(this.timer);
     this.timer = setTimeout(() => void this.save(), this.delayMs);
   }
 
   private async save(): Promise<void> {
     while (this.inFlight) await this.inFlight;
-    if (this.disposed || !this.dirty) return;
+    if (this.disposed || this.held || !this.dirty) return;
     this.clearTimers();
     const run = this.write();
     this.inFlight = run;
@@ -122,18 +167,25 @@ export class Autosaver {
     const version = this.version;
     const mark = this.journal?.checkpoint() ?? 0;
     const saveId = newSaveId();
+    const overwrite = this.overwrite;
     this.setStatus("saving");
     try {
       const tree = this.serialize(this.doc);
       // Marks which journal lines this save holds; if marking fails they are only offered again later, never lost.
       await this.journal?.markSave(saveId, mark).catch(() => {});
-      await this.backend.write(tree, { saveId });
+      await this.backend.write(tree, overwrite ? { saveId, overwrite } : { saveId });
     } catch (err) {
       if (this.disposed) return;
+      if (isChangedOnDisk(err)) {
+        this.held = false; // let holdForDisk report it
+        this.holdForDisk();
+        return;
+      }
       this.setStatus("error", describeSaveError(err), saveErrorReason(err));
       this.retryTimer = setTimeout(() => void this.save(), RETRY_MS);
       return;
     }
+    if (overwrite) this.overwrite = false;
     this.savedVersion = version;
     this.savedAt = Date.now();
     // The journal is only a backup; if clearing it fails, the next save clears it.

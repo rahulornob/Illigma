@@ -98,6 +98,11 @@ await runE2E("save-errors", { port: 5194 }, async ({ browser, url, log, check, o
   await page.clock.runFor(1500);
   await waitError();
   await page.getByRole("button", { name: "Back to files" }).click();
+  // Leaving with unsaved edits is never silent (rule 3): a warning asks first.
+  const leave = page.getByRole("alertdialog", { name: "Unsaved edits" });
+  await leave.waitFor({ timeout: 5_000 });
+  check((await leave.getByRole("button", { name: "Save a copy elsewhere…" }).count()) === 1, "the leave warning should offer Save a copy elsewhere…");
+  await leave.getByRole("button", { name: "Leave anyway (edits stay recoverable)" }).click();
   await page.locator(".file-card").first().waitFor();
   await failWrites(false);
   await page.locator(".file-card").first().click();
