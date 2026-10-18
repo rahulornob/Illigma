@@ -10,7 +10,7 @@
  */
 
 import { FORMAT_NAME, FORMAT_VERSION, type IlligmaFile, type Manifest, type Node, type NodeId } from "./schema.js";
-import { validateFile } from "./validate.js";
+import { isSafePageId, validateFile } from "./validate.js";
 import { migrate } from "./migrations.js";
 
 /** A package as path → text. Paths use "/" and no leading slash. */
@@ -110,6 +110,7 @@ export function readPackage(tree: FileTree): IlligmaFile {
   for (const entry of pages) {
     const id = (entry as { id?: unknown })?.id;
     if (typeof id !== "string") throw new FormatError("manifest.json lists a page without an id.");
+    if (!isSafePageId(id)) throw new FormatError(`manifest.json lists a page id that can't be a file name: ${JSON.stringify(id.slice(0, 80))}.`);
     const text = tree.get(`pages/${id}.json`);
     if (text === undefined) throw new FormatError(`Page file pages/${id}.json is missing.`);
     let parsed: unknown;
