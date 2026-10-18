@@ -5,6 +5,7 @@
     { "path": "packages/core" },
     { "path": "packages/renderer" },
     { "path": "packages/tokens" },
+    { "path": "packages/host-web" },
     { "path": "apps/bench" }
   ]
 }
