@@ -5,7 +5,8 @@
  * The prototype saved one JSON document (`localStorage["illigma.document.v1"]`
  * or "Save editable document"): a title, a canvas colour, colour swatches,
  * one or more pages, each with frames ("artboards") and a flat, z-ordered
- * list of objects (rect, ellipse, path, text). Objects and frames use
+ * list of objects (rect, ellipse, path, text). Paths become vectors, their SVG
+ * path data (`d`) read into a vector network. Objects and frames use
  * absolute page coordinates; objects rotate about their centre; groups are a
  * shared `groupId` on their members. Older documents have no `pages` or
  * `artboards`, only one `artboard` and `objects`; they are read the way the
@@ -32,8 +33,10 @@ import {
   type Node,
   type NodeType,
   type Paint,
+  type VectorNetwork,
 } from "./schema.js";
 import { validateFile } from "./validate.js";
+import { vectorNetworkFromSvgPath } from "./vector.js";
 
 export interface PrototypeImportOptions {
   /** Makes node and file ids. Defaults to random 12-character ids. Must return ids matching NODE_ID_PATTERN. */
@@ -115,7 +118,7 @@ const get = (o: Obj, key: string): unknown => (Object.prototype.hasOwnProperty.c
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 /** Computed values (rotated positions, pixel line heights) are rounded to a millionth, so files don't carry float noise like 99.75999999999999. */
-const round = (v: number) => Math.round(v * 1e6) / 1e6;
+const round = (v: number) => Math.round(v * 1e6) / 1e6 + 0; // "+ 0" turns -0 into 0, as JSON would
 const plural = (n: number, one: string, many: string) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
 /** Random bytes, fetched in blocks: one getRandomValues call per id is slow for 100,000s of layers. */
@@ -174,7 +177,8 @@ class Notes {
     if (n("frameLoop")) w.push(`Broke ${plural(n("frameLoop"), "loop", "loops")} of frames nested inside each other by moving ${n("frameLoop") === 1 ? "one frame" : "one frame per loop"} onto the page.`);
     if (n("reset")) w.push(`Reset ${plural(n("reset"), "broken value", "broken values")} (such as a non-number opacity) to ${n("reset") === 1 ? "its default" : "their defaults"}.`);
     if (n("trimmed")) w.push(`Shortened ${plural(n("trimmed"), "very long name or text", "very long names or texts")}.`);
-    if (n("paths")) w.push(`${plural(n("paths"), "path shape keeps", "path shapes keep")} position, size and colour, but not ${n("paths") === 1 ? "its outline" : "their outlines"}: format v0 can't store vector outlines yet.`);
+    if (n("badPaths")) w.push(`Couldn't read the outline of ${plural(n("badPaths"), "path shape", "path shapes")}; ${n("badPaths") === 1 ? "it keeps its" : "they keep their"} position, size and colour as ${n("badPaths") === 1 ? "an empty vector" : "empty vectors"}.`);
+    if (n("stretchedStroke")) w.push(`${plural(n("stretchedStroke"), "path shape's stroke was", "path shapes' strokes were")} stretched unevenly; the stroke weight is now the same all round.`);
     if (this.effects.size) {
       const total = [...this.effects.values()].reduce((a, b) => a + b, 0);
       const parts = [...this.effects].map(([type, count]) => {
@@ -670,12 +674,56 @@ function layerNode(l: LayerIn, id: string, parentId: string, index: string, orig
     if (radius !== undefined && !finite(radius)) notes.add("reset");
     node.cornerRadius = finite(radius) ? clamp(radius, 0, Math.min(l.w, l.h) / 2) : 0;
   } else if (l.kind === "path") {
-    // The outline (`d`, drawn scaled by w/baseW and h/baseH) has no place in format v0 yet.
-    notes.add("paths");
+    Object.assign(node, pathFields(raw, l, node, notes));
   } else if (l.kind === "text") {
     Object.assign(node, textFields(raw, l, notes));
   }
   return node;
+}
+
+/**
+ * A path's outline. The prototype stored SVG path data (`d`) drawn in a
+ * `baseW` × `baseH` box and scaled to the layer's size, filled even-odd, with
+ * round caps and joins; the stroke scaled with it.
+ */
+function pathFields(raw: Obj, l: LayerIn, node: Node, notes: Notes): Partial<Node> {
+  const d = get(raw, "d");
+  let net: VectorNetwork | null = null;
+  try {
+    if (typeof d === "string") net = vectorNetworkFromSvgPath(d, { windingRule: "EVENODD" });
+  } catch (e) {
+    if (!(e instanceof FormatError)) throw e;
+  }
+  if (!net) {
+    notes.add("badPaths");
+    return {};
+  }
+  const base = (key: string, size: number) => {
+    const v = get(raw, key);
+    if (v !== undefined && !(finite(v) && v > 0)) notes.add("reset");
+    return finite(v) && v > 0 ? v : size;
+  };
+  const sx = l.w / base("baseW", l.w);
+  const sy = l.h / base("baseH", l.h);
+  for (const v of net.vertices) {
+    v.x = round(v.x * sx);
+    v.y = round(v.y * sy);
+  }
+  for (const s of net.segments) {
+    for (const t of [s.tangentStart, s.tangentEnd]) {
+      t.x = round(t.x * sx);
+      t.y = round(t.y * sy);
+    }
+  }
+  const out: Partial<Node> = { vectorNetwork: net };
+  if (node.strokes.length) {
+    out.strokeCap = "ROUND";
+    out.strokeJoin = "ROUND";
+    if (Math.abs(sx - sy) > 0.01 * Math.max(sx, sy)) notes.add("stretchedStroke");
+    const scale = Math.sqrt(sx * sy);
+    if (Math.abs(scale - 1) > 1e-6) out.strokeWeight = round(Math.min(node.strokeWeight * scale, MAX_SIZE));
+  }
+  return out;
 }
 
 function textFields(raw: Obj, l: LayerIn, notes: Notes): Partial<Node> {

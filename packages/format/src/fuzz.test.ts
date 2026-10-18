@@ -34,6 +34,7 @@ type Rng = ReturnType<typeof prng>;
 const NODE_FIELDS = [
   "id", "type", "parentId", "index", "name", "visible", "locked", "x", "y", "width", "height",
   "rotation", "opacity", "fills", "strokes", "strokeWeight", "cornerRadius", "characters", "fontSize",
+  "vectorNetwork", "pointCount", "innerRadius", "strokeCap", "strokeJoin", "vertices", "segments", "regions", "loops",
 ];
 const MANIFEST_FIELDS = ["format", "version", "fileId", "name", "pages", "created", "app"];
 

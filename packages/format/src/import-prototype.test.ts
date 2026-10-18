@@ -6,6 +6,7 @@ import { importPrototypeJson, parsePrototypeColor, PROTOTYPE_IMPORT_LIMITS, type
 import { FormatError, readPackage, writePackage } from "./package.js";
 import { NODE_ID_PATTERN, type IlligmaFile, type Node } from "./schema.js";
 import { compareOrder, validateFile } from "./validate.js";
+import { svgPathFromVectorNetwork } from "./vector.js";
 import { readZip, writeZip } from "./zip.js";
 
 /** The prototype's own `sampleDocument()` output, with stable ids: as returned, and as saved after `preparePages`. */
@@ -116,10 +117,69 @@ describe("importPrototypeJson: the prototype's sample document", () => {
 
   it("lists what format v0 can't hold, one warning per kind", () => {
     expect(importPrototypeJson(SAMPLE, stable()).warnings).toEqual([
-      "2 path shapes keep position, size and colour, but not their outlines: format v0 can't store vector outlines yet.",
       "Left out letter spacing on 4 text layers: format v0 has no letter spacing yet.",
       "Left out the document's 16 colour swatches: format v0 has no colour styles yet.",
       "Left out the canvas background colour (#090909): format v0 has no page background colour yet.",
+    ]);
+  });
+
+  it("reads path outlines into vector networks, even-odd, in the layer's own space", () => {
+    const { file } = importPrototypeJson(SAMPLE, stable());
+    const orbit = byName(file, "Orange orbit");
+    const net = orbit.vectorNetwork!;
+    expect(net.regions).toEqual([{ windingRule: "EVENODD", loops: [[0, 1, 2, 3, 4], [5, 6, 7, 8, 9]] }]);
+    expect(net.vertices[0]).toEqual({ x: 214.5, y: 0 });
+    // Every point stays within the layer's 429 × 235 box (the outer ellipse touches all four sides).
+    const xs = net.vertices.map((v) => v.x), ys = net.vertices.map((v) => v.y);
+    expect(Math.min(...xs)).toBeCloseTo(0, 2);
+    expect(Math.max(...xs)).toBeCloseTo(429, 2);
+    expect(Math.max(...ys)).toBeCloseTo(235, 2);
+    // No stroke (width 0), so no caps or joins are set.
+    expect(orbit).not.toHaveProperty("strokeCap");
+    expect(byName(file, "Blue orbit").vectorNetwork?.regions[0]?.loops).toHaveLength(2);
+  });
+
+  it("scales outlines and strokes from the path's base size to the layer's size", () => {
+    const doc = {
+      title: "Paths",
+      artboard: { width: 500, height: 500, fill: "#ffffff" },
+      objects: [
+        { id: "a", type: "path", x: 0, y: 0, w: 200, h: 100, baseW: 100, baseH: 50, d: "M0 0 L100 0 C100 25 50 50 0 50 Z", fill: "#ff0000", stroke: "#000000", strokeWidth: 2 },
+        { id: "b", type: "path", x: 0, y: 0, w: 100, h: 50, baseW: 100, baseH: 100, d: "M0 0 L100 100", fill: "none", stroke: "#000000", strokeWidth: 4 },
+        { id: "c", type: "path", x: 0, y: 0, w: 10, h: 10, d: "M0 0 L10 10", fill: "#000000" },
+      ],
+    };
+    const { file, warnings } = importPrototypeJson(doc, stable());
+    expect(validateFile(file)).toEqual([]);
+    const a = byName(file, "Path");
+    expect(svgPathFromVectorNetwork(a.vectorNetwork!)).toBe("M0 0 L200 0 C200 50 100 100 0 100 Z");
+    expect(a).toMatchObject({ strokeWeight: 4, strokeCap: "ROUND", strokeJoin: "ROUND" });
+    const [, b, c] = file.nodes.filter((n) => n.type === "VECTOR");
+    expect(svgPathFromVectorNetwork(b!.vectorNetwork!)).toBe("M0 0 L100 50");
+    expect(b!.strokeWeight).toBeCloseTo(4 * Math.SQRT1_2, 6);
+    // No base size: drawn at its own size.
+    expect(svgPathFromVectorNetwork(c!.vectorNetwork!)).toBe("M0 0 L10 10");
+    expect(warnings).toEqual(["1 path shape's stroke was stretched unevenly; the stroke weight is now the same all round."]);
+  });
+
+  it("keeps paths whose outline can't be read as empty vectors, and says so", () => {
+    const doc = {
+      artboard: { width: 500, height: 500, fill: "#ffffff" },
+      objects: [
+        { id: "a", type: "path", x: 0, y: 0, w: 10, h: 10, d: "M0 0 L", fill: "#ff0000" },
+        { id: "b", type: "path", x: 0, y: 0, w: 10, h: 10, d: 42, fill: "#ff0000" },
+        { id: "c", type: "path", x: 0, y: 0, w: 10, h: 10, fill: "#ff0000" },
+        { id: "d", type: "path", x: 0, y: 0, w: 10, h: 10, d: "M0 0 L1 1", baseW: "wide", fill: "#ff0000" },
+      ],
+    };
+    const { file, warnings } = importPrototypeJson(doc, stable());
+    expect(validateFile(file)).toEqual([]);
+    const vectors = file.nodes.filter((n) => n.type === "VECTOR");
+    expect(vectors.map((n) => n.vectorNetwork === undefined)).toEqual([true, true, true, false]);
+    expect(vectors[0]).toMatchObject({ width: 10, height: 10 });
+    expect(warnings).toEqual([
+      "Reset 1 broken value (such as a non-number opacity) to its default.",
+      "Couldn't read the outline of 3 path shapes; they keep their position, size and colour as empty vectors.",
     ]);
   });
 
@@ -266,7 +326,6 @@ describe("importPrototypeJson: every prototype feature", () => {
       "1 layer pointed to a frame that doesn't exist, so it was placed on the page.",
       "Broke 1 loop of frames nested inside each other by moving one frame onto the page.",
       "Reset 1 broken value (such as a non-number opacity) to its default.",
-      "1 path shape keeps position, size and colour, but not its outline: format v0 can't store vector outlines yet.",
       "Left out 3 effects (1 drop shadow, 2 layer blurs) on 2 layers: format v0 has no effects yet.",
       "Left out 1 gradient: format v0 holds solid colours only.",
       "Left out letter spacing on 1 text layer: format v0 has no letter spacing yet.",
