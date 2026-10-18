@@ -18,10 +18,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "bench": "npm run dev -w @illigma/bench",
-    "bench:measure": "node scripts/bench.mjs"
+    "bench:measure": "node scripts/bench.mjs",
+    "test:e2e": "node apps/web/e2e/run-all.mjs"
   },
   "devDependencies": {
     "@types/node": "22.19.1",
+    "axe-core": "4.10.3",
     "playwright": "^1.56.1",
     "typescript": "5.9.3",
     "vite": "7.3.7",
