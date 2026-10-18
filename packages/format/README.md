@@ -47,3 +47,7 @@ const opened = readPackage(isZip(bytes) ? readZip(bytes, { maxTotalBytes: 512 * 
 ## Robustness
 
 `src/fuzz.test.ts` feeds both readers 2,000 seeded random inputs per run (truncated, bit-flipped and spliced archives; damaged JSON; random values in node and manifest fields). Each must open as a valid file or throw a `FormatError`, never another exception. To fuzz longer: `FUZZ_SEED=42 FUZZ_CASES=100000 npx vitest run fuzz`.
+
+## Importing old prototype documents
+
+`importPrototypeJson(json)` converts a document saved by the retired browser prototype (`illigma.document.v1`, version 1, including the older single-artboard form) into a valid format v0 file and returns `{ file, warnings }`. Prototype artboards become frames, `rect` / `ellipse` / `path` / `text` become `RECTANGLE` / `ELLIPSE` / `VECTOR` / `TEXT`, and a shared `groupId` becomes a `GROUP`. Coordinates become parent-relative, rotation moves from the box centre to the top-left corner, `fontWeight` becomes a style name (500 → "Medium") and line height becomes pixels. Everything v0 can't hold is listed in `warnings`. From the command line: `npm run import:prototype -- old.json out.illigma [--zip] [--force]`.
