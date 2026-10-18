@@ -156,6 +156,12 @@ export class Autosaver {
   private async save(): Promise<void> {
     while (this.inFlight) await this.inFlight;
     if (this.disposed || this.held || !this.dirty) return;
+    // Never write a drag halfway: if it's cancelled, the file would keep a state that was never an edit.
+    if (this.doc.live) {
+      clearTimeout(this.timer);
+      this.timer = setTimeout(() => void this.save(), this.delayMs);
+      return;
+    }
     this.clearTimers();
     const run = this.write();
     this.inFlight = run;

@@ -1,6 +1,7 @@
 export {
   Document,
   Transaction,
+  LiveEdit,
   DocumentError,
   type Change,
   type CreateFields,

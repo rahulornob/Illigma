@@ -17,6 +17,8 @@ import {
 import { onBeforeUpdate } from "../sw-update";
 import { Icon, LogoMark } from "../ui/Icon";
 import { Canvas, type CanvasHandle, type HitTest, type Tool } from "./Canvas";
+import { deleteLayers, duplicateLayers, movable, moveBy, snapshot } from "./edit";
+import { nudgeFor } from "./geometry";
 import { useDocVersion, useSaveDisplay } from "./hooks";
 import { LayersPanel } from "./LayersPanel";
 import { PropertiesPanel } from "./PropertiesPanel";
@@ -67,7 +69,7 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
   const [notice, setNotice] = useState<string | null>(session.notice ?? null);
   const [copy, setCopy] = useState<{ busy: boolean; message: string | null; failed: boolean }>({ busy: false, message: null, failed: false });
   const [pageState, setPageId] = useState<NodeId>(() => doc.pages()[0]?.id ?? "");
-  const [selectionState, setSelection] = useState<NodeId | null>(null);
+  const [selectionState, setSelection] = useState<NodeId[]>([]);
   const [toolState, setTool] = useState<Tool>("move");
   const [zoom, setZoom] = useState(1);
   const [closing, setClosing] = useState(false);
@@ -79,7 +81,7 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
 
   // Undo can remove the selected layer or a page: fall back gracefully.
   const pageId = doc.has(pageState) ? pageState : (doc.pages()[0]?.id ?? "");
-  const selection = selectionState && doc.has(selectionState) ? selectionState : null;
+  const selection = selectionState.every((id) => doc.has(id)) ? selectionState : selectionState.filter((id) => doc.has(id));
 
   // Click-to-select, as in Figma: inside a top-level frame the click picks the frame's child (a group as a
   // whole); the frame itself is picked on its empty area. ⌘/Ctrl-click picks the deepest layer.
@@ -304,8 +306,8 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
   };
 
   // Keyboard shortcuts. ⌘ on macOS, Ctrl elsewhere.
-  const keys = useRef({ autosaver, selection, tool, locked });
-  keys.current = { autosaver, selection, tool, locked };
+  const keys = useRef({ autosaver, selection, tool, locked, pageId });
+  keys.current = { autosaver, selection, tool, locked, pageId };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
@@ -327,6 +329,26 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
         return;
       }
       if (isTyping(e.target)) return;
+      // A drag on the canvas is running: it owns the document until it ends (Escape cancels it there).
+      if (doc.live) {
+        if (mod || e.key === "Delete" || e.key === "Backspace" || e.key.startsWith("Arrow")) e.preventDefault();
+        return;
+      }
+      const sel = keys.current.selection;
+      if (mod && k === "d") {
+        e.preventDefault(); // the browser's bookmark shortcut
+        if (noEdits || !sel.length) return;
+        const copies = doc.transact(sel.length === 1 ? "Duplicate layer" : `Duplicate ${sel.length} layers`, (tx) => duplicateLayers(tx, doc, sel));
+        setSelection(copies);
+        return;
+      }
+      if (mod && k === "a") {
+        // Select all in the current context: the selection's siblings, or the page's top-level layers.
+        e.preventDefault();
+        const parent = (sel[0] && doc.get(sel[0])?.parentId) || keys.current.pageId;
+        setSelection(doc.children(parent).filter((n) => n.visible && !n.locked).map((n) => n.id));
+        return;
+      }
       if (mod && k === "z") {
         e.preventDefault();
         if (noEdits) return;
@@ -357,15 +379,23 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
       }
       if (e.key === "Escape") {
         if (keys.current.tool !== "move") setTool("move");
-        else setSelection(null);
+        else setSelection([]);
         return;
       }
-      if ((e.key === "Delete" || e.key === "Backspace") && keys.current.selection) {
+      if ((e.key === "Delete" || e.key === "Backspace") && sel.length) {
         e.preventDefault();
         if (noEdits) return;
-        const id = keys.current.selection;
-        doc.transact("Delete layer", (tx) => tx.delete(id));
-        setSelection(null);
+        doc.transact(sel.length === 1 ? "Delete layer" : `Delete ${sel.length} layers`, (tx) => deleteLayers(tx, doc, sel));
+        setSelection([]);
+        return;
+      }
+      const nudge = nudgeFor(e.key, e.shiftKey);
+      if (nudge && sel.length) {
+        // Arrow keys nudge 1 px, Shift+arrow 10 px. Each press is one undo step; locked layers stay put.
+        e.preventDefault();
+        if (noEdits) return;
+        const starts = snapshot(doc, movable(doc, sel));
+        if (starts.length) doc.transact(starts.length === 1 ? "Move layer" : `Move ${starts.length} layers`, (tx) => moveBy(tx, starts, nudge.x, nudge.y));
         return;
       }
       const t = TOOLS.find((x) => x.key.toLowerCase() === k) ?? (k === "a" ? TOOLS.find((x) => x.id === "frame") : undefined);
@@ -424,9 +454,9 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
           selection={selection}
           onPage={(id) => {
             setPageId(id);
-            setSelection(null);
+            setSelection([]);
           }}
-          onSelect={setSelection}
+          onSelect={(id, toggle) => setSelection((cur) => (toggle ? (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]) : [id]))}
         />
 
         <main className="canvas-area" aria-label="Canvas area">
@@ -439,7 +469,7 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
             readOnly={locked}
             onSelect={setSelection}
             onCreated={(id) => {
-              setSelection(id);
+              setSelection([id]);
               setTool("move");
             }}
             onZoom={setZoom}
@@ -599,6 +629,11 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
           </div>
 
           <ToolDock tool={tool} onTool={(t) => !locked && setTool(t)} />
+
+          {/* Selection changes, for screen readers: "Rectangle 3 selected", "3 layers selected". */}
+          <div className="sr-only selection-announcer" role="status" aria-live="polite">
+            {selection.length === 0 ? "" : selection.length === 1 ? `${doc.get(selection[0] as NodeId)?.name ?? "Layer"} selected` : `${selection.length} layers selected`}
+          </div>
         </main>
 
         <PropertiesPanel doc={doc} pageId={pageId} selection={selection} readOnly={locked} />

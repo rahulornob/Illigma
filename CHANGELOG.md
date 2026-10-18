@@ -25,6 +25,12 @@ After v1.0: a Tauri desktop app in v1.x, then optional multiplayer (CRDT over LA
 - Phase 0 (foundations): renderer spike (CanvasKit, 10,000 layers at 60 fps), offline web app, design tokens in code. See [docs/dev/phase-0.md](docs/dev/phase-0.md).
 - Run the real usability sessions (Phase 5) in parallel; fix what they find.
 
+### Added (2026-10-18, Phase 1 first slice: direct manipulation)
+- Canvas: move by dragging (click-drag selects and moves; Shift keeps one axis; whole-pixel positions), resize with 8 handles (Shift keeps the ratio, Alt from the centre, flips past the opposite edge, never under 1 px; turned layers resize along their own axes), marquee (from empty canvas over top-level layers, from a top-level frame's empty area over its children), Shift-click to add or remove, hover outline, member outlines and a size label for multi-selections. Escape cancels a drag. Locked layers don't move; hidden ones aren't hit.
+- Keys: arrows nudge 1 px (Shift 10 px), Delete/Backspace deletes the selection, ⌘D duplicates in place (a top-level frame's copy goes to its right), ⌘A selects all in the current context.
+- Multi-selection everywhere: Layers panel Shift/⌘-click, Properties shows "Mixed" for differing values and edits every selected layer; a screen-reader announcement on selection changes.
+- `@illigma/core`: `Document.beginLive()` returns a `LiveEdit` (`update`, `commit`, `cancel`): a drag shows every step live and is recorded as one undo step. The recovery journal skips live steps and the autosaver never writes a drag halfway.
+
 ### Added (2026-10-18, development Phase 0)
 - Design approved: all 15 areas signed off.
 - Monorepo: npm workspaces, strict TypeScript, Vitest; MPL-2.0 and MIT licence files.

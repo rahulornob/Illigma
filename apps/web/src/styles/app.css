@@ -562,39 +562,59 @@ ul {
   inset: 0;
   pointer-events: none;
 }
+/* Canvas overlays (interactions.md): they never scale with zoom, so lines stay 1 px and handles 8 px on screen. */
 .selection-box,
 .draft-box,
-.size-pill {
+.size-pill,
+.layer-outline,
+.marquee-box {
   position: absolute;
   top: 0;
   left: 0;
   display: none;
   transform-origin: 0 0;
 }
-.selection-box {
+.selection-box,
+.layer-outline {
   border: 1px solid var(--accent-default);
 }
 .handle {
   position: absolute;
   width: 8px;
   height: 8px;
-  background: #fff;
+  border-radius: 2px;
+  background: var(--selection-on);
   border: 1px solid var(--accent-default);
 }
-.handle.nw {
-  left: -4px;
-  top: -4px;
+.selection-box[data-handles="off"] .handle {
+  display: none;
 }
-.handle.ne {
-  right: -4px;
-  top: -4px;
-}
+.handle.nw,
+.handle.w,
 .handle.sw {
   left: -4px;
-  bottom: -4px;
 }
+.handle.n,
+.handle.s {
+  left: calc(50% - 4px);
+}
+.handle.ne,
+.handle.e,
 .handle.se {
   right: -4px;
+}
+.handle.nw,
+.handle.n,
+.handle.ne {
+  top: -4px;
+}
+.handle.w,
+.handle.e {
+  top: calc(50% - 4px);
+}
+.handle.sw,
+.handle.s,
+.handle.se {
   bottom: -4px;
 }
 .size-pill {
@@ -606,9 +626,10 @@ ul {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.draft-box {
+.draft-box,
+.marquee-box {
   border: 1px solid var(--accent-default);
-  background: rgba(59, 130, 246, 0.08);
+  background: color-mix(in srgb, var(--accent-default) 8%, transparent);
 }
 .draft-box[data-shape="ellipse"] {
   border-radius: 50%;
