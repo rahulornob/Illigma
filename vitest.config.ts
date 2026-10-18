@@ -17,5 +17,7 @@ export default defineConfig({
   },
   test: {
     include: ["packages/*/src/**/*.test.ts", "apps/*/src/**/*.test.ts"],
+    // Shared CI runners are slower than a laptop; time budgets in tests scale the same way (PERF_BUDGET_SCALE).
+    testTimeout: process.env.CI ? 30_000 : 5_000,
   },
 });

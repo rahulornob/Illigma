@@ -30,7 +30,7 @@ const NAME_RULES = new Set([
   "duplicate-id-aria",
 ]);
 
-await runE2E("a11y", { port: 5197 }, async ({ browser, url, log, check, knownBug, outDir, errors }) => {
+await runE2E("a11y", {}, async ({ browser, url, log, check, knownBug, outDir, errors }) => {
   const context = await newContext(browser);
   const page = await context.newPage();
   watchErrors(page, errors);

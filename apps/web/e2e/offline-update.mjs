@@ -8,14 +8,16 @@
 //    installs and waits, and the app shows "Update ready · Reload". Only that
 //    click switches to v2; the v1 cache stays until no tab runs v1.
 //
-// Builds into apps/web/e2e/out/offline-dist so the shared dist/ is untouched.
+// Builds into apps/web/e2e/out/offline-dist-<pid> (removed afterwards) so the
+// shared dist/ is untouched and two runs at once don't overwrite each other.
 // Usage (from the repo root):  node apps/web/e2e/offline-update.mjs [--headed]
 
+import { rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { buildApp, canvasReady, createFile, drag, layerRows, newContext, runE2E, serve, waitSaved, watchErrors } from "./lib.mjs";
+import { T, buildApp, canvasReady, createFile, drag, layerRows, newContext, poll, runE2E, serve, waitSaved, watchErrors } from "./lib.mjs";
 
-const PORT = 5196;
-const dist = fileURLToPath(new URL("./out/offline-dist/", import.meta.url));
+const dist = fileURLToPath(new URL(`./out/offline-dist-${process.pid}/`, import.meta.url));
+process.on("exit", () => rmSync(dist, { recursive: true, force: true }));
 
 /** Build into `dist` with a marker in index.html: <meta name="illigma-e2e-build" content="…">. */
 const buildMarked = (mark) =>
@@ -24,7 +26,8 @@ const buildMarked = (mark) =>
     plugins: [{ name: "e2e-build-mark", transformIndexHtml: () => [{ tag: "meta", attrs: { name: "illigma-e2e-build", content: mark }, injectTo: "head" }] }],
   });
 
-await runE2E("offline-update", { port: PORT, build: false, serve: false }, async ({ browser, log, check, outDir, errors }) => {
+// The port is picked once and reused for v2: the service worker and OPFS belong to the origin.
+await runE2E("offline-update", { build: false, serve: false }, async ({ browser, port: PORT, log, check, outDir, errors }) => {
   const mark = (page) => page.evaluate(() => document.querySelector('meta[name="illigma-e2e-build"]')?.getAttribute("content") ?? null);
   const caches = (page) => page.evaluate(async () => (await self.caches.keys()).filter((k) => k.startsWith("illigma-")).sort());
   const swState = (page) =>
@@ -68,7 +71,7 @@ await runE2E("offline-update", { port: PORT, build: false, serve: false }, async
 
     log("offline: a cold start on the home screen lists the file");
     await page.goto(url);
-    await page.locator(".file-card").first().waitFor({ timeout: 10_000 });
+    await page.locator(".file-card").first().waitFor({ timeout: T(10_000) });
     await page.locator(".file-card").first().click();
     await canvasReady(page);
     check(page.url().includes(fileId), "the file should open from Recents offline");
@@ -86,7 +89,7 @@ await runE2E("offline-update", { port: PORT, build: false, serve: false }, async
     check((await mark(page)) === "v1", "the first load after a deploy should still run v1 (cache-first)");
     // The browser checks sw.js and its imported precache-manifest.js on navigation; v2 installs and waits.
     const toast = page.locator(".update-toast");
-    await toast.waitFor({ timeout: 20_000 });
+    await toast.waitFor({ timeout: T(20_000) });
     check((await toast.innerText()).replace(/\s+/g, " ").trim() === "Update ready · Reload", `the app should say "Update ready · Reload", got "${await toast.innerText()}"`);
     check((await swState(page)).waiting, "v2 should wait instead of taking over");
     const both = await caches(page);
@@ -99,13 +102,14 @@ await runE2E("offline-update", { port: PORT, build: false, serve: false }, async
 
     log("Reload in the update notice switches to v2");
     await page.locator(".update-toast").getByRole("button", { name: "Reload" }).click();
-    await page.waitForFunction(() => document.querySelector('meta[name="illigma-e2e-build"]')?.getAttribute("content") === "v2", undefined, { timeout: 20_000 });
+    await page.waitForFunction(() => document.querySelector('meta[name="illigma-e2e-build"]')?.getAttribute("content") === "v2", undefined, { timeout: T(20_000) });
     await canvasReady(page);
     check((await layerRows(page).count()) === layers, "the file should survive the app update");
     check((await page.locator(".update-toast").count()) === 0, "the update notice should be gone after switching");
-    const deadline = Date.now() + 10_000;
-    while (Date.now() < deadline && (await caches(page)).length !== 1) await page.waitForTimeout(250);
-    const afterUpdate = await caches(page);
+    const afterUpdate = await poll(async () => {
+      const keys = await caches(page);
+      return keys.length === 1 && keys;
+    }, "only one app cache should be left", 10_000).catch(() => caches(page));
     console.log(`  caches: ${v1Caches.join(", ")} → ${afterUpdate.join(", ")}`);
     check(afterUpdate.length === 1 && afterUpdate[0] !== v1Caches[0], "once no tab runs v1, its cache should be removed");
 
