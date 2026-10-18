@@ -1,0 +1,29 @@
+{
+  "name": "@illigma/web",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MPL-2.0",
+  "description": "Illigma as an installable, offline web app.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "e2e": "vite build && node e2e/smoke.mjs"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "5.3.0",
+    "@illigma/core": "0.0.0",
+    "@illigma/format": "0.0.0",
+    "@illigma/host-web": "0.0.0",
+    "@illigma/renderer": "0.0.0",
+    "canvaskit-wasm": "0.42.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "5.2.0"
+  }
+}

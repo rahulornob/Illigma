@@ -4,6 +4,7 @@
     { "path": "packages/format" },
     { "path": "packages/core" },
     { "path": "packages/renderer" },
-    { "path": "apps/bench" }
+    { "path": "apps/bench" },
+    { "path": "apps/web" }
   ]
 }

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Illigma">
+  <rect width="512" height="512" rx="112" fill="#0B0B0C"/>
+  <!-- Anchor-point mark: a ring (the path) with a square node sitting on it. -->
+  <circle cx="256" cy="256" r="132" fill="none" stroke="#FF5B2E" stroke-width="40"/>
+  <rect x="301" y="301" width="96" height="96" rx="12" fill="#FF5B2E" stroke="#0B0B0C" stroke-width="24"/>
+</svg>

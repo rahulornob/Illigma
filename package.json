@@ -12,6 +12,7 @@
     "apps/*"
   ],
   "scripts": {
+    "dev": "npm run dev -w @illigma/web",
     "build": "tsc -b",
     "typecheck": "tsc -b --pretty",
     "test": "vitest run",

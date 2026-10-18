@@ -1,0 +1,79 @@
+/*
+ * Fallback design tokens for apps/web, Dark mode only.
+ *
+ * Names follow the Figma "Illigma UI" variables (bg/shell -> --bg-shell,
+ * text/primary -> --text-primary, ...), the same names @illigma/tokens
+ * generates. When that package lands, replace this import in main.tsx with
+ * "@illigma/tokens/tokens.css" and delete this file.
+ */
+:root {
+  color-scheme: dark;
+
+  /* Surfaces */
+  --bg-shell: #0c0c0e;
+  --bg-canvas: #101012;
+  --bg-panel: #17171a;
+  --bg-card: #1f1f23;
+  --bg-field: #2a2a30;
+  --bg-field-hover: #34343b;
+  --bg-button: #26262b;
+  --bg-hover: rgba(255, 255, 255, 0.04);
+  --bg-pressed: rgba(255, 255, 255, 0.08);
+
+  /* Lines */
+  --border-default: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+
+  /* Text: white alpha, never grey hex */
+  --text-primary: rgba(255, 255, 255, 0.92);
+  --text-secondary: rgba(255, 255, 255, 0.7);
+  --text-tertiary: rgba(255, 255, 255, 0.5);
+  --text-disabled: rgba(255, 255, 255, 0.32);
+
+  /* Interactive = blue; Ember = brand only */
+  --accent-default: #3b82f6;
+  --accent-fill: #2f6fe0;
+  --accent-hover: #2a62c8;
+  --accent-on: #ffffff;
+  --accent-row: #1e2b44;
+  --accent-text: #8fb4ff;
+  --tool-active: #3b82f6;
+  --tool-on: #ffffff;
+  --brand-default: #ff5b2e;
+
+  /* States */
+  --state-danger: #ff5a5f;
+  --state-danger-tint: #3b1214;
+  --state-success: #3ccb7f;
+  --state-warning: #ffc15e;
+  --state-warning-tint: #4a3516;
+
+  /* Layer types */
+  --type-frame: #6fa8ff;
+  --type-shape: #ffc15e;
+  --type-text: #8fb4ff;
+
+  /* Dimensions (4 px grid) */
+  --radius-xs: 4px;
+  --radius-button: 8px;
+  --radius-field: 8px;
+  --radius-card: 12px;
+  --radius-panel: 16px;
+  --size-field: 28px;
+  --size-row: 32px;
+  --size-tool: 36px;
+  --space-gap: 8px;
+  --space-card: 12px;
+
+  /* Type: 12/16 minimum, Inter */
+  --font-ui: "Inter", system-ui, sans-serif;
+  --type-ui-body: 400 12px/16px var(--font-ui);
+  --type-ui-label: 400 12px/16px var(--font-ui);
+  --type-ui-value: 500 12px/16px var(--font-ui);
+  --type-ui-button: 600 12px/16px var(--font-ui);
+  --type-ui-heading: 600 12px/16px var(--font-ui);
+  --type-ui-title: 600 16px/24px var(--font-ui);
+  --type-doc-heading: 600 24px/32px var(--font-ui);
+
+  --elevation-1-island: 0 12px 32px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.3);
+}
