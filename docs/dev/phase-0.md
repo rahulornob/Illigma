@@ -22,13 +22,19 @@ Started 18 October 2026, after the design sign-off. Planned to run through Decem
 | 0.1 Monorepo | Done 2026-10-18 |
 | 0.2 Document model | Done 2026-10-18 (`@illigma/core`, unit-tested) |
 | 0.3 File format v0 | Done 2026-10-18 (`@illigma/format`, lossless round trip tested; zip form later) |
-| 0.4 Renderer spike | **Done 2026-10-18; with 0.3 this meets the Phase 0 gate.** 10,000 layers: median 60 fps, 100% of frames within 16.7 ms, 4.8 ms draw per frame at 2× pixel density, page recorded once in 24 ms (Chromium, ANGLE Metal, Apple M1, 1440×900). Run `npm run bench` (opens the benchmark) or `npm run bench:measure` (headless, prints JSON). Text, tiles and hit-testing come next |
+| 0.4 Renderer spike | **Done 2026-10-18; with 0.3 this meets the Phase 0 gate.** 10,000 layers: median 60 fps, 100% of frames within 16.7 ms, 4.8 ms draw per frame at 2× pixel density, page recorded once in 24 ms (Chromium, ANGLE Metal, Apple M1, 1440×900). Run `npm run bench` (opens the benchmark) or `npm run bench:measure` (headless, prints JSON). Text, hit-testing and per-frame picture caching added 2026-10-18 (below); tiles come next |
 | 0.5 Offline web app | Next |
 | 0.6 Design tokens in code | Not started |
 
 ## How the renderer spike works
 
-The page is recorded once into a Skia picture (SkPicture). Each frame only replays that picture under the camera transform, so panning and zooming cost the same however many layers there are. The picture is recorded again only when the document changes. Editing a single layer at 10k+ layers will need finer caching (per-frame pictures or tiles); that is Phase 1 work.
+Each top-level child of the page (each screen) is recorded into its own Skia picture (SkPicture), and a page picture replays those. Each frame only replays the page picture under the camera transform, so panning and zooming cost the same however many layers there are. A document change re-records only the top-level children whose subtree it touched (found from the change's operations), so editing one layer costs one screen's recording, not the page's.
+
+- **Editing at 10k layers** (`npm run bench:measure -- --edit`, one rectangle recoloured every frame while panning): before, 18.3 ms re-recording per edit and 72% of frames within 16.7 ms; after, 1.2 ms per edit and 100% within budget.
+- **Text** uses CanvasKit's Paragraph API with fonts passed to the renderer (`options.fonts`); the benchmark bundles Inter from `@fontsource/inter` (SIL OFL 1.1, see `apps/bench/NOTICE`). The first recording of the 10k-layer page, with 1,000 text layers, takes about 90–115 ms.
+- **Hit-testing** (`PageRenderer.hitTest`, `hitTest` in `hit-test.ts`) is pure geometry, no GPU: nesting, frame clipping, rotation, ellipses and rounded corners, z-order, hidden and locked layers.
+- **Opacity** is drawn as a layer, so a 50% frame fades its children too. Pictures are culled by what they actually drew, never by node boxes.
+- **`GpuCanvas`** keeps one WebGL context per canvas and swaps only the surface on resize (`makeSurface` leaked a context per call and is deprecated).
 
 ## Choices made for Phase 0
 

@@ -1,0 +1,7 @@
+The benchmark draws text with Inter Regular (latin subset, WOFF2), taken from
+the npm package @fontsource/inter 5.2.8 and bundled at build time.
+
+Inter is Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter)
+and is licensed under the SIL Open Font License, Version 1.1. The full licence
+text ships with the package: node_modules/@fontsource/inter/LICENSE, and at
+https://openfontlicense.org.
