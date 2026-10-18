@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { vectorNetworkFromSvgPath } from "@illigma/format";
 import { exportNode, writeSvg, exportScene, escapeAttr } from "./index.js";
-import { assertWellFormedXml, BLUE, build, canvasKit, interFonts, RED, solid } from "./test.fixture.js";
+import { assertWellFormedXml, BLUE, build, canvasKit, interFonts, RED, solid, withoutIdPrefix } from "./test.fixture.js";
 
 const svgOf = async (...args: Parameters<typeof exportNode>) => {
   const file = await exportNode(...args);
   const text = new TextDecoder().decode(file.bytes);
   assertWellFormedXml(text);
-  return { file, text };
+  return { file, text: withoutIdPrefix(text) };
 };
 
 describe("SVG export: golden files", () => {
@@ -69,8 +69,9 @@ describe("SVG export: golden files", () => {
     );
     expect((await svgOf(doc, ids.open, { format: "SVG" })).text).toBe(
       [
-        `<svg width="22" height="12" viewBox="0 0 22 12" fill="none" xmlns="http://www.w3.org/2000/svg">`,
-        `<path transform="translate(1 1)" d="M0 0L10 10L20 0" stroke="#FF0000" stroke-width="2" stroke-linecap="square" stroke-linejoin="bevel"/>`,
+        // Square caps on the diagonal ends reach √2 × half past the end points (1.4142), not half.
+        `<svg width="22.8284" height="12.4142" viewBox="0 0 22.8284 12.4142" fill="none" xmlns="http://www.w3.org/2000/svg">`,
+        `<path transform="translate(1.4142 1.4142)" d="M0 0L10 10L20 0" stroke="#FF0000" stroke-width="2" stroke-linecap="square" stroke-linejoin="bevel"/>`,
         `</svg>`,
         ``,
       ].join("\n"),

@@ -56,7 +56,7 @@ describe("PDF export", () => {
     expect(res).toContain("/G1 << /Type /ExtGState /ca 0.5 /CA 0.5 >>");
     const formNum = Number(/\/Fm0 (\d+) 0 R/.exec(res)?.[1]);
     const formDict = pdf.objects.get(formNum) ?? "";
-    expect(formDict).toContain("/Subtype /Form /BBox [-1 -1 101 101] /Group << /S /Transparency >> /Resources 6 0 R");
+    expect(formDict).toContain("/Subtype /Form /BBox [-1 -1 101 101] /Group << /S /Transparency /I true >> /Resources 6 0 R");
     const form = streamOf(pdf.objects, formNum);
     // Rounded clip, then children: an alpha fill, a rotated even-odd vector.
     expect(form).toMatch(/^q\n10 0 m 90 0 l [^\n]* h W n\n/);

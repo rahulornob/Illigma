@@ -9,14 +9,19 @@
  *   stroked with their weight, caps and joins (strokes centred, as drawn).
  * - Solid paints with their alpha; linear and radial gradients as shading
  *   patterns (angular and diamond as radial, one alpha per gradient, with
- *   warnings); images as image XObjects clipped to the shape (decoded by
- *   CanvasKit; JPEGs embed as they are without it). Blend modes as `/BM`.
- *   Inside and outside strokes are doubled and clipped to their side.
+ *   warnings); images as image XObjects clipped to the shape (8-bit grey and
+ *   RGB JPEGs embedded as they are, turned by their Exif orientation; other
+ *   images decoded by CanvasKit, up to 16,384 px a side and 64 million
+ *   pixels). Blend modes as `/BM`. Inside and outside strokes are doubled
+ *   and clipped to their side.
  * - Layer opacity and blend mode apply to a layer and its children as one
- *   transparency group, as on the canvas.
+ *   isolated transparency group, as on the canvas; so does a NORMAL layer
+ *   whose children blend.
  * - Shadows and blurs have no PDF equivalent: with CanvasKit, a layer that has
- *   them is drawn by the renderer into an image (with a warning); without it,
- *   they are left out (with a warning).
+ *   them is drawn by the renderer into an image (2 px per pt, less when the
+ *   file's budget of 8 million pixels runs short, then left out; with
+ *   warnings); without it, they are left out (with a warning). Background
+ *   blur alone is left out (with a warning).
  * - Frames clip their children.
  * - Text is drawn by the renderer into an image (4 px per pt) and placed
  *   where the text is, so it looks right but can't be selected or searched
@@ -31,14 +36,19 @@ import { CLIPPING } from "@illigma/renderer";
 import { zlibSync } from "fflate";
 import { draws, hasVisibleStroke, IDENTITY, localMatrix, multiply, subtreeBounds, translation, type ExportScene, type ExportSource, type Matrix, type Rect } from "./scene.js";
 import {
+  blendsInside,
   ellipseCommands,
   fmt,
+  imagePlacement,
+  orientationMatrix,
   outlineOf,
   pdfBlendMode,
   rectCommands,
   resolvePaint,
   strokeAlignOf,
   visibleEffects,
+  withoutOrientation,
+  type ImageInfo,
   type ResolvedPaint,
   type ResolvedStop,
 } from "./vector-common.js";
@@ -57,8 +67,12 @@ export interface RasterText {
 export interface PdfWriterOptions {
   /** Draws a TEXT layer's box (its own space) into pixels; null leaves the text out. */
   rasterText?: (n: ReadonlyNode) => RasterText | null;
-  /** Draws a layer and its children (the `area` of its own space) into pixels, for layers with shadows or blurs; null draws them without. */
-  rasterNode?: (n: ReadonlyNode, area: Rect) => RasterText | null;
+  /**
+   * Draws a layer and its children (the `area` of its own space) into pixels,
+   * at about `scale` pixels per unit, for layers with shadows or blurs; null
+   * draws them without. The writer picks the scale within a pixel budget per file.
+   */
+  rasterNode?: (n: ReadonlyNode, area: Rect, scale: number) => RasterText | null;
   /** Decodes an image file to RGBA pixels (unpremultiplied); without it only JPEG images can be embedded. */
   decodeImage?: (bytes: Uint8Array) => { width: number; height: number; rgba: Uint8Array } | null;
   /** Called once per limitation met, in plain language. */
@@ -130,9 +144,11 @@ class PageWriter {
   private readonly xobjects = new Map<string, number>();
   private readonly patterns = new Map<string, number>();
   /** Image XObject names by image hash, so an image used twice is stored once per page. */
-  private readonly imageNames = new Map<string, string | null>();
+  private readonly imageNames = new Map<string, ImageFile | null>();
   private forms = 0;
   private images = 0;
+  /** Image tiles written on this page so far (at most MAX_TILES). */
+  private tiles = 0;
   readonly resources: number;
   private warnedText = false;
 
@@ -140,6 +156,7 @@ class PageWriter {
     private readonly file: PdfFile,
     private readonly source: ExportSource,
     private readonly options: PdfWriterOptions,
+    private readonly budget: RasterBudget = { remaining: MAX_RASTER_PIXELS, scale: RASTER_SCALE },
   ) {
     this.resources = file.reserve();
   }
@@ -177,18 +194,26 @@ class PageWriter {
     if (!isIdentity(m)) out.push(`${m.map(fmt).join(" ")} cm`);
     const here = multiply(base, m);
     const fx = visibleEffects(n);
+    const blend = pdfBlendMode(n.blendMode, this.warn);
+    if (fx.backgroundBlur > 0) this.warn("Background blur needs what is behind the layer, which a PDF export doesn't have, so it was left out.");
     // PDF has no shadows or blurs: a layer with them is drawn by the renderer into an image, when it can be.
-    if (fx.any) {
-      if (this.options.rasterNode && this.rasterized(n, out)) {
+    // Background blur alone isn't worth an image: it would be left out of it anyway.
+    if (rasterEffects(fx)) {
+      const done = this.options.rasterNode ? this.rasterized(n, out, blend) : "no-engine";
+      if (done === "drawn") {
         out.push("Q");
         return;
       }
-      this.warn("Shadows and blurs need the drawing engine to go into a PDF, so they were left out.");
+      if (done === "no-engine") this.warn("Shadows and blurs need the drawing engine to go into a PDF, so they were left out.");
     }
-    // Rasterized text carries its own opacity.
+    // Rasterized text carries its own opacity; its blend mode applies to the image.
     const raster = n.type === "TEXT" && !!this.options.rasterText;
-    const blend = pdfBlendMode(n.blendMode, this.warn);
-    if ((n.opacity < 1 || blend) && !raster) {
+    // A NORMAL layer keeps its children's blend modes inside it, as the renderer does.
+    const isolate = n.blendMode === "NORMAL" && blendsInside((id) => this.source.children(id), this.source.children(n.id).filter(draws));
+    if (raster) {
+      if (blend) out.push(`/${this.state(null, null, blend)} gs`);
+      this.content(n, out, here);
+    } else if (n.opacity < 1 || blend || isolate) {
       const bounds = subtreeBounds(this.source, n, IDENTITY);
       if (bounds) {
         const body: string[] = [];
@@ -197,9 +222,11 @@ class PageWriter {
         const name = `Fm${this.forms++}`;
         this.xobjects.set(name, num);
         const bbox = [bounds.x - 1, bounds.y - 1, bounds.x + bounds.width + 1, bounds.y + bounds.height + 1].map(fmt).join(" ");
-        this.file.setStream(num, `/Type /XObject /Subtype /Form /BBox [${bbox}] /Group << /S /Transparency >> /Resources ${this.resources} 0 R`, body.join("\n"));
+        // Isolated, as the renderer's layers are: children blend with each other, not with what is under the group.
+        this.file.setStream(num, `/Type /XObject /Subtype /Form /BBox [${bbox}] /Group << /S /Transparency /I true >> /Resources ${this.resources} 0 R`, body.join("\n"));
         const alpha = n.opacity < 1 ? n.opacity : null;
-        out.push(`/${this.state(alpha, alpha, blend)} gs`, `/${name} Do`);
+        if (alpha !== null || blend) out.push(`/${this.state(alpha, alpha, blend)} gs`);
+        out.push(`/${name} Do`);
       }
     } else {
       this.content(n, out, here);
@@ -207,17 +234,33 @@ class PageWriter {
     out.push("Q");
   }
 
-  /** A layer with effects as an image of what the renderer draws. False when it couldn't be drawn. */
-  private rasterized(n: ReadonlyNode, out: string[]): boolean {
+  /**
+   * A layer with effects as an image of what the renderer draws, within the
+   * file's pixel budget: "drawn"; "skipped" (over budget, reported) or
+   * "failed" when it is drawn as vectors without its effects.
+   */
+  private rasterized(n: ReadonlyNode, out: string[], blend: string | null): "drawn" | "skipped" | "failed" | "no-engine" {
     const area = subtreeBounds(this.source, n, IDENTITY);
-    if (!area || !(area.width > 0) || !(area.height > 0)) return false;
-    const raster = this.options.rasterNode?.(n, area) ?? null;
-    if (!raster) return false;
+    if (!area || !(area.width > 0) || !(area.height > 0)) return "failed";
+    const units = area.width * area.height;
+    // The file's scale, then no more than the layer's share and what is left of the budget.
+    const fit = Math.sqrt(Math.min(MAX_LAYER_PIXELS, this.budget.remaining) / units);
+    const scale = Math.min(this.budget.scale, fit);
+    if (!(scale >= MIN_RASTER_SCALE)) {
+      this.warn("This PDF has too many large shadows and blurs to draw them all, so some were left out.");
+      return "skipped";
+    }
+    if (scale < RASTER_SCALE * 0.999) this.warn("This PDF has many large shadows and blurs, so they were drawn at a lower resolution.");
+    const raster = this.options.rasterNode?.(n, area, scale) ?? null;
+    if (!raster) return "no-engine";
+    this.budget.remaining -= raster.width * raster.height;
     this.warn("Layers with shadows or blurs are drawn into the PDF as images, as on the canvas.");
-    if (visibleEffects(n).backgroundBlur > 0) this.warn("Background blur needs what is behind the layer, which a PDF export doesn't have, so it was left out.");
     const name = this.imageXObject(raster.width, raster.height, raster.rgba);
-    out.push("q", `${fmt(area.width)} 0 0 ${fmt(-area.height)} ${fmt(area.x)} ${fmt(area.y + area.height)} cm`, `/${name} Do`, "Q");
-    return true;
+    out.push("q");
+    // The layer's opacity is in the pixels; its blend mode applies to the image.
+    if (blend) out.push(`/${this.state(null, null, blend)} gs`);
+    out.push(`${fmt(area.width)} 0 0 ${fmt(-area.height)} ${fmt(area.x)} ${fmt(area.y + area.height)} cm`, `/${name} Do`, "Q");
+    return "drawn";
   }
 
   /** A layer's own paints, then its (clipped) children, in its own space; `here` maps that space to the stream's. */
@@ -309,22 +352,28 @@ class PageWriter {
           this.warn("Image strokes aren't written to PDF yet, so they were left out.");
           return;
         }
-        const name = this.imageFile(p);
-        if (!name) return;
+        const file = this.imageFile(p);
+        if (!file) return;
+        // A decoder may report another size than the header (an orientation it honours): place the image as decoded, as the renderer does.
+        let matrix = p.matrix;
+        if (file.width !== p.width || file.height !== p.height) {
+          const place = imagePlacement(p.paint, file.width, file.height, box.width, box.height);
+          if (!place) return;
+          matrix = place.matrix;
+        }
         // Clip to the shape, then place the image (every tile, for TILE) in the layer's space.
-        const body = [`${shape.path} ${shape.evenOdd ? "W*" : "W"} n`, `${p.matrix.map(fmt).join(" ")} cm`];
-        const draw = (x: number, y: number) => `q ${p.width} 0 0 ${-p.height} ${fmt(x)} ${fmt(y + p.height)} cm /${name} Do Q`;
+        const body = [`${shape.path} ${shape.evenOdd ? "W*" : "W"} n`, `${matrix.map(fmt).join(" ")} cm`];
+        const draw = (x: number, y: number) => `q ${multiply(translation(x, y), file.unit).map(fmt).join(" ")} cm /${file.name} Do Q`;
         if (!p.tile) body.push(draw(0, 0));
         else {
-          const [a, b, c, d] = p.matrix;
-          const across = Math.ceil(box.width / Math.max(Math.hypot(a, b) * p.width, 1e-6));
-          const down = Math.ceil(box.height / Math.max(Math.hypot(c, d) * p.height, 1e-6));
-          if (across * down > MAX_TILES) {
-            this.warn(`An image tiles more than ${MAX_TILES.toLocaleString("en-US")} times, so only the first ${MAX_TILES.toLocaleString("en-US")} tiles were written.`);
+          const [a, b, c, d] = matrix;
+          const across = Math.ceil(box.width / Math.max(Math.hypot(a, b) * file.width, 1e-6));
+          const down = Math.ceil(box.height / Math.max(Math.hypot(c, d) * file.height, 1e-6));
+          if (across * down > MAX_TILES - this.tiles) {
+            this.warn(`Images tile more than ${MAX_TILES.toLocaleString("en-US")} times on one page, so only the first ${MAX_TILES.toLocaleString("en-US")} tiles were written.`);
           }
-          let count = 0;
-          for (let j = 0; j < down && count < MAX_TILES; j++) {
-            for (let i = 0; i < across && count < MAX_TILES; i++, count++) body.push(draw(i * p.width, j * p.height));
+          for (let j = 0; j < down && this.tiles < MAX_TILES; j++) {
+            for (let i = 0; i < across && this.tiles < MAX_TILES; i++, this.tiles++) body.push(draw(i * file.width, j * file.height));
           }
         }
         withAlpha(p.opacity, body);
@@ -347,16 +396,46 @@ class PageWriter {
     return name;
   }
 
-  /** The image XObject for an image paint, once per image; null (reported) when it can't be decoded. */
-  private imageFile(p: Extract<ResolvedPaint, { kind: "image" }>): string | null {
+  /**
+   * The image XObject for an image paint, once per image, with its shown
+   * size and `unit`: the image's unit square to its shown pixels (turned by
+   * its Exif orientation). Null (reported) when it can't be embedded.
+   *
+   * 8-bit greyscale and RGB JPEGs (baseline or progressive) are embedded as
+   * they are (DCTDecode): smaller and faster than decoding them. Other
+   * images are decoded by the drawing engine, within a pixel cap; without
+   * it, other JPEGs are still embedded as they are.
+   */
+  private imageFile(p: Extract<ResolvedPaint, { kind: "image" }>): ImageFile | null {
     if (this.imageNames.has(p.hash)) return this.imageNames.get(p.hash) ?? null;
-    let name: string | null = null;
-    const pixels = this.options.decodeImage?.(p.bytes) ?? null;
-    if (pixels) name = this.imageXObject(pixels.width, pixels.height, pixels.rgba);
-    else if (p.format === "jpg") name = this.jpegXObject(p.bytes);
-    if (!name) this.warn("Images other than JPEG need the drawing engine to go into a PDF, so some were left out.");
-    this.imageNames.set(p.hash, name);
-    return name;
+    const { info } = p;
+    const j = info.jpeg;
+    const passThrough = (any: boolean): ImageFile | null => {
+      if (!j || !(any || (j.precision === 8 && (j.components === 1 || j.components === 3) && (j.sof === 0xc0 || j.sof === 0xc1 || j.sof === 0xc2)))) return null;
+      const name = this.jpegXObject(info, p.bytes);
+      if (!name) return null;
+      const unit = multiply(orientationMatrix(info.orientation, info.rawWidth, info.rawHeight), [info.rawWidth, 0, 0, -info.rawHeight, 0, info.rawHeight]);
+      return { name, width: info.width, height: info.height, unit };
+    };
+    let file = passThrough(false);
+    let reported = false;
+    if (!file && this.options.decodeImage) {
+      if (info.rawWidth > MAX_DECODE_SIDE || info.rawHeight > MAX_DECODE_SIDE || info.rawWidth * info.rawHeight > MAX_DECODE_PIXELS) {
+        this.warn(`Images larger than ${MAX_DECODE_SIDE.toLocaleString("en-US")} px on a side or ${MAX_DECODE_PIXELS / 1e6} million pixels can't go into a PDF yet, so some were left out.`);
+        reported = true;
+      } else {
+        const px = this.options.decodeImage(p.bytes);
+        if (px) file = { name: this.imageXObject(px.width, px.height, px.rgba), width: px.width, height: px.height, unit: [px.width, 0, 0, -px.height, 0, px.height] };
+      }
+    } else if (!file) {
+      // Without the drawing engine, any JPEG goes in as it is.
+      file = passThrough(true);
+      if (!file) this.warn("Images other than JPEG need the drawing engine to go into a PDF, so some were left out.");
+      reported = true;
+    }
+    if (!file && !reported) this.warn("Some images couldn't be read, so they were left out of the PDF.");
+    this.imageNames.set(p.hash, file);
+    return file;
   }
 
   /** An RGB image XObject (with its alpha as a soft mask when it has any), from unpremultiplied RGBA rows. */
@@ -374,23 +453,24 @@ class PageWriter {
     let smask = "";
     if (!opaque) {
       const mask = this.file.reserve();
-      this.file.setStream(mask, `/Type /XObject /Subtype /Image /Width ${width} /Height ${height} /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode`, zlibSync(alpha, { level: 9 }));
+      this.file.setStream(mask, `/Type /XObject /Subtype /Image /Width ${width} /Height ${height} /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode`, zlibSync(alpha, { level: 6 }));
       smask = ` /SMask ${mask} 0 R`;
     }
     const image = this.file.reserve();
-    this.file.setStream(image, `/Type /XObject /Subtype /Image /Width ${width} /Height ${height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode${smask}`, zlibSync(rgb, { level: 9 }));
+    this.file.setStream(image, `/Type /XObject /Subtype /Image /Width ${width} /Height ${height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode${smask}`, zlibSync(rgb, { level: 6 }));
     const name = `Im${this.images++}`;
     this.xobjects.set(name, image);
     return name;
   }
 
   /** A JPEG embedded as it is (DCTDecode), without decoding it. */
-  private jpegXObject(bytes: Uint8Array): string | null {
-    const info = jpegInfo(bytes);
-    if (!info) return null;
-    const space = info.components === 1 ? "/DeviceGray" : info.components === 4 ? "/DeviceCMYK /Decode [1 0 1 0 1 0 1 0]" : "/DeviceRGB";
+  private jpegXObject(info: ImageInfo, bytes: Uint8Array): string | null {
+    const components = info.jpeg?.components;
+    if (components !== 1 && components !== 3 && components !== 4) return null;
+    const space = components === 1 ? "/DeviceGray" : components === 4 ? "/DeviceCMYK /Decode [1 0 1 0 1 0 1 0]" : "/DeviceRGB";
     const image = this.file.reserve();
-    this.file.setStream(image, `/Type /XObject /Subtype /Image /Width ${info.width} /Height ${info.height} /ColorSpace ${space} /BitsPerComponent 8 /Filter /DCTDecode`, bytes);
+    // Stored as in the file; the placement turns it. Its orientation tag is cleared, so no viewer turns it twice.
+    this.file.setStream(image, `/Type /XObject /Subtype /Image /Width ${info.rawWidth} /Height ${info.rawHeight} /ColorSpace ${space} /BitsPerComponent 8 /Filter /DCTDecode`, withoutOrientation(bytes, info));
     const name = `Im${this.images++}`;
     this.xobjects.set(name, image);
     return name;
@@ -413,8 +493,59 @@ class PageWriter {
   }
 }
 
-/** At most this many image tiles per paint. */
+/** At most this many image tiles per page. */
 const MAX_TILES = 10_000;
+
+/** Pixels per unit for layers with shadows or blurs drawn into images, when the budget allows. */
+const RASTER_SCALE = 2;
+/** Below this many pixels per unit, a layer's effects are left out instead. */
+const MIN_RASTER_SCALE = 0.25;
+/** Most pixels drawn for effects in one PDF, and for one layer: blurs cost time by the pixel. */
+const MAX_RASTER_PIXELS = 8_000_000;
+const MAX_LAYER_PIXELS = 8_000_000;
+/** Largest image (stored size) decoded for a PDF. */
+const MAX_DECODE_SIDE = 16_384;
+const MAX_DECODE_PIXELS = 64_000_000;
+
+/** An embedded image: its XObject name, shown size in pixels, and its unit square to shown pixels. */
+interface ImageFile {
+  name: string;
+  width: number;
+  height: number;
+  unit: Matrix;
+}
+
+/** What is left of one PDF's pixel budget for effects, and the scale its layers are drawn at. */
+interface RasterBudget {
+  remaining: number;
+  scale: number;
+}
+
+/** Whether a layer's effects need it drawn into an image: shadows or layer blur (background blur alone is left out anyway). */
+function rasterEffects(fx: ReturnType<typeof visibleEffects>): boolean {
+  return fx.drops.length > 0 || fx.inners.length > 0 || fx.layerBlur > 0;
+}
+
+/**
+ * The scale every layer with effects can be drawn at within the budget: the
+ * area (in units) of what they draw, outermost layers only, as the writer
+ * will draw them.
+ */
+function rasterScale(source: ExportSource, scenes: readonly ExportScene[]): number {
+  let units = 0;
+  const visit = (n: ReadonlyNode) => {
+    if (!draws(n)) return;
+    if (rasterEffects(visibleEffects(n))) {
+      const area = subtreeBounds(source, n, IDENTITY);
+      if (area) units += area.width * area.height;
+      return;
+    }
+    for (const k of source.children(n.id)) visit(k);
+  };
+  for (const s of scenes) for (const r of s.roots) visit(r);
+  // Too much for the least scale: the first layers get it, until the budget runs out.
+  return units > 0 ? Math.max(MIN_RASTER_SCALE, Math.min(RASTER_SCALE, Math.sqrt(MAX_RASTER_PIXELS / units))) : RASTER_SCALE;
+}
 
 /** A PDF function from 0–1 to RGB through the stops: one exponential segment per pair, stitched. */
 function shadingFunction(stops: readonly ResolvedStop[]): string {
@@ -434,26 +565,6 @@ function shadingFunction(stops: readonly ResolvedStop[]): string {
   if (segments.length === 1) return seg(segments[0] as [ResolvedStop, ResolvedStop]);
   const bounds = segments.slice(1).map(([a]) => fmt(a.position));
   return `<< /FunctionType 3 /Domain [0 1] /Functions [${segments.map(seg).join(" ")}] /Bounds [${bounds.join(" ")}] /Encode [${segments.map(() => "0 1").join(" ")}] >>`;
-}
-
-/** A JPEG's size and colour components, from its start-of-frame marker. */
-function jpegInfo(b: Uint8Array): { width: number; height: number; components: number } | null {
-  const u16 = (i: number) => ((b[i] ?? 0) << 8) | (b[i + 1] ?? 0);
-  if (b[0] !== 0xff || b[1] !== 0xd8) return null;
-  for (let i = 2; i + 9 < b.length; ) {
-    if (b[i] !== 0xff) return null;
-    const marker = b[i + 1] as number;
-    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd8)) {
-      i += 2;
-      continue;
-    }
-    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
-      const height = u16(i + 5), width = u16(i + 7), components = b[i + 9] as number;
-      return width > 0 && height > 0 && [1, 3, 4].includes(components) ? { width, height, components } : null;
-    }
-    i += 2 + u16(i + 2);
-  }
-  return null;
 }
 
 function isIdentity(m: Matrix): boolean {
@@ -486,10 +597,12 @@ export function writePdf(source: ExportSource, scenes: readonly ExportScene[], o
   const pages = file.reserve();
   const info = file.reserve();
   const kids: number[] = [];
+  // One pixel budget for the whole file's shadows and blurs.
+  const budget: RasterBudget = { remaining: MAX_RASTER_PIXELS, scale: options.rasterNode ? rasterScale(source, scenes) : RASTER_SCALE };
   for (const scene of scenes) {
     const page = file.reserve();
     const contents = file.reserve();
-    const writer = new PageWriter(file, source, options);
+    const writer = new PageWriter(file, source, options, budget);
     const w = Math.max(scene.region.width, 1);
     const h = Math.max(scene.region.height, 1);
     // Design space is y-down from the region's top-left; PDF space is y-up from the bottom-left.

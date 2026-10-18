@@ -148,3 +148,40 @@ export function streamOf(objects: Map<number, string>, n: number): string {
   const start = (m.index ?? 0) + m[0].length;
   return body.slice(start, start + Number(m[1]));
 }
+
+/** SVG text with the export's own id prefix (a fingerprint of the file) taken out, for golden comparisons. */
+export function withoutIdPrefix(svg: string): string {
+  return svg.replace(/(id="|#)i[0-9a-z]+_/g, "$1");
+}
+
+type M6 = [number, number, number, number, number, number];
+/** Every `/Name Do` in a content stream, with the transform it is drawn under (`q`, `Q` and `cm` followed; forms aren't entered). */
+export function pdfDraws(content: string): { name: string; ctm: M6 }[] {
+  const out: { name: string; ctm: M6 }[] = [];
+  const stack: M6[] = [];
+  let ctm: M6 = [1, 0, 0, 1, 0, 0];
+  let nums: number[] = [];
+  let name = "";
+  for (const tok of content.split(/\s+/)) {
+    if (/^-?[\d.]+$/.test(tok)) {
+      nums.push(Number(tok));
+      continue;
+    }
+    if (tok === "q") stack.push(ctm);
+    else if (tok === "Q") ctm = stack.pop() ?? [1, 0, 0, 1, 0, 0];
+    else if (tok === "cm") {
+      const [a, b, c, d, e, f] = nums.slice(-6) as M6;
+      const m = ctm;
+      // The new matrix applies first: x' = m(n(x)).
+      ctm = [m[0] * a + m[2] * b, m[1] * a + m[3] * b, m[0] * c + m[2] * d, m[1] * c + m[3] * d, m[0] * e + m[2] * f + m[4], m[1] * e + m[3] * f + m[5]];
+    } else if (tok === "Do") out.push({ name, ctm });
+    else if (tok.startsWith("/")) name = tok.slice(1);
+    nums = [];
+  }
+  return out;
+}
+
+/** Where a point (x, y) goes under a 2D affine matrix. */
+export function applyM(m: readonly number[], x: number, y: number): [number, number] {
+  return [(m[0] as number) * x + (m[2] as number) * y + (m[4] as number), (m[1] as number) * x + (m[3] as number) * y + (m[5] as number)];
+}

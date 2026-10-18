@@ -16,7 +16,14 @@
  *   modes are CSS `mix-blend-mode`. Centred strokes are SVG strokes; inside and
  *   outside strokes are doubled and clipped or masked to their side.
  * - Drop shadows, inner shadows and layer blur are one `<filter>` per layer,
- *   from its pixels. Background blur has no SVG equivalent (a warning).
+ *   from its pixels (shapes: from their outline as opaque geometry, as the
+ *   renderer casts them). Background blur has no SVG equivalent (a warning).
+ *   Opacity, blend mode and filter never share an element with a clip, a
+ *   mask or a paint's blend mode: those get a `<g>` of their own. A NORMAL
+ *   group whose children blend is `isolation: isolate`.
+ * - Images are stored as in the file and turned by their Exif orientation in
+ *   the pattern (the tag itself is cleared). Ids the writer makes start with
+ *   a fingerprint of the file, so inlined exports don't clash.
  * - Text is `<text>` with one `<tspan>` per line: where the canvas wraps it
  *   when fonts are given, else one line per line break with Inter's metrics.
  *   Text isn't outlined, so it needs the font where the file is opened.
@@ -28,19 +35,41 @@ import { CLIPPING, type TextLine } from "@illigma/renderer";
 import { draws, hasVisibleStroke, IDENTITY, localMatrix, multiply, subtreeBounds, translation, type ExportScene, type ExportSource, type Matrix } from "./scene.js";
 import {
   base64,
+  blendsInside,
   cssBlendMode,
   fallbackTextLines,
   fmt,
+  fmtFine,
+  hashText,
   hex,
+  leastPaintAlpha,
+  orientationMatrix,
   outlineOf,
   resolvePaint,
+  shadowsFromOutline,
   strokeAlignOf,
   svgMatrix,
   textStyle,
   visibleEffects,
+  withoutOrientation,
   type Outline,
   type ResolvedPaint,
 } from "./vector-common.js";
+
+/**
+ * Stands for the export's own id prefix while the file is written: a
+ * character `escapeAttr` and `escapeText` remove, so it appears nowhere else.
+ * The finished file replaces it with a fingerprint of its own content, so
+ * two exports inlined in one page don't share ids, and the same layers
+ * still give the same bytes.
+ */
+const ID_TOKEN = "\u0001";
+
+/** A node id as part of an XML id: letters, digits, "_" and "-" only. */
+const idPart = (s: string): string => s.replace(/[^A-Za-z0-9_-]/g, "_");
+
+/** Smallest tile an image pattern is written with, in layer units (smaller ones are enlarged, with a warning). */
+const MIN_TILE = 1e-4;
 
 export interface SvgWriterOptions {
   /** Layer names as `id` attributes (Figma's "Include id attribute"). */
@@ -162,7 +191,10 @@ class SvgWriter {
     const out = [`<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" fill="none" xmlns="http://www.w3.org/2000/svg"${xlink}>`, ...this.lines];
     if (this.defs.length) out.push("<defs>", ...this.defs, "</defs>");
     out.push("</svg>", "");
-    return out.join("\n");
+    const text = out.join("\n");
+    if (!text.includes(ID_TOKEN)) return text;
+    // Generated ids start with a fingerprint of the file, so they are unique to this export's content.
+    return text.replaceAll(ID_TOKEN, `i${hashText(text)}_`);
   }
 
   private uniqueId(base: string): string {
@@ -172,6 +204,11 @@ class SvgWriter {
     return id;
   }
 
+  /** An id for something the writer makes (a clip, gradient, pattern, filter), prefixed with the export's own token. Safe in attributes as it is. */
+  private generatedId(base: string, n?: ReadonlyNode): string {
+    return this.uniqueId(`${ID_TOKEN}${base}${n ? `_${idPart(n.id)}` : ""}`);
+  }
+
   /** Write `n` and its children; `m` is its full transform from the parent element's space. */
   private node(n: ReadonlyNode, m: Matrix): void {
     if (!draws(n)) return;
@@ -179,30 +216,39 @@ class SvgWriter {
     if (this.options.idAttribute) common.push(["id", escapeAttr(this.uniqueId(n.name.replace(INVALID_XML, "") || n.type.toLowerCase()))]);
     const transform = transformAttr(m);
     if (transform) common.push(["transform", transform]);
-    if (n.opacity < 1) common.push(["opacity", fmt(n.opacity)]);
+    const kids = this.source.children(n.id).filter(draws);
+    // Opacity, blend mode and filter apply to the layer as a whole: they never share an element with a clip or mask.
+    const group: Attr[] = [];
+    if (n.opacity < 1) group.push(["opacity", fmt(n.opacity)]);
     const blend = cssBlendMode(n.blendMode, this.warn);
-    if (blend) common.push(["style", `mix-blend-mode: ${blend}`]);
-    const filter = this.effects(n);
-    if (filter) common.push(["filter", `url(#${escapeAttr(filter)})`]);
+    if (blend) group.push(["style", `mix-blend-mode: ${blend}`]);
+    // A NORMAL layer keeps its children's blend modes inside it, as the renderer does.
+    else if (n.blendMode === "NORMAL" && kids.length && blendsInside((id) => this.source.children(id), kids)) group.push(["style", "isolation: isolate"]);
+    const filter = this.effects(n, kids.length > 0);
+    if (filter) group.push(["filter", `url(#${filter})`]);
+    common.push(...group);
 
     const own = this.own(n);
-    const kids = this.source.children(n.id).filter(draws);
     if (!kids.length) {
       if (!own.length) return;
       if (own.length === 1) {
         const only = own[0] as Element;
-        this.lines.push(serialize({ ...only, attrs: [...common, ...only.attrs] }));
-        return;
+        const clipped = only.attrs.some(([k]) => k === "clip-path" || k === "mask");
+        const twoBlends = !!blend && only.attrs.some(([k, v]) => k === "style" && v.includes("mix-blend-mode"));
+        if (!(group.length && (clipped || twoBlends))) {
+          this.lines.push(serialize({ ...only, attrs: [...common, ...only.attrs] }));
+          return;
+        }
       }
     }
     this.lines.push(`<g${attrText(common)}>`);
     for (const e of own) this.lines.push(serialize(e));
     if (kids.length && CLIPPING.has(n.type)) {
-      const clip = this.uniqueId(`clip_${n.id}`);
+      const clip = this.generatedId("clip", n);
       const r = outlineOf(n);
       const box = r.kind === "rect" ? r : { width: n.width, height: n.height, radius: 0 };
-      this.defs.push(`<clipPath id="${escapeAttr(clip)}">`, serialize({ tag: "rect", attrs: rectAttrs(box.width, box.height, box.radius) }), "</clipPath>");
-      this.lines.push(`<g clip-path="url(#${escapeAttr(clip)})">`);
+      this.defs.push(`<clipPath id="${clip}">`, serialize({ tag: "rect", attrs: rectAttrs(box.width, box.height, box.radius) }), "</clipPath>");
+      this.lines.push(`<g clip-path="url(#${clip})">`);
       for (const k of kids) this.node(k, localMatrix(k));
       this.lines.push("</g>");
     } else {
@@ -236,17 +282,17 @@ class SvgWriter {
     const align = strokeAlignOf(n);
     let alignAttr: Attr | null = null;
     if (strokes.length && align !== "CENTER") alignAttr = this.strokeClip(n, outline, align);
-    const strokeAttrs = (p: ResolvedPaint): Attr[] => [...this.paintAttrs(p, "stroke"), ...strokeStyle(n, align === "CENTER" ? 1 : 2), ...(alignAttr ? [alignAttr] : [])];
+    const strokeAttrs = (p: ResolvedPaint): Attr[] => [...this.paintAttrs(p, "stroke", n), ...strokeStyle(n, align === "CENTER" ? 1 : 2), ...(alignAttr ? [alignAttr] : [])];
     switch (outline.kind) {
       case "rect": {
         const shape = rectAttrs(outline.width, outline.height, outline.radius);
-        for (const p of fills) out.push({ tag: "rect", attrs: [...shape, ...this.paintAttrs(p, "fill")] });
+        for (const p of fills) out.push({ tag: "rect", attrs: [...shape, ...this.paintAttrs(p, "fill", n)] });
         for (const p of strokes) out.push({ tag: "rect", attrs: [...shape, ...strokeAttrs(p)] });
         break;
       }
       case "ellipse": {
         const shape = ellipseAttrs(outline.width, outline.height);
-        for (const p of fills) out.push({ tag: "ellipse", attrs: [...shape, ...this.paintAttrs(p, "fill")] });
+        for (const p of fills) out.push({ tag: "ellipse", attrs: [...shape, ...this.paintAttrs(p, "fill", n)] });
         for (const p of strokes) out.push({ tag: "ellipse", attrs: [...shape, ...strokeAttrs(p)] });
         break;
       }
@@ -255,7 +301,7 @@ class SvgWriter {
           for (const f of outline.fills) {
             const attrs: Attr[] = [["d", svgPathData(f.commands)]];
             if (f.evenOdd) attrs.push(["fill-rule", "evenodd"]);
-            out.push({ tag: "path", attrs: [...attrs, ...this.paintAttrs(p, "fill")] });
+            out.push({ tag: "path", attrs: [...attrs, ...this.paintAttrs(p, "fill", n)] });
           }
         }
         if (outline.stroke.length) {
@@ -278,20 +324,21 @@ class SvgWriter {
     }
     if (!shapes.length) return null;
     if (align === "INSIDE") {
-      const id = this.uniqueId(`stroke_inside_${n.id}`);
-      this.defs.push(`<clipPath id="${escapeAttr(id)}">`, ...shapes.map(serialize), "</clipPath>");
-      return ["clip-path", `url(#${escapeAttr(id)})`];
+      const id = this.generatedId("stroke_inside", n);
+      this.defs.push(`<clipPath id="${id}">`, ...shapes.map(serialize), "</clipPath>");
+      return ["clip-path", `url(#${id})`];
     }
-    const id = this.uniqueId(`stroke_outside_${n.id}`);
-    const pad = 2 * n.strokeWeight + 1;
+    const id = this.generatedId("stroke_outside", n);
+    // The doubled stroke reaches its weight past the outline, and mitred corners up to the miter limit (4) times that.
+    const pad = 4 * n.strokeWeight + 1;
     const area = [fmt(-pad), fmt(-pad), fmt(n.width + 2 * pad), fmt(n.height + 2 * pad)];
     this.defs.push(
-      `<mask id="${escapeAttr(id)}" maskUnits="userSpaceOnUse" x="${area[0]}" y="${area[1]}" width="${area[2]}" height="${area[3]}">`,
+      `<mask id="${id}" maskUnits="userSpaceOnUse" x="${area[0]}" y="${area[1]}" width="${area[2]}" height="${area[3]}">`,
       `<rect x="${area[0]}" y="${area[1]}" width="${area[2]}" height="${area[3]}" fill="white"/>`,
       ...shapes.map((s) => serialize({ ...s, attrs: [...s.attrs, ["fill", "black"]] })),
       "</mask>",
     );
-    return ["mask", `url(#${escapeAttr(id)})`];
+    return ["mask", `url(#${id})`];
   }
 
   /** `<text>` with one `<tspan>` per line, once per visible fill (as drawn). Text strokes aren't drawn. */
@@ -307,7 +354,7 @@ class SvgWriter {
       .join("");
     if (!inner) return [];
     return paints.map((paint) => {
-      const attrs: Attr[] = [...this.paintAttrs(paint, "fill"), ["xml:space", "preserve"], ["style", "white-space: pre"], ["font-family", escapeAttr(fontFamily(style.family))], ["font-size", fmt(style.size)]];
+      const attrs: Attr[] = [...this.paintAttrs(paint, "fill", n), ["xml:space", "preserve"], ["style", "white-space: pre"], ["font-family", escapeAttr(fontFamily(style.family))], ["font-size", fmt(style.size)]];
       if (style.weight !== 400) attrs.push(["font-weight", String(style.weight)]);
       if (style.italic) attrs.push(["font-style", "italic"]);
       return { tag: "text", attrs, inner };
@@ -315,17 +362,17 @@ class SvgWriter {
   }
 
   /** Fill or stroke attributes for one paint, with any gradient or image pattern it needs added to `<defs>`. */
-  private paintAttrs(p: ResolvedPaint, role: "fill" | "stroke"): Attr[] {
+  private paintAttrs(p: ResolvedPaint, role: "fill" | "stroke", n: ReadonlyNode): Attr[] {
     const attrs: Attr[] = [];
     switch (p.kind) {
       case "solid":
         attrs.push([role, hex(p.color)]);
         break;
       case "gradient":
-        attrs.push([role, `url(#${escapeAttr(this.gradient(p))})`]);
+        attrs.push([role, `url(#${this.gradient(p, n)})`]);
         break;
       case "image":
-        attrs.push([role, `url(#${escapeAttr(this.pattern(p))})`]);
+        attrs.push([role, `url(#${this.pattern(p, n)})`]);
         break;
     }
     if (p.opacity < 1) attrs.push([`${role}-opacity`, fmt(p.opacity)]);
@@ -334,39 +381,59 @@ class SvgWriter {
     return attrs;
   }
 
-  private gradient(p: Extract<ResolvedPaint, { kind: "gradient" }>): string {
+  private gradient(p: Extract<ResolvedPaint, { kind: "gradient" }>, n: ReadonlyNode): string {
     const linear = p.type === "GRADIENT_LINEAR";
     if (p.type === "GRADIENT_ANGULAR" || p.type === "GRADIENT_DIAMOND") {
       this.warn(`SVG has no ${p.type === "GRADIENT_ANGULAR" ? "angular" : "diamond"} gradient, so it was written as a radial gradient.`);
     }
-    const id = this.uniqueId(linear ? "linear" : "radial");
+    const id = this.generatedId(linear ? "linear" : "radial", n);
     const geometry = linear ? `x1="0" y1="0.5" x2="1" y2="0.5"` : `cx="0.5" cy="0.5" r="0.5"`;
     const stops = p.stops.map(
       (s) => `<stop offset="${fmt(s.position)}" stop-color="${hex(s.color)}"${s.alpha < 1 ? ` stop-opacity="${fmt(s.alpha)}"` : ""}/>`,
     );
     const tag = linear ? "linearGradient" : "radialGradient";
-    this.defs.push(`<${tag} id="${escapeAttr(id)}" ${geometry} gradientUnits="userSpaceOnUse" gradientTransform="${svgMatrix(p.matrix)}">`, ...stops, `</${tag}>`);
+    this.defs.push(`<${tag} id="${id}" ${geometry} gradientUnits="userSpaceOnUse" gradientTransform="${svgMatrix(p.matrix)}">`, ...stops, `</${tag}>`);
     return id;
   }
 
   /** A pattern showing an image paint in the layer's space; the image itself is in `<defs>` once per file. */
-  private pattern(p: Extract<ResolvedPaint, { kind: "image" }>): string {
+  private pattern(p: Extract<ResolvedPaint, { kind: "image" }>, n: ReadonlyNode): string {
+    const { info } = p;
     let image = this.images.get(p.hash);
     if (!image) {
-      image = this.uniqueId(`image_${p.hash.slice(0, 12)}`);
+      image = this.generatedId(`image_${idPart(p.hash.slice(0, 12))}`);
       this.images.set(p.hash, image);
-      this.defs.push(`<image id="${escapeAttr(image)}" width="${p.width}" height="${p.height}" preserveAspectRatio="none" xlink:href="data:${MIME[p.format]};base64,${base64(p.bytes)}"/>`);
+      // Stored as it is in the file, with its Exif orientation cleared: the pattern turns it (viewers disagree on honouring the tag).
+      const bytes = withoutOrientation(p.bytes, info);
+      this.defs.push(`<image id="${image}" width="${info.rawWidth}" height="${info.rawHeight}" preserveAspectRatio="none" xlink:href="data:${MIME[p.format]};base64,${base64(bytes)}"/>`);
     }
-    const id = this.uniqueId("pattern");
+    const id = this.generatedId("pattern", n);
     // An untiled image shows in one tile the size of the layer's box; a tiled one repeats at its scaled size.
-    const [a, b, c, d] = p.matrix;
-    const tileW = p.tile ? Math.hypot(a, b) * p.width : p.box.width;
-    const tileH = p.tile ? Math.hypot(c, d) * p.height : p.box.height;
+    let [a, b, c, d] = p.matrix;
+    let tileW = p.tile ? Math.hypot(a, b) * p.width : p.box.width;
+    let tileH = p.tile ? Math.hypot(c, d) * p.height : p.box.height;
+    if (p.tile && !(tileW >= MIN_TILE && tileH >= MIN_TILE)) {
+      // A pattern tile rounds to nothing (and draws nothing): enlarge it, keeping its shape.
+      const k = Math.max(MIN_TILE / tileW, MIN_TILE / tileH);
+      if (!Number.isFinite(k)) return this.skipPattern(id);
+      [a, b, c, d] = [a * k, b * k, c * k, d * k];
+      tileW *= k;
+      tileH *= k;
+      this.warn("An image tiles too small to write to SVG, so its tiles were enlarged.");
+    }
+    const toShown = orientationMatrix(info.orientation, info.rawWidth, info.rawHeight);
+    const place = multiply(p.tile ? [a, b, c, d, 0, 0] : p.matrix, toShown);
     this.defs.push(
-      `<pattern id="${escapeAttr(id)}" patternUnits="userSpaceOnUse" width="${fmt(tileW)}" height="${fmt(tileH)}">`,
-      `<use xlink:href="#${escapeAttr(image)}" transform="${svgMatrix(p.tile ? [a, b, c, d, 0, 0] : p.matrix)}"/>`,
+      `<pattern id="${id}" patternUnits="userSpaceOnUse" width="${fmt(tileW)}" height="${fmt(tileH)}">`,
+      `<use xlink:href="#${image}" transform="matrix(${place.map(fmtFine).join(" ")})"/>`,
       "</pattern>",
     );
+    return id;
+  }
+
+  /** An empty pattern, for an image that can't be placed. */
+  private skipPattern(id: string): string {
+    this.defs.push(`<pattern id="${id}" width="0" height="0"/>`);
     return id;
   }
 
@@ -375,7 +442,7 @@ class SvgWriter {
    * from its pixels (as Figma's SVG export does), or null when it has none.
    * Background blur has no SVG equivalent: reported, left out.
    */
-  private effects(n: ReadonlyNode): string | null {
+  private effects(n: ReadonlyNode, hasKids: boolean): string | null {
     const fx = visibleEffects(n);
     if (fx.backgroundBlur > 0) this.warn("SVG has no background blur, so it was left out.");
     if (!fx.drops.length && !fx.inners.length && !(fx.layerBlur > 0)) return null;
@@ -383,31 +450,39 @@ class SvgWriter {
       if (e.blendMode && e.blendMode !== "NORMAL" && e.blendMode !== "PASS_THROUGH") this.warn("Shadow blend modes aren't written to SVG; those shadows are drawn normally.");
     }
     const area = subtreeBounds(this.source, n, IDENTITY) ?? { x: 0, y: 0, width: n.width, height: n.height };
-    const id = this.uniqueId(`effects_${n.id}`);
+    const id = this.generatedId("effects", n);
     const f: string[] = [
-      `<filter id="${escapeAttr(id)}" x="${fmt(area.x - 2)}" y="${fmt(area.y - 2)}" width="${fmt(area.width + 4)}" height="${fmt(area.height + 4)}" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">`,
+      `<filter id="${id}" x="${fmt(area.x - 2)}" y="${fmt(area.y - 2)}" width="${fmt(area.width + 4)}" height="${fmt(area.height + 4)}" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">`,
     ];
     const flood = (c: { r: number; g: number; b: number; a: number }) => `flood-color="${hex(c)}" flood-opacity="${fmt(c.a)}"`;
     const morph = (input: string, spread: number, result: string) =>
       spread ? `<feMorphology in="${input}" operator="${spread > 0 ? "dilate" : "erode"}" radius="${fmt(Math.abs(spread))}" result="${result}"/>` : null;
     const merge: string[] = [];
+    // Shapes cast shadows from their outline, as opaque geometry, however transparent their paints (as the
+    // renderer does): their pixels' alpha, scaled up so the faintest paint counts as solid.
+    let shape = "SourceAlpha";
+    const faintest = leastPaintAlpha(n);
+    if ((fx.drops.length || fx.inners.length) && shadowsFromOutline(n, hasKids) && faintest < 1) {
+      f.push(`<feComponentTransfer in="SourceAlpha" result="silhouette"><feFuncA type="linear" slope="${fmt(Math.min(255, 1 / Math.max(faintest, 1e-3)))}"/></feComponentTransfer>`);
+      shape = "silhouette";
+    }
     fx.drops.forEach((e, i) => {
-      const spread = morph("SourceAlpha", e.spread ?? 0, `drop${i}_spread`);
+      const spread = morph(shape, e.spread ?? 0, `drop${i}_spread`);
       if (spread) f.push(spread);
       f.push(
-        `<feOffset in="${spread ? `drop${i}_spread` : "SourceAlpha"}" dx="${fmt(e.offset.x)}" dy="${fmt(e.offset.y)}"/>`,
+        `<feOffset in="${spread ? `drop${i}_spread` : shape}" dx="${fmt(e.offset.x)}" dy="${fmt(e.offset.y)}"/>`,
         `<feGaussianBlur stdDeviation="${fmt(e.radius / 2)}" result="drop${i}_alpha"/>`,
         `<feFlood ${flood(e.color)} result="drop${i}_color"/>`,
         `<feComposite in="drop${i}_color" in2="drop${i}_alpha" operator="in" result="drop${i}"/>`,
       );
       // Not behind the layer: only where the layer is transparent.
-      if (!e.showShadowBehindNode) f.push(`<feComposite in="drop${i}" in2="SourceAlpha" operator="out" result="drop${i}"/>`);
+      if (!e.showShadowBehindNode) f.push(`<feComposite in="drop${i}" in2="${shape}" operator="out" result="drop${i}"/>`);
       merge.push(`drop${i}`);
     });
     merge.push("SourceGraphic");
     fx.inners.forEach((e, i) => {
       // The layer's outside as an opaque shape, grown inwards by the spread, moved and blurred, then kept inside the layer.
-      f.push(`<feComponentTransfer in="SourceAlpha" result="inner${i}_outside"><feFuncA type="table" tableValues="1 0"/></feComponentTransfer>`);
+      f.push(`<feComponentTransfer in="${shape}" result="inner${i}_outside"><feFuncA type="table" tableValues="1 0"/></feComponentTransfer>`);
       const spread = morph(`inner${i}_outside`, e.spread ?? 0, `inner${i}_spread`);
       if (spread) f.push(spread);
       f.push(
@@ -415,7 +490,7 @@ class SvgWriter {
         `<feGaussianBlur stdDeviation="${fmt(e.radius / 2)}" result="inner${i}_alpha"/>`,
         `<feFlood ${flood(e.color)} result="inner${i}_color"/>`,
         `<feComposite in="inner${i}_color" in2="inner${i}_alpha" operator="in"/>`,
-        `<feComposite in2="SourceAlpha" operator="in" result="inner${i}"/>`,
+        `<feComposite in2="${shape}" operator="in" result="inner${i}"/>`,
       );
       merge.push(`inner${i}`);
     });
