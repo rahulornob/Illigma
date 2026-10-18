@@ -266,8 +266,12 @@ export interface ReorderSlot {
  * (`wx`, `wy`) on the page: before the first layer whose centre is past the
  * pointer along the flow (Figma's insertion by pointer position). In a
  * wrapping frame, the layer nearest the pointer decides.
+ *
+ * With `margin` (page units), a pointer further than that outside the frame
+ * has no slot: until a drag can move layers into another frame, dropping
+ * there leaves the order as it was.
  */
-export function reorderSlot(doc: Document, parentId: NodeId, ids: readonly NodeId[], wx: number, wy: number): ReorderSlot | null {
+export function reorderSlot(doc: Document, parentId: NodeId, ids: readonly NodeId[], wx: number, wy: number, margin = Infinity): ReorderSlot | null {
   const parent = doc.get(parentId);
   if (!parent) return null;
   const vertical = parent.layoutMode === "VERTICAL";
@@ -275,6 +279,7 @@ export function reorderSlot(doc: Document, parentId: NodeId, ids: readonly NodeI
   const rest = doc.children(parentId).filter((n) => isInFlow(n) && !moving.has(n.id));
   const space = placementOf(doc, parentId);
   const p = toSpace(space, wx, wy);
+  if (p.x < -margin || p.y < -margin || p.x > parent.width + margin || p.y > parent.height + margin) return null;
   const boxes = rest.map(slotBox);
   const start = (b: Rect) => (vertical ? b.y : b.x);
   const end = (b: Rect) => (vertical ? b.y + b.height : b.x + b.width);
@@ -341,18 +346,39 @@ export function reorderLayers(tx: Transaction, doc: Document, parentId: NodeId, 
 /**
  * Arrow keys on layers in an auto layout flow reorder them by one step
  * (interactions.md): ←/↑ earlier, →/↓ later, along the frame's direction.
+ * Each selected layer steps past its unselected neighbour, as in Figma: A and
+ * C of A B C D, one step later, give B A D C; a run of selected layers moves
+ * as a block, and one already at the end stays. Layers outside the flow
+ * (absolute, hidden) keep their places in the layer order.
  * Returns null for an arrow across the flow (nothing to do), else whether the order changed.
  */
 export function reorderStep(tx: Transaction, doc: Document, parentId: NodeId, ids: readonly NodeId[], key: string): boolean | null {
   const vertical = doc.get(parentId)?.layoutMode === "VERTICAL";
   const dir = vertical ? { ArrowUp: -1, ArrowDown: 1 }[key] : { ArrowLeft: -1, ArrowRight: 1 }[key];
   if (!dir) return null;
-  const flow = doc.children(parentId).filter(isInFlow);
-  const rest = flow.filter((n) => !ids.includes(n.id));
-  const first = flow.findIndex((n) => ids.includes(n.id));
-  if (first < 0) return false;
-  const slot = Math.min(rest.length, Math.max(0, flow.slice(0, first).length + dir));
-  return reorderLayers(tx, doc, parentId, ids, rest[slot]?.id ?? null);
+  const children = doc.children(parentId);
+  const flow = children.filter(isInFlow).map((n) => n.id);
+  const chosen = new Set(ids);
+  const next = [...flow];
+  // Walk against the direction of travel, so each selected layer moves before the one behind it is looked at.
+  for (let k = dir > 0 ? next.length - 2 : 1; dir > 0 ? k >= 0 : k < next.length; k -= dir) {
+    const a = next[k] as NodeId;
+    const b = next[k + dir] as NodeId;
+    if (chosen.has(a) && !chosen.has(b)) [next[k], next[k + dir]] = [b, a];
+  }
+  if (next.every((id, k) => id === flow[k])) return false;
+  // The new flow order in the flow's slots; everything else stays where it is.
+  let f = 0;
+  const target = children.map((n) => (isInFlow(n) ? (next[f++] as NodeId) : n.id));
+  const current = children.map((n) => n.id);
+  for (let k = 0; k < target.length; k++) {
+    const id = target[k] as NodeId;
+    if (current[k] === id) continue;
+    tx.move(id, parentId, k === 0 ? "first" : { after: target[k - 1] as NodeId });
+    current.splice(current.indexOf(id), 1);
+    current.splice(k, 0, id);
+  }
+  return true;
 }
 
 /** The page point of a selection-frame corner given in the frame's own space. */

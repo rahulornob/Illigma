@@ -37,6 +37,9 @@ const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.isCon
 /** Top-level containers whose children a plain click picks directly, as in Figma. */
 const CONTAINERS = new Set(["FRAME", "SECTION", "COMPONENT"]);
 
+/** How close to a thin line or stroke a click still picks it, in screen pixels. */
+const HIT_TOLERANCE_PX = 3;
+
 const messageOf = (e: unknown) => (e instanceof Error && e.message ? e.message : String(e)).replace(/\.?$/, ".");
 
 type Recovery = { busy: "keep" | "discard" | null; error: string | null };
@@ -68,6 +71,9 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
   const [leaving, setLeaving] = useState<{ journalOk: boolean } | null>(null);
   const [recovery, setRecovery] = useState<Recovery>({ busy: null, error: null });
   const [notice, setNotice] = useState<string | null>(session.notice ?? null);
+  /** An edit the document refused (it changed nothing): said once, until dismissed or the next one. */
+  const [editError, setEditError] = useState<string | null>(null);
+  const reportEditError = useCallback((e: unknown) => setEditError(`Couldn't make that change: ${messageOf(e)} Nothing was changed.`), []);
   const [copy, setCopy] = useState<{ busy: boolean; message: string | null; failed: boolean }>({ busy: false, message: null, failed: false });
   const [pageState, setPageId] = useState<NodeId>(() => doc.pages()[0]?.id ?? "");
   const [selectionState, setSelection] = useState<NodeId[]>([]);
@@ -86,17 +92,19 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
 
   // Click-to-select, as in Figma: inside a top-level frame the click picks the frame's child (a group as a
   // whole); the frame itself is picked on its empty area. ⌘/Ctrl-click picks the deepest layer.
+  // Thin lines and strokes are picked within 3 screen pixels at any zoom.
   const hitTest = useCallback<HitTest>(
     (x, y, { deep }) => {
-      if (deep) return hitTestPage(doc, pageId, x, y, { deep: true });
-      const top = hitTestPage(doc, pageId, x, y);
+      const tolerance = HIT_TOLERANCE_PX / zoom;
+      if (deep) return hitTestPage(doc, pageId, x, y, { deep: true, tolerance });
+      const top = hitTestPage(doc, pageId, x, y, { tolerance });
       const topNode = top ? doc.get(top) : undefined;
       if (!top || !topNode || !CONTAINERS.has(topNode.type)) return top;
-      let cur = hitTestPage(doc, pageId, x, y, { deep: true }) ?? top;
+      let cur = hitTestPage(doc, pageId, x, y, { deep: true, tolerance }) ?? top;
       for (let parent = doc.get(cur)?.parentId; cur !== top && parent && parent !== top; parent = doc.get(cur)?.parentId) cur = parent;
       return cur;
     },
-    [doc, pageId],
+    [doc, pageId, zoom],
   );
 
   /**
@@ -360,6 +368,14 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
       if (onPage.length) setSelection(onPage);
     };
     const onKey = (e: KeyboardEvent) => {
+      // An edit the document refuses rolls back on its own: say so, never throw from a key press.
+      try {
+        handleKey(e);
+      } catch (err) {
+        reportEditError(err);
+      }
+    };
+    const handleKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
       const k = e.key.toLowerCase();
       const { locked: noEdits } = keys.current;
@@ -416,8 +432,9 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
         canvas.current?.zoomTo(1);
         return;
       }
-      // Shift+A: add auto layout, or wrap the selection in an auto layout frame. ⌥⇧A removes it (e.code: ⌥ changes e.key on macOS).
-      if (!mod && e.shiftKey && e.code === "KeyA") {
+      // Shift+A: add auto layout, or wrap the selection in an auto layout frame. ⌥⇧A removes it. By the
+      // character typed (AZERTY puts A elsewhere); with ⌥ by the key's place, as ⌥ changes e.key on macOS ("Å").
+      if (!mod && e.shiftKey && (k === "a" || (e.altKey && e.code === "KeyA"))) {
         e.preventDefault();
         if (noEdits || !sel.length) return;
         if (e.altKey) removeAutoLayout(doc, sel);
@@ -471,7 +488,7 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [doc]);
+  }, [doc, reportEditError]);
 
   const status = viewOnly
     ? { text: session.compare ? "Disk version · read-only" : "Read-only", tone: "quiet" as const, state: "read-only", message: undefined }
@@ -579,6 +596,15 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
               <div className="banner banner-error" role="alert">
                 <Icon name="triangle-alert" />
                 <span className="banner-text">{recovery.error}</span>
+              </div>
+            )}
+            {editError && (
+              <div className="banner banner-error" role="alert">
+                <Icon name="triangle-alert" />
+                <span className="banner-text">{editError}</span>
+                <button type="button" className="btn btn-secondary" onClick={() => setEditError(null)}>
+                  OK
+                </button>
               </div>
             )}
             {notice && (
@@ -701,7 +727,7 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
           </div>
         </main>
 
-        <PropertiesPanel doc={doc} pageId={pageId} selection={selection} readOnly={locked} onSelect={setSelection} />
+        <PropertiesPanel doc={doc} pageId={pageId} selection={selection} readOnly={locked} onSelect={setSelection} onError={reportEditError} />
       </div>
     </div>
   );

@@ -6,7 +6,7 @@
 
 import type { Document, ReadonlyNode, Transaction } from "@illigma/core";
 import type { ConstraintType, CounterAxisAlign, LayoutSizing, NodeId, PrimaryAxisAlign } from "@illigma/format";
-import { FRAME_TYPES, isAutoLayout, rotatedBounds } from "@illigma/layout";
+import { FRAME_TYPES, isAutoLayout, isInFlow, rotatedBounds } from "@illigma/layout";
 import { topmost } from "./edit";
 import { layoutTransact, setLayoutProps, type LayoutPatch } from "./layout-props";
 
@@ -68,6 +68,24 @@ export function cellName(cell: Cell): string {
   return `${ROW_NAMES[cell.row]} ${COL_NAMES[cell.col]}`;
 }
 
+/** True when `axis` is the direction `frame` stacks along (a wrapping frame stacks horizontally). */
+export function isPrimaryAxis(frame: ReadonlyNode, axis: Axis): boolean {
+  return isAutoLayout(frame) && (frame.layoutMode === "HORIZONTAL") === (axis === "width");
+}
+
+/**
+ * The fields for an Auto gap (space between). As in Figma, a frame that hugs
+ * along its stack becomes Fixed at its current size on that axis first: a
+ * hugging stack has no room to spread its children over, so the spacing
+ * would collapse to nothing.
+ */
+export function autoGapPatch(n: ReadonlyNode): LayoutPatch {
+  const axis: Axis = n.layoutMode === "VERTICAL" ? "height" : "width";
+  const patch: LayoutPatch = { primaryAxisAlignItems: "SPACE_BETWEEN" };
+  if (isAutoLayout(n) && storedSizing(n, axis) === "HUG") patch[SIZING_KEY[axis]] = "FIXED";
+  return patch;
+}
+
 /** The patch for a direction button. Sizing is written out first so swapping axes never flips Hug and Fixed. */
 export function directionPatch(n: ReadonlyNode, direction: Direction): LayoutPatch {
   return {
@@ -113,8 +131,10 @@ const SIZING_KEY = { width: "layoutSizingHorizontal", height: "layoutSizingVerti
 
 /**
  * Set `sizing` on `axis` for each of `ids`, as Figma does: a Fill child makes a
- * parent that hugs on that axis Fixed (it can't both hug and be filled), and a
- * frame set to Hug turns its Fill children on that axis to Fixed.
+ * parent that hugs along its stack on that axis Fixed (it can't both hug and
+ * be filled there), and a frame set to Hug along its stack turns its Fill
+ * children on that axis to Fixed. Across the stack both can stay: the frame
+ * hugs its other children and the Fill ones stretch to it.
  */
 export function setSizing(doc: Document, ids: readonly NodeId[], axis: Axis, sizing: LayoutSizing): void {
   const key = SIZING_KEY[axis];
@@ -127,9 +147,9 @@ export function setSizing(doc: Document, ids: readonly NodeId[], axis: Axis, siz
     add(id, { [key]: sizing });
     if (sizing === "FILL") {
       const parent = doc.get(n.parentId as NodeId);
-      if (parent && storedSizing(parent, axis) === "HUG" && !ids.includes(parent.id)) add(parent.id, { [key]: "FIXED" });
+      if (parent && isPrimaryAxis(parent, axis) && storedSizing(parent, axis) === "HUG" && !ids.includes(parent.id)) add(parent.id, { [key]: "FIXED" });
     }
-    if (sizing === "HUG") {
+    if (sizing === "HUG" && isPrimaryAxis(n, axis)) {
       for (const k of doc.children(id)) if (k.layoutPositioning !== "ABSOLUTE" && storedSizing(k, axis) === "FILL") add(k.id, { [key]: "FIXED" });
     }
   }
@@ -165,6 +185,24 @@ export function hasConstraints(doc: Document, n: ReadonlyNode): boolean {
   if (isAutoLayoutNode(parent)) return n.layoutPositioning === "ABSOLUTE";
   while (parent && parent.type === "GROUP") parent = parent.parentId ? doc.get(parent.parentId) : undefined;
   return isFrame(parent) && !isAutoLayoutNode(parent);
+}
+
+/**
+ * The layers a constraint setting applies to. A group has no constraints of
+ * its own in Figma: setting them on a group sets them on its children (and
+ * through nested groups, on theirs), and the group shows their common value.
+ */
+export function constraintTargets(doc: Document, ids: readonly NodeId[]): NodeId[] {
+  const out = new Set<NodeId>();
+  const visit = (id: NodeId) => {
+    const n = doc.get(id);
+    if (!n) return;
+    const kids = n.type === "GROUP" ? doc.children(id) : [];
+    if (kids.length) kids.forEach((k) => visit(k.id));
+    else out.add(id);
+  };
+  ids.forEach(visit);
+  return [...out];
 }
 
 // ---- guessing a layout from an arrangement (Shift+A) ----
@@ -293,7 +331,11 @@ export function addAutoLayoutTo(tx: Transaction, doc: Document, id: NodeId): voi
 /**
  * Wrap `ids` (siblings) in a new auto layout frame that hugs them, at the
  * place of the front-most one (or, in an auto layout parent, of the first in
- * its flow). Returns the new frame's id, or null when they don't share a parent.
+ * its flow). The wrapped layers join the new frame's flow, as in Figma: any
+ * "Absolute position" is cleared. When every one of them was absolute in an
+ * auto layout parent, the new frame is absolute there instead, at their
+ * bounds, so nothing jumps into the parent's flow. Returns the new frame's
+ * id, or null when they don't share a parent.
  */
 export function wrapInAutoLayout(tx: Transaction, doc: Document, ids: readonly NodeId[]): NodeId | null {
   const nodes = ids.map((id) => doc.get(id)).filter((n): n is ReadonlyNode => !!n && n.type !== "PAGE");
@@ -303,7 +345,9 @@ export function wrapInAutoLayout(tx: Transaction, doc: Document, ids: readonly N
   const chosen = new Set(nodes.map((n) => n.id));
   const inOrder = siblings.filter((id) => chosen.has(id));
   const parent = doc.get(parentId);
-  const anchor = isAutoLayoutNode(parent) ? { before: inOrder[0] as NodeId } : { after: inOrder.at(-1) as NodeId };
+  const flowing = isAutoLayoutNode(parent) ? inOrder.filter((id) => isInFlow(doc.get(id) as ReadonlyNode)) : [];
+  const anchor = flowing.length ? { before: flowing[0] as NodeId } : { after: inOrder.at(-1) as NodeId };
+  const absolute = isAutoLayoutNode(parent) && nodes.every((n) => n.layoutPositioning === "ABSOLUTE");
 
   const rects = nodes.map((n) => ({ ...boxOf(n), id: n.id }));
   const direction = guessDirection(rects);
@@ -324,6 +368,7 @@ export function wrapInAutoLayout(tx: Transaction, doc: Document, ids: readonly N
       counterAxisAlignItems: guessCounterAlign(rects, direction),
       layoutSizingHorizontal: "HUG",
       layoutSizingVertical: "HUG",
+      ...(absolute ? { layoutPositioning: "ABSOLUTE" as const } : {}),
     },
     anchor,
   );
@@ -332,6 +377,7 @@ export function wrapInAutoLayout(tx: Transaction, doc: Document, ids: readonly N
     tx.move(r.id, frame, "last");
     tx.set(r.id, "x", n.x - x0);
     tx.set(r.id, "y", n.y - y0);
+    if (n.layoutPositioning === "ABSOLUTE") tx.set(r.id, "layoutPositioning", undefined);
     // A child that filled its old auto layout parent keeps its current size.
     if (n.layoutSizingHorizontal === "FILL") tx.set(r.id, "layoutSizingHorizontal", "FIXED");
     if (n.layoutSizingVertical === "FILL") tx.set(r.id, "layoutSizingVertical", "FIXED");
@@ -373,14 +419,19 @@ export function removeAutoLayout(doc: Document, ids: readonly NodeId[]): void {
   // A plain frame can't hug, and its children can't fill: each keeps the size auto layout gave it (as in Figma).
   const fixed = (n: ReadonlyNode, axis: Axis) => (storedSizing(n, axis) === "HUG" ? "FIXED" : axis === "width" ? n.layoutSizingHorizontal : n.layoutSizingVertical);
   const patches = new Map<NodeId, LayoutPatch>();
+  const add = (id: NodeId, p: LayoutPatch) => patches.set(id, { ...patches.get(id), ...p });
+  // Each frame's own fields first; then its children's Fill → Fixed on top, so a nested
+  // frame that filled a frame losing auto layout ends Fixed whichever order they come in.
   for (const id of frames) {
     const n = doc.get(id) as ReadonlyNode;
-    patches.set(id, { layoutMode: undefined, layoutWrap: undefined, layoutSizingHorizontal: fixed(n, "width"), layoutSizingVertical: fixed(n, "height") });
+    add(id, { layoutMode: undefined, layoutWrap: undefined, layoutSizingHorizontal: fixed(n, "width"), layoutSizingVertical: fixed(n, "height") });
+  }
+  for (const id of frames) {
     for (const k of doc.children(id)) {
       const p: LayoutPatch = {};
       if (k.layoutSizingHorizontal === "FILL") p.layoutSizingHorizontal = "FIXED";
       if (k.layoutSizingVertical === "FILL") p.layoutSizingVertical = "FIXED";
-      if (Object.keys(p).length && !patches.has(k.id)) patches.set(k.id, p);
+      if (Object.keys(p).length) add(k.id, p);
     }
   }
   setLayoutProps(doc, [...patches.keys()], (id) => patches.get(id) ?? {}, "Remove auto layout");

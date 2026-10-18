@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { Document } from "@illigma/core";
-import { createdLayers, deleteLayers, duplicateLayers, layerRange, movable, moveBy, resizeBy, selectionFrame, snapDelta, snapshot, startBounds } from "./edit";
+import { createdLayers, deleteLayers, duplicateLayers, layerRange, movable, moveBy, reorderSlot, reorderStep, resizeBy, selectionFrame, snapDelta, snapshot, startBounds } from "./edit";
 import { worldBounds } from "./geometry";
+import { DOCUMENT_OPTIONS } from "./layout";
 
 function setup() {
   const doc = new Document("Test");
@@ -152,5 +153,53 @@ describe("resizing a line", () => {
     expect(xywh(doc, line)).toEqual({ x: 0, y: 400, width: 150, height: 0 });
     doc.transact("Resize", (tx) => resizeBy(tx, doc, starts, "se", 50, 20, {}));
     expect(xywh(doc, line)).toEqual({ x: 0, y: 400, width: 150, height: 0 });
+  });
+});
+
+describe("reordering in auto layout (QC round 6)", () => {
+  /** A vertical stack A B C D (each 10 high) at (100, 100), with an absolute layer X between B and C. */
+  function stack() {
+    const doc = new Document("Test", DOCUMENT_OPTIONS);
+    const page = doc.transact("Add page", (tx) => tx.addPage("Page 1"));
+    const ids = doc.transact("Add", (tx) => {
+      const frame = tx.create("FRAME", page, { name: "Stack", x: 100, y: 100, width: 50, height: 40, layoutMode: "VERTICAL" });
+      const [a, b] = ["A", "B"].map((name) => tx.create("RECTANGLE", frame, { name, width: 50, height: 10 }));
+      const x = tx.create("RECTANGLE", frame, { name: "X", width: 5, height: 5, layoutPositioning: "ABSOLUTE" });
+      const [c, d] = ["C", "D"].map((name) => tx.create("RECTANGLE", frame, { name, width: 50, height: 10 }));
+      return { frame, a: a as string, b: b as string, c: c as string, d: d as string, x };
+    });
+    const names = () => doc.children(ids.frame).map((n) => n.name).join("");
+    const step = (sel: string[], key: string) => doc.transact("Reorder", (tx) => reorderStep(tx, doc, ids.frame, sel, key));
+    return { doc, names, step, ...ids };
+  }
+
+  it("each selected layer steps past its neighbour: A and C of ABCD, one step down, give BADC", () => {
+    const { names, step, a, c } = stack();
+    expect(names()).toBe("ABXCD");
+    expect(step([a, c], "ArrowDown")).toBe(true);
+    expect(names()).toBe("BAXDC"); // the absolute layer keeps its place in the layer order
+    expect(step([a, c], "ArrowUp")).toBe(true);
+    expect(names()).toBe("ABXCD");
+  });
+
+  it("a run moves as a block; a layer at the end stays; across the flow nothing happens", () => {
+    const { doc, names, step, a, b, c, d } = stack();
+    step([a, b], "ArrowDown");
+    expect(names()).toBe("CAXBD");
+    doc.undo();
+    expect(step([c, d], "ArrowDown")).toBe(false);
+    step([b, d], "ArrowDown");
+    expect(names()).toBe("ACXBD");
+    expect(step([a], "ArrowRight")).toBeNull();
+  });
+
+  it("a drag far outside the frame has no slot (dropping there changes nothing)", () => {
+    const { doc, frame, a } = stack();
+    // The frame spans (100, 100) to (150, 140) on the page.
+    expect(reorderSlot(doc, frame, [a], 125, 135, 24)).not.toBeNull();
+    expect(reorderSlot(doc, frame, [a], 125, 160, 24)).not.toBeNull(); // within the margin
+    expect(reorderSlot(doc, frame, [a], 125, 400, 24)).toBeNull();
+    expect(reorderSlot(doc, frame, [a], 400, 120, 24)).toBeNull();
+    expect(reorderSlot(doc, frame, [a], 400, 120)).not.toBeNull(); // no margin: anywhere
   });
 });

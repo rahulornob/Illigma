@@ -10,6 +10,8 @@
 // blur, a second pointer), handle clicks keep the selection, Escape before a
 // drag starts, handles on the movable layers only, ⌘D in a field, undo of
 // Delete reselects, Shift-click ranges in the Layers panel.
+// QC round 6: on macOS only ⌘ skips constraints (Ctrl doesn't); dragging an
+// auto layout child far outside its frame shows no line and drops nothing.
 //
 // Screen ↔ world mapping comes from the selection overlay: selecting the
 // "Desktop" frame (a known world rect) shows where world points land.
@@ -232,7 +234,7 @@ await runE2E("canvas", {}, async ({ browser, url, log, check, outDir, errors }) 
   const layers = await layerRows(page).count();
   await x.focus();
   await page.keyboard.type("rvfo");
-  check((await x.inputValue()) === "rvfo", "letters typed in a field should go into the field");
+  check((await x.inputValue()) === "rvfo", `letters typed in a field should go into the field, got ${await x.inputValue()}`);
   check((await toolPressed("Move (V)")) === "true", "R/V/F/O typed in a field must not switch tools");
   await page.keyboard.press("Backspace");
   await page.keyboard.press("Delete");
@@ -644,6 +646,18 @@ await runE2E("canvas", {}, async ({ browser, url, log, check, outDir, errors }) 
   check((await box4("Avatar")).x === 1200, `⌘-resize ignores constraints: Avatar stays at 1200, got ${await field(page, "X position")}`);
   await undo();
   check(await eventually(async () => (await box4("Desktop")).w === 1440, 2_000), "undo the ⌘-resize");
+  if (process.platform === "darwin") {
+    // macOS: only ⌘ skips constraints; Ctrl is kept for suspending snapping.
+    eh2 = await handlePoint("e");
+    await page.keyboard.down("Control");
+    await drag(page, eh2.x, eh2.y, eh2.x + 80, eh2.y);
+    await page.keyboard.up("Control");
+    const w = await field(page, "Width");
+    check(near(w, 1440 + 80 / m.z, lt), `Ctrl-resize resizes, got W ${w}`);
+    check(near((await box4("Avatar")).x, 1200 + (w - 1440), 0.01), `on macOS Ctrl-resize keeps constraints: Avatar follows to ${1200 + (w - 1440)}, got ${await field(page, "X position")}`);
+    await undo();
+    check(await eventually(async () => (await box4("Desktop")).w === 1440, 2_000), "undo the Ctrl-resize");
+  }
 
   log("dragging a child of the auto layout card reorders it, with an insertion line");
   await layerRow(page, "Title").click();
@@ -680,6 +694,19 @@ await runE2E("canvas", {}, async ({ browser, url, log, check, outDir, errors }) 
   await page.mouse.up();
   check((await cardRows()) === "Button,Title,Image", `Escape keeps the order, got ${await cardRows()}`);
   check(await eventually(async () => !(await page.locator(".insert-line").isVisible()), 2_000), "the insertion line hides on Escape");
+
+  log("dragging a child far outside its auto layout frame shows no line, and dropping changes nothing");
+  await layerRow(page, "Title").click();
+  const farAt = m.toScreen(900, 700); // well right of the card (120–440)
+  await page.mouse.move(titleAt.x, titleAt.y);
+  await page.mouse.down();
+  await page.mouse.move(dropAt.x, dropAt.y, { steps: 6 });
+  check(await eventually(() => page.locator(".insert-line").isVisible(), 2_000), "inside the card the line shows");
+  await page.mouse.move(farAt.x, farAt.y, { steps: 8 });
+  check(await eventually(async () => !(await page.locator(".insert-line").isVisible()), 2_000), "far outside the card the line hides");
+  await page.mouse.up();
+  check((await cardRows()) === "Button,Title,Image", `dropping outside keeps the order, got ${await cardRows()}`);
+  check((await box4("Title")).y === 160, "Title stays in its slot");
 
   log("⌘D inside auto layout puts the copy right after the original");
   await layerRow(page, "Title").click();

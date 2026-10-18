@@ -78,6 +78,29 @@ export function App() {
     });
   }, [open]);
 
+  // A file link pasted into this tab's address bar (#/file/<id>) opens that file. An open file closes
+  // first, as Back to files does: the editor unmounts (its last save and journal flush run), then
+  // closeSession waits for them and lets the editing lock go.
+  useEffect(() => {
+    const onHash = () => {
+      const m = FILE_HASH.exec(location.hash);
+      if (!m) return;
+      const fileId = m[1] as string;
+      const was = current.current;
+      if (was && !was.compare && was.doc.fileId === fileId) return;
+      void open(async () => {
+        if (was && current.current === was) {
+          flushSync(() => setSession(null));
+          await closeSession(was);
+        }
+        const recent = (await listRecentFiles()).find((f) => f.fileId === fileId);
+        return openStoredFile(fileId, recent?.name ?? fileId);
+      });
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, [open]);
+
   const updateToast = update && (
     <div className="banner update-toast" role="status">
       <Icon name="refresh-cw" />
