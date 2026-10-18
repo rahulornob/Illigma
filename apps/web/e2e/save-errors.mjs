@@ -127,6 +127,11 @@ await runE2E("save-errors", {}, async ({ browser, url, log, check, knownBug, out
   await page.clock.runFor(1500);
   await waitError();
   await page.getByRole("button", { name: "Back to files" }).click();
+  // Leaving with unsaved edits is never silent (rule 3): a warning asks first.
+  const leave = page.getByRole("alertdialog", { name: "Unsaved edits" });
+  await leave.waitFor({ timeout: 5_000 });
+  check((await leave.getByRole("button", { name: "Save a copy elsewhere…" }).count()) === 1, "the leave warning should offer Save a copy elsewhere…");
+  await leave.getByRole("button", { name: "Leave anyway (edits stay recoverable)" }).click();
   await page.locator(".file-card").first().waitFor();
   // Writes keep failing until the recovery banner is up: leaving starts more save attempts
   // (Back to files, then the editor's unmount) that may still be in flight here, and one that

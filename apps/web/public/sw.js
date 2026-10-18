@@ -25,8 +25,11 @@ const OWN = new Set(files.map((f) => new URL(f, scope).href));
 /** Window clients known to run this version (they said HELLO with one of its scripts). */
 const current = new Set();
 
+/** Requests for this version's files that skip the HTTP cache, so a stale index.html is never stored as this version's. */
+const fresh = () => [...OWN].map((url) => new Request(url, { cache: "reload" }));
+
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll([...OWN])));
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(fresh())));
 });
 
 self.addEventListener("activate", (event) => {
@@ -34,7 +37,7 @@ self.addEventListener("activate", (event) => {
     (async () => {
       // Belt and braces: if anything removed files from this version's cache while it waited, fetch them again.
       const cache = await caches.open(CACHE);
-      if ((await cache.keys()).length < OWN.size) await cache.addAll([...OWN]).catch(() => undefined);
+      if ((await cache.keys()).length < OWN.size) await cache.addAll(fresh()).catch(() => undefined);
       await self.clients.claim();
       await removeOldCaches();
     })(),

@@ -77,7 +77,8 @@ describe("recovery in the web app", () => {
     const before = s.doc.toFile();
 
     const kept = await keepRecovered(s);
-    expect(kept.notice).toMatch(/^1 recovered edit no longer fits the file and was skipped\.$/);
+    expect(kept.notice).toBe("1 recovered edit no longer fits the file and was skipped. It stays in the recovery journal.");
+    expect(kept.skipped).toHaveLength(1);
     expect(kept.doc.has(f)).toBe(false);
     expect(kept.doc.pages()[0]!.name).toBe("Renamed"); // the edit that still fits was applied
     expect(s.doc.toFile()).toEqual(before); // the open document was never touched
@@ -85,7 +86,10 @@ describe("recovery in the web app", () => {
     const reread = Document.fromFile(readPackage(await opfsBackend(doc.fileId, "T").read()));
     expect(reread.pages()[0]!.name).toBe("Renamed");
     closeSession(kept);
-    expect((await reopen(doc.fileId)).recovered).toEqual([]);
+    // The skipped edit is never dropped: it is offered again (only it; the applied one is in the file).
+    const again = await reopen(doc.fileId);
+    expect(again.recovered).toHaveLength(1);
+    expect(again.recovered[0]!.map((o) => o.op)).toEqual(["create", "create"]);
   });
 
   it("replayRecovered skips the subtree of a skipped create across later edits", () => {

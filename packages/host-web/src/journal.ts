@@ -7,7 +7,7 @@
  *
  * Lines:
  *   {"seq":n,"origin":"edit","label":"…","ops":[…]}   one change
- *   {"save":"<saveId>"}                                 a save was about to be written
+ *   {"save":"<saveId>","keep":[…]}                       a save was about to be written
  * A torn last line (the browser stopped mid-append) is skipped.
  *
  * Lines already in the file are told apart by save id: before each save the
@@ -15,6 +15,8 @@
  * backend stores the same id in the package (".illigma-rev"). If the package
  * holds that id, the save happened, so every change line before the marker
  * is in the file, even if the tab closed before the journal was cleared.
+ * Carried changes the save does not hold (undecided, or skipped by Keep) are
+ * copied into the marker's "keep" list, so they stay carried after it.
  *
  * Changes left from an earlier session ("carried") are kept until the person
  * decides: only `discardRecovered()`, `clear()` without a checkpoint, or
@@ -37,7 +39,11 @@ interface Line {
   seq?: number;
   ops?: Operation[];
   save?: string;
+  /** In a save marker: carried change lines the save does not hold. */
+  keep?: unknown;
 }
+
+const hasOps = (l: Line | null | undefined): l is Line & { ops: Operation[] } => Array.isArray(l?.ops) && l.ops.length > 0;
 
 export class RecoveryJournal {
   readonly fileName: string;
@@ -83,12 +89,10 @@ export class RecoveryJournal {
           continue; // torn write
         }
       }
-      // Everything before the marker of the save the package holds is in the package.
+      // Everything before the marker of the save the package holds is in the package, except what the marker kept.
       const saved = savedId ? lines.map((l) => l.save).lastIndexOf(savedId) : -1;
-      this.carried = lines
-        .slice(saved + 1)
-        .filter((l) => Array.isArray(l.ops) && l.ops.length > 0)
-        .map((l) => ({ seq: 0, line: JSON.stringify(l), ops: l.ops! }));
+      const kept = saved >= 0 && Array.isArray(lines[saved]!.keep) ? (lines[saved]!.keep as Line[]) : [];
+      this.carried = [...kept, ...lines.slice(saved + 1)].filter(hasOps).map((l) => ({ seq: 0, line: JSON.stringify(l), ops: l.ops }));
     })().catch((err: unknown) => {
       this.loaded = null; // try again next time
       throw err;
@@ -137,19 +141,20 @@ export class RecoveryJournal {
   /**
    * Call just before writing a save with `saveId` that holds every change up
    * to `through` (a checkpoint): appends those changes and the save marker.
-   * Carried changes count as saved by the marker too, so it is only written
-   * when the save holds them (`includesRecovered`, after Keep). Otherwise
-   * a crash right after the save re-offers this session's changes, which is
-   * safe; dropping undecided recovered edits would not be.
+   * Carried changes the save doesn't hold are copied into the marker, so
+   * they stay carried if the tab closes before `clear`: all of them, or
+   * with `includesRecovered` (Keep) only those at the indexes in `keep`
+   * (edits Keep skipped).
    */
-  markSave(saveId: string, through: number, opts: { includesRecovered?: boolean } = {}): Promise<void> {
+  markSave(saveId: string, through: number, opts: { includesRecovered?: boolean; keep?: readonly number[] } = {}): Promise<void> {
     if (this.timer !== undefined) {
       clearTimeout(this.timer);
       this.timer = undefined;
     }
     return this.enqueue(async () => {
       await this.loadNow();
-      const marker = !this.carried.length || opts.includesRecovered ? JSON.stringify({ save: saveId }) : undefined;
+      const keep = opts.includesRecovered ? this.carried.filter((_, i) => opts.keep?.includes(i)) : this.carried;
+      const marker = keep.length ? `{"save":${JSON.stringify(saveId)},"keep":[${keep.map((e) => e.line).join(",")}]}` : JSON.stringify({ save: saveId });
       await this.append(through, marker);
     });
   }
@@ -164,15 +169,16 @@ export class RecoveryJournal {
    * Forget recorded changes once they are saved. `clear(mark)` drops this
    * session's changes up to `mark` (from `checkpoint()`), so changes made
    * while a save was running stay. Carried changes stay unless
-   * `recovered: true` (they were saved too) or no mark is given (forget all).
+   * `recovered: true` (they were saved too) or no mark is given (forget all);
+   * even then those at the indexes in `keep` stay (edits Keep skipped).
    */
-  clear(through = Infinity, opts: { recovered?: boolean } = {}): Promise<void> {
+  clear(through = Infinity, opts: { recovered?: boolean; keep?: readonly number[] } = {}): Promise<void> {
     const recovered = opts.recovered ?? through === Infinity;
     return this.enqueue(async () => {
       await this.loadNow();
       this.buffer = this.buffer.filter((e) => e.seq > through);
       this.written = this.written.filter((e) => e.seq > through);
-      if (recovered) this.carried = [];
+      if (recovered) this.carried = this.carried.filter((_, i) => opts.keep?.includes(i));
       await this.rewrite();
     });
   }
