@@ -55,14 +55,179 @@ export interface Color {
   a: number;
 }
 
-export interface SolidPaint {
+/**
+ * How a paint, a shadow or a whole layer mixes with what is under it: Figma's
+ * list. PASS_THROUGH is for layers with children (they blend straight onto
+ * what is under the layer, as if it had no layer of its own); on a paint or
+ * a shape it means NORMAL.
+ */
+export type BlendMode =
+  | "PASS_THROUGH"
+  | "NORMAL"
+  | "DARKEN"
+  | "MULTIPLY"
+  | "LINEAR_BURN"
+  | "COLOR_BURN"
+  | "LIGHTEN"
+  | "SCREEN"
+  | "LINEAR_DODGE"
+  | "COLOR_DODGE"
+  | "OVERLAY"
+  | "SOFT_LIGHT"
+  | "HARD_LIGHT"
+  | "DIFFERENCE"
+  | "EXCLUSION"
+  | "HUE"
+  | "SATURATION"
+  | "COLOR"
+  | "LUMINOSITY";
+
+export const BLEND_MODES: readonly BlendMode[] = [
+  "PASS_THROUGH",
+  "NORMAL",
+  "DARKEN",
+  "MULTIPLY",
+  "LINEAR_BURN",
+  "COLOR_BURN",
+  "LIGHTEN",
+  "SCREEN",
+  "LINEAR_DODGE",
+  "COLOR_DODGE",
+  "OVERLAY",
+  "SOFT_LIGHT",
+  "HARD_LIGHT",
+  "DIFFERENCE",
+  "EXCLUSION",
+  "HUE",
+  "SATURATION",
+  "COLOR",
+  "LUMINOSITY",
+];
+
+/**
+ * An affine 2 × 3 matrix, `[[a, c, e], [b, d, f]]`, as in Figma's Plugin API:
+ * (x, y) maps to (a·x + c·y + e, b·x + d·y + f).
+ */
+export type Transform = [[number, number, number], [number, number, number]];
+
+/** Fields every paint may have. */
+export interface PaintBase {
+  visible: boolean;
+  /** Multiplies the paint's alpha, 0–1. Default 1. */
+  opacity?: number;
+  /** How the paint mixes with the paints under it in the same layer. Default "NORMAL". */
+  blendMode?: BlendMode;
+}
+
+export interface SolidPaint extends PaintBase {
   type: "SOLID";
   color: Color;
+}
+
+export type GradientType = "GRADIENT_LINEAR" | "GRADIENT_RADIAL" | "GRADIENT_ANGULAR" | "GRADIENT_DIAMOND";
+export const GRADIENT_TYPES: readonly GradientType[] = ["GRADIENT_LINEAR", "GRADIENT_RADIAL", "GRADIENT_ANGULAR", "GRADIENT_DIAMOND"];
+
+export interface ColorStop {
+  /** 0–1 along the gradient. */
+  position: number;
+  color: Color;
+}
+
+/**
+ * A gradient, as in Figma. `gradientTransform` maps the node's box,
+ * normalised to 0…1 on both axes, into gradient space, where:
+ * - linear runs from (0, 0.5) to (1, 0.5);
+ * - radial is centred on (0.5, 0.5) and reaches the last stop at a distance of 0.5;
+ * - angular sweeps clockwise around (0.5, 0.5), starting towards (1, 0.5);
+ * - diamond is centred on (0.5, 0.5) and reaches the last stop where |dx| + |dy| = 0.5.
+ * The identity is a left-to-right gradient across the whole box.
+ */
+export interface GradientPaint extends PaintBase {
+  type: GradientType;
+  /** At least one stop; drawn in position order. */
+  gradientStops: ColorStop[];
+  gradientTransform: Transform;
+}
+
+/** FILL covers the box (cropping), FIT fits inside it, CROP uses `imageTransform`, TILE repeats at `scalingFactor`. */
+export type ImageScaleMode = "FILL" | "FIT" | "CROP" | "TILE";
+export const IMAGE_SCALE_MODES: readonly ImageScaleMode[] = ["FILL", "FIT", "CROP", "TILE"];
+
+/**
+ * An image, stored once per file in `images/<imageHash>.<ext>` (see
+ * `IlligmaFile.images`). `imageHash` is the SHA-256 of the image file's bytes,
+ * in lowercase hex; `null` is an image paint with no image yet.
+ */
+export interface ImagePaint extends PaintBase {
+  type: "IMAGE";
+  imageHash: string | null;
+  scaleMode: ImageScaleMode;
+  /** CROP only: maps the node's box, normalised to 0…1, into the image, also normalised. Default: the identity (the image stretched over the box). */
+  imageTransform?: Transform;
+  /** TILE only: the size of one tile as a multiple of the image's own size in pixels. Default 1. */
+  scalingFactor?: number;
+}
+
+export type Paint = SolidPaint | GradientPaint | ImagePaint;
+export type PaintType = Paint["type"];
+export const PAINT_TYPES: readonly PaintType[] = ["SOLID", ...GRADIENT_TYPES, "IMAGE"];
+
+/**
+ * Shadows, as in Figma. `radius` is the blur radius (CSS `box-shadow` blur:
+ * twice the Gaussian standard deviation); `spread` grows (or, negative,
+ * shrinks) the shape before it is blurred.
+ */
+export interface ShadowEffect {
+  type: "DROP_SHADOW" | "INNER_SHADOW";
+  color: Color;
+  offset: Vector2;
+  /** 0 or more. */
+  radius: number;
+  /** Default 0. */
+  spread?: number;
+  visible: boolean;
+  /** Default "NORMAL". */
+  blendMode?: BlendMode;
+  /** DROP_SHADOW only: also show the shadow through the layer's transparent parts. Default false. */
+  showShadowBehindNode?: boolean;
+}
+
+/** LAYER_BLUR blurs the layer itself; BACKGROUND_BLUR blurs what is behind it, seen through its fills. */
+export interface BlurEffect {
+  type: "LAYER_BLUR" | "BACKGROUND_BLUR";
+  /** 0 or more, as for shadows. */
+  radius: number;
   visible: boolean;
 }
 
-/** Version 0 stores solid paints. Gradients and images arrive in later versions. */
-export type Paint = SolidPaint;
+export type Effect = ShadowEffect | BlurEffect;
+export type EffectType = Effect["type"];
+export const EFFECT_TYPES: readonly EffectType[] = ["DROP_SHADOW", "INNER_SHADOW", "LAYER_BLUR", "BACKGROUND_BLUR"];
+
+/** Where a stroke sits on the outline. See `EffectFields.strokeAlign` for the default. */
+export type StrokeAlign = "CENTER" | "INSIDE" | "OUTSIDE";
+export const STROKE_ALIGNS: readonly StrokeAlign[] = ["CENTER", "INSIDE", "OUTSIDE"];
+
+/** Limits on paints and effects, so a file can't make the editor run out of memory or time. */
+export const PAINT_LIMITS = {
+  /** Fills, or strokes, on one node. */
+  maxPaints: 1_000,
+  maxGradientStops: 1_000,
+  maxEffects: 100,
+  /** Shadow and blur radius, |spread| and |offset|, in canvas units. */
+  maxEffectRadius: 1_000,
+  /** TILE scale. */
+  maxScalingFactor: 1_000,
+} as const;
+
+/** The image file formats a package may hold, by file extension. */
+export type ImageFormat = "png" | "jpg" | "webp" | "gif";
+export const IMAGE_FORMATS: readonly ImageFormat[] = ["png", "jpg", "webp", "gif"];
+
+export const IMAGE_LIMITS = {
+  /** One image file, in bytes. */
+  maxBytes: 32 * 1024 * 1024,
+} as const;
 
 /** Fields every node has. */
 export interface NodeBase {
@@ -264,7 +429,26 @@ export interface ShapeFields {
   strokeJoin?: StrokeJoin;
 }
 
-export type Node = NodeBase & TextFields & LayoutFields & ShapeFields;
+/**
+ * Effects and compositing, named after Figma's Plugin API. Every field is
+ * optional; absent means the default noted on each, so files without them
+ * save exactly as before.
+ */
+export interface EffectFields {
+  /** Shadows and blurs, bottom first. Default none. */
+  effects?: Effect[];
+  /** How the layer mixes with what is under it. Default "PASS_THROUGH" (the same as "NORMAL" on a layer without children). */
+  blendMode?: BlendMode;
+  /**
+   * Where strokes sit on the outline. Absent means "CENTER": format 0 drew
+   * every stroke centred before this field existed, so that stays the reading
+   * of older files. (Figma's default for new shapes is "INSIDE"; the editor
+   * sets it explicitly.) Lines and open paths are always stroked centred.
+   */
+  strokeAlign?: StrokeAlign;
+}
+
+export type Node = NodeBase & TextFields & LayoutFields & ShapeFields & EffectFields;
 
 /** The node fields an operation may change. `id` and `type` never change. */
 export type NodeKey = Exclude<keyof Node, "id" | "type">;
@@ -291,6 +475,12 @@ export interface Manifest {
 export interface IlligmaFile {
   manifest: Manifest;
   nodes: Node[];
+  /**
+   * Image files by `imageHash` (the SHA-256 of their bytes, lowercase hex):
+   * PNG, JPEG, WebP or GIF. Saved as `images/<hash>.<ext>`, only those some
+   * paint uses. Absent or empty when the file has none.
+   */
+  images?: Map<string, Uint8Array>;
 }
 
 /** Defaults for a new node of any type. */

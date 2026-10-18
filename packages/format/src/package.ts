@@ -4,17 +4,52 @@
  * A package is a folder:
  *   manifest.json         file id, name, page order, format version
  *   pages/<page-id>.json  that page's nodes, sorted by id, one per line
+ *   images/<hash>.<ext>   image files (binary), named by the SHA-256 of their bytes
  *
  * Output is canonical (sorted keys, fixed spacing), so writing the same
  * file twice gives identical bytes and Git diffs stay small.
  */
 
+import { imagePath, imageProblem, isBinaryPackagePath, parseImagePath, referencedImageHashes, sha256Hex, sniffImageFormat } from "./images.js";
 import { FORMAT_NAME, FORMAT_VERSION, type IlligmaFile, type Manifest, type Node, type NodeId } from "./schema.js";
 import { isSafePageId, validateFile } from "./validate.js";
 import { migrate } from "./migrations.js";
 
-/** A package as path → text. Paths use "/" and no leading slash. */
-export type FileTree = Map<string, string>;
+/** One file's contents: text, or bytes for binary paths (`isBinaryPackagePath`: images). */
+export type FileData = string | Uint8Array;
+
+/** A package as path → contents. Paths use "/" and no leading slash. Text files are strings; images are bytes. */
+export type FileTree = Map<string, FileData>;
+
+/** Contents as text: strings as they are, bytes decoded as UTF-8 (for callers that only expect text files). */
+export function fileText(data: FileData | undefined): string | undefined {
+  if (data === undefined || typeof data === "string") return data;
+  return new TextDecoder().decode(data);
+}
+
+/** Byte arrays already checked, with their hash, so saving the same image again doesn't hash it again. */
+const verified = new WeakMap<Uint8Array, string>();
+
+/**
+ * Throws `FormatError` unless `bytes` is an image Illigma stores whose
+ * SHA-256 is `hash`. Remembers arrays it has checked (don't change one after).
+ */
+export function checkImage(hash: string, bytes: Uint8Array): void {
+  if (verified.get(bytes) === hash) return;
+  const problem = imageProblem(bytes);
+  if (problem) throw new FormatError(`Image ${hash.slice(0, 12)}… ${problem}.`);
+  if (sha256Hex(bytes) !== hash) throw new FormatError(`Image ${hash.slice(0, 12)}… doesn't match its hash.`);
+  verified.set(bytes, hash);
+}
+
+/** The `imageHash` for an image file's bytes, after checking it is one Illigma can store. Throws `FormatError` if not. */
+export function hashImage(bytes: Uint8Array): string {
+  const problem = imageProblem(bytes);
+  if (problem) throw new FormatError(`This image can't be used: it ${problem}.`);
+  const hash = sha256Hex(bytes);
+  verified.set(bytes, hash);
+  return hash;
+}
 
 export class FormatError extends Error {
   constructor(
@@ -77,6 +112,15 @@ export function writePackage(file: IlligmaFile): FileTree {
     const lines = nodes.map((n) => canonicalJson(n));
     tree.set(`pages/${pageId}.json`, lines.length ? `[\n${lines.join(",\n")}\n]\n` : "[]\n");
   }
+  // Only images some paint uses. A paint whose image isn't in memory keeps its hash (a missing image, reported on reading).
+  if (file.images?.size) {
+    for (const hash of referencedImageHashes(file.nodes)) {
+      const bytes = file.images.get(hash);
+      if (!bytes) continue;
+      checkImage(hash, bytes);
+      tree.set(imagePath(hash, sniffImageFormat(bytes) ?? "png"), bytes);
+    }
+  }
   return tree;
 }
 
@@ -94,7 +138,7 @@ export interface ReadReport {
 
 /** `readPackage`, plus warnings about content the file ignores. */
 export function readPackageWithReport(tree: FileTree): ReadReport {
-  const manifestText = tree.get("manifest.json");
+  const manifestText = fileText(tree.get("manifest.json"));
   if (manifestText === undefined) throw new FormatError("This is not an Illigma file: manifest.json is missing.");
 
   let rawManifest: unknown;
@@ -124,7 +168,7 @@ export function readPackageWithReport(tree: FileTree): ReadReport {
     if (typeof id !== "string") throw new FormatError("manifest.json lists a page without an id.");
     // Checked before the id is used as a path.
     if (!isSafePageId(id)) throw new FormatError(`manifest.json lists a page id that can't be a file name: ${JSON.stringify(id.slice(0, 80))}.`);
-    const text = tree.get(`pages/${id}.json`);
+    const text = fileText(tree.get(`pages/${id}.json`));
     if (text === undefined) throw new FormatError(`Page file pages/${id}.json is missing.`);
     let parsed: unknown;
     try {
@@ -145,5 +189,56 @@ export function readPackageWithReport(tree: FileTree): ReadReport {
   for (const path of [...tree.keys()].sort()) {
     if (path.startsWith("pages/") && !listed.has(path)) warnings.push(`${path} is not listed in manifest.json, so it was not opened.`);
   }
+  const images = readImages(tree, file, warnings);
+  if (images.size) file.images = images;
   return { file, warnings };
+}
+
+/** At most this many warnings about images, then one summary line. */
+const MAX_IMAGE_WARNINGS = 20;
+
+/**
+ * The package's images that some paint uses. A damaged, unknown or oversized
+ * image is left out with a warning (its layers show a missing image, and the
+ * rest of the file still opens), as are images no paint uses.
+ */
+function readImages(tree: FileTree, file: IlligmaFile, warnings: string[]): Map<string, Uint8Array> {
+  const used = new Set(referencedImageHashes(file.nodes));
+  const images = new Map<string, Uint8Array>();
+  const notes: string[] = [];
+  for (const path of [...tree.keys()].sort()) {
+    if (!isBinaryPackagePath(path)) continue;
+    const parsed = parseImagePath(path);
+    if (!parsed) {
+      notes.push(`${path} is not an image file Illigma stores, so it was ignored.`);
+      continue;
+    }
+    if (!used.has(parsed.hash)) {
+      notes.push(`${path} is not used by any layer, so it was ignored.`);
+      continue;
+    }
+    if (images.has(parsed.hash)) continue; // the same image under two extensions
+    const data = tree.get(path);
+    const problem = data instanceof Uint8Array ? imageProblem(data) : "was read as text, not bytes";
+    if (problem || !(data instanceof Uint8Array)) {
+      notes.push(`${path} ${problem}, so it was not opened.`);
+      continue;
+    }
+    if (sha256Hex(data) !== parsed.hash) {
+      notes.push(`${path} is damaged (its contents don't match its name), so it was not opened.`);
+      continue;
+    }
+    verified.set(data, parsed.hash);
+    images.set(parsed.hash, data);
+  }
+  // In first-use order, as writePackage writes them.
+  const ordered = new Map<string, Uint8Array>();
+  for (const hash of used) {
+    const bytes = images.get(hash);
+    if (bytes) ordered.set(hash, bytes);
+    else notes.push(`Image ${hash.slice(0, 12)}… is missing, so the layers that use it show no image.`);
+  }
+  warnings.push(...notes.slice(0, MAX_IMAGE_WARNINGS));
+  if (notes.length > MAX_IMAGE_WARNINGS) warnings.push(`…and ${notes.length - MAX_IMAGE_WARNINGS} more problems with images.`);
+  return ordered;
 }

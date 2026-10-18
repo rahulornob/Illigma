@@ -16,7 +16,7 @@
 import { lstatSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { importPrototypeJson } from "./import-prototype.js";
-import { FormatError, writePackage } from "./package.js";
+import { fileText, FormatError, writePackage, type FileTree } from "./package.js";
 import { isZip, readZip, writeZip } from "./zip.js";
 
 export const IMPORT_CLI_USAGE = "Usage: npm run import:prototype -- <prototype.json> <out.illigma> [--zip] [--force]";
@@ -123,13 +123,13 @@ function isIlligmaFile(path: string, isDirectory: boolean): boolean {
   try {
     if (isDirectory) return illigmaManifest(readFileSync(join(path, "manifest.json"), "utf8"));
     const bytes = readFileSync(path);
-    return isZip(bytes) && illigmaManifest(readZip(bytes).get("manifest.json"));
+    return isZip(bytes) && illigmaManifest(fileText(readZip(bytes).get("manifest.json")));
   } catch {
     return false;
   }
 }
 
-function writeOutput(data: Uint8Array | Map<string, string>, outPath: string, name: string, inPath: string, cwd: string, force: boolean): void {
+function writeOutput(data: Uint8Array | FileTree, outPath: string, name: string, inPath: string, cwd: string, force: boolean): void {
   if (within(cwd, outPath)) throw new FormatError(`${name} is the folder you're in (or holds it), so it won't be written. Choose another name.`);
   if (within(inPath, outPath)) throw new FormatError(`${name} is the input or holds it, so it won't be written. Choose another name.`);
 

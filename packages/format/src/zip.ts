@@ -9,7 +9,9 @@
  *   a tool can read the format, version and name from the first local header
  *   without inflating anything.
  * - Every other entry follows in sorted path order, deflated (or stored when
- *   deflate doesn't make it smaller).
+ *   deflate doesn't make it smaller). Images (`images/…`, already
+ *   compressed) are always stored, and come back as bytes; every other
+ *   entry must be UTF-8 text.
  * - Timestamps are fixed at 1980-01-01 00:00 (the zip epoch), file names are
  *   flagged UTF-8, and there are no comments, extra fields or data
  *   descriptors. The same tree always zips to identical bytes.
@@ -25,7 +27,8 @@
  */
 
 import { deflateSync, Inflate } from "fflate";
-import { FormatError, type FileTree } from "./package.js";
+import { isBinaryPackagePath } from "./images.js";
+import { FormatError, type FileData, type FileTree } from "./package.js";
 
 export const ZIP_DEFAULT_MAX_TOTAL_BYTES = 512 * 1024 * 1024;
 
@@ -123,12 +126,14 @@ export function writeZip(tree: FileTree): Uint8Array {
     const problem = pathProblem(path);
     if (problem) throw new FormatError("Can't save: the package has an unsafe path.", [problem]);
     if (path.endsWith("/")) throw new FormatError("Can't save: the package has an unsafe path.", [`${JSON.stringify(path)} is a folder.`]);
-    const raw = enc.encode(tree.get(path) as string);
+    const value = tree.get(path) as FileData;
+    const raw = typeof value === "string" ? enc.encode(value) : value;
     const name = enc.encode(path);
     if (name.length > 0xffff) throw new FormatError("Can't save: a path is too long.", [path.slice(0, 80)]);
     let method = STORED;
     let data = raw;
-    if (path !== MANIFEST) {
+    // Images are compressed already: storing them saves deflating megabytes for nothing.
+    if (path !== MANIFEST && !isBinaryPackagePath(path)) {
       const packed = deflateSync(raw, { level: 6 });
       if (packed.length < raw.length) {
         method = DEFLATED;
@@ -214,14 +219,14 @@ function inflateExactly(data: Uint8Array, size: number): Uint8Array {
 }
 
 /** Strip OS noise and a single wrapping folder (as made by "Compress folder" in Finder or Explorer). */
-function unwrap(tree: FileTree): FileTree {
+function unwrap<T>(tree: Map<string, T>): Map<string, T> {
   if (tree.has(MANIFEST)) return tree;
   const first = [...tree.keys()][0];
   const slash = first?.indexOf("/") ?? -1;
   if (first === undefined || slash < 0) return tree;
   const prefix = first.slice(0, slash + 1);
   if (![...tree.keys()].every((k) => k.startsWith(prefix)) || !tree.has(prefix + MANIFEST)) return tree;
-  return new Map([...tree].map(([k, text]) => [k.slice(prefix.length), text]));
+  return new Map([...tree].map(([k, data]) => [k.slice(prefix.length), data]));
 }
 
 /**
@@ -255,7 +260,7 @@ export function readZip(bytes: Uint8Array, options: ZipReadOptions = {}): FileTr
   if (centralStart + centralSize > end) throw damaged("The zip index points past the end of the file.");
 
   const utf8 = new TextDecoder("utf-8", { fatal: true });
-  const tree: FileTree = new Map();
+  const raws = new Map<string, Uint8Array>();
   let total = 0;
   let p = centralStart;
   const centralEnd = centralStart + centralSize;
@@ -287,7 +292,7 @@ export function readZip(bytes: Uint8Array, options: ZipReadOptions = {}): FileTr
     if (flags & FLAG_ENCRYPTED) throw new FormatError("Encrypted zip archives can't be opened.");
     if (name.endsWith("/")) continue; // folder entry
     if (name.startsWith("__MACOSX/") || name === ".DS_Store" || name.endsWith("/.DS_Store")) continue;
-    if (tree.has(name)) throw damaged(`${JSON.stringify(name)} appears twice.`);
+    if (raws.has(name)) throw damaged(`${JSON.stringify(name)} appears twice.`);
     if (method !== STORED && method !== DEFLATED) {
       throw new FormatError(`${JSON.stringify(name)} uses a compression method Illigma can't read.`);
     }
@@ -315,11 +320,20 @@ export function readZip(bytes: Uint8Array, options: ZipReadOptions = {}): FileTr
       raw = inflateExactly(packed, size);
     }
     if (crc32(raw) !== crc) throw damaged(`${JSON.stringify(name)} failed its checksum.`);
+    raws.set(name, raw);
+  }
+  // Text or bytes is decided by the path inside the package, so after any wrapping folder is stripped.
+  const tree: FileTree = new Map();
+  for (const [name, raw] of unwrap(raws)) {
+    if (isBinaryPackagePath(name)) {
+      tree.set(name, raw.slice()); // its own copy, so the whole archive isn't kept alive
+      continue;
+    }
     try {
       tree.set(name, utf8.decode(raw));
     } catch {
       throw damaged(`${JSON.stringify(name)} is not UTF-8 text.`);
     }
   }
-  return unwrap(tree);
+  return tree;
 }

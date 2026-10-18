@@ -6,8 +6,14 @@
  */
 
 import { isValidKey } from "./fractional-index.js";
+import { IMAGE_HASH_PATTERN, imageProblem } from "./images.js";
 import {
   AXIS_SIZING_MODES,
+  BLEND_MODES,
+  GRADIENT_TYPES,
+  IMAGE_SCALE_MODES,
+  PAINT_LIMITS,
+  STROKE_ALIGNS,
   CONSTRAINT_TYPES,
   COUNTER_AXIS_ALIGN_CONTENTS,
   COUNTER_AXIS_ALIGNS,
@@ -37,6 +43,7 @@ export function isSafePageId(id: string): boolean {
 const isFinite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
 const unit = (v: unknown): boolean => isFinite(v) && v >= 0 && v <= 1;
+const fraction0 = (v: unknown): string | null => (unit(v) ? null : "must be a number from 0 to 1");
 const TYPES = new Set<unknown>(NODE_TYPES);
 
 function isColor(c: unknown): boolean {
@@ -45,19 +52,11 @@ function isColor(c: unknown): boolean {
   return unit(o.r) && unit(o.g) && unit(o.b) && unit(o.a);
 }
 
-function isPaintList(v: unknown): boolean {
-  return (
-    Array.isArray(v) &&
-    v.every((p) => p && typeof p === "object" && p.type === "SOLID" && typeof p.visible === "boolean" && isColor(p.color))
-  );
-}
-
 type Rule = (v: unknown) => string | null;
 
 const number: Rule = (v) => (isFinite(v) ? null : "must be a number (not NaN or Infinity)");
 const boolean: Rule = (v) => (typeof v === "boolean" ? null : "must be true or false");
 const text: Rule = (v) => (typeof v === "string" ? null : "must be text");
-const paints: Rule = (v) => (isPaintList(v) ? null : "must be a list of solid paints with colour channels from 0 to 1");
 const optional =
   (rule: Rule): Rule =>
   (v) =>
@@ -69,6 +68,110 @@ const oneOf = (values: readonly string[]): Rule => {
   const message = `must be one of ${values.map((x) => `"${x}"`).join(", ")}`;
   return (v) => (set.has(v) ? null : message);
 };
+
+// ---- paints and effects ----
+
+const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+const colorRule: Rule = (v) => (isColor(v) ? null : "must be a colour { r, g, b, a } with channels from 0 to 1");
+const blendMode = oneOf(BLEND_MODES);
+const transform: Rule = (v) =>
+  Array.isArray(v) && v.length === 2 && v.every((row) => Array.isArray(row) && row.length === 3 && row.every(isFinite))
+    ? null
+    : "must be a 2 × 3 matrix [[a, c, e], [b, d, f]] of numbers";
+const point: Rule = (v) =>
+  isObject(v) && Object.keys(v).length === 2 && isFinite(v.x) && isFinite(v.y) && Math.abs(v.x) <= PAINT_LIMITS.maxEffectRadius && Math.abs(v.y) <= PAINT_LIMITS.maxEffectRadius
+    ? null
+    : `must be { x, y }, each from -${PAINT_LIMITS.maxEffectRadius.toLocaleString("en-US")} to ${PAINT_LIMITS.maxEffectRadius.toLocaleString("en-US")}`;
+const radius: Rule = (v) =>
+  isFinite(v) && v >= 0 && v <= PAINT_LIMITS.maxEffectRadius ? null : `must be a number from 0 to ${PAINT_LIMITS.maxEffectRadius.toLocaleString("en-US")}`;
+const spread: Rule = (v) =>
+  isFinite(v) && Math.abs(v) <= PAINT_LIMITS.maxEffectRadius ? null : `must be a number from -${PAINT_LIMITS.maxEffectRadius.toLocaleString("en-US")} to ${PAINT_LIMITS.maxEffectRadius.toLocaleString("en-US")}`;
+const stops: Rule = (v) => {
+  if (!Array.isArray(v) || v.length === 0 || v.length > PAINT_LIMITS.maxGradientStops) {
+    return `must be a list of 1 to ${PAINT_LIMITS.maxGradientStops.toLocaleString("en-US")} colour stops`;
+  }
+  for (let i = 0; i < v.length; i++) {
+    const s = v[i] as unknown;
+    if (!isObject(s) || Object.keys(s).length !== 2 || !unit(s.position) || !isColor(s.color)) {
+      return `stop ${i} must be { position, color } with a position from 0 to 1 and colour channels from 0 to 1`;
+    }
+  }
+  return null;
+};
+const hash: Rule = (v) => (v === null || (typeof v === "string" && IMAGE_HASH_PATTERN.test(v)) ? null : "must be null or a SHA-256 hash (64 lowercase hex digits)");
+const scalingFactor: Rule = (v) =>
+  isFinite(v) && v > 0 && v <= PAINT_LIMITS.maxScalingFactor ? null : `must be a number above 0 and at most ${PAINT_LIMITS.maxScalingFactor.toLocaleString("en-US")}`;
+
+/** Each object kind's fields: [rule, required]. Other keys are refused, so a typo can't hide a value. */
+type Shape = Record<string, [Rule, boolean]>;
+const PAINT_BASE: Shape = { type: [() => null, true], visible: [boolean, true], opacity: [fraction0, false], blendMode: [blendMode, false] };
+const SOLID_SHAPE: Shape = { ...PAINT_BASE, color: [colorRule, true] };
+const GRADIENT_SHAPE: Shape = { ...PAINT_BASE, gradientStops: [stops, true], gradientTransform: [transform, true] };
+const IMAGE_SHAPE: Shape = {
+  ...PAINT_BASE,
+  imageHash: [hash, true],
+  scaleMode: [oneOf(IMAGE_SCALE_MODES), true],
+  imageTransform: [transform, false],
+  scalingFactor: [scalingFactor, false],
+};
+const SHADOW_SHAPE: Shape = {
+  type: [() => null, true],
+  color: [colorRule, true],
+  offset: [point, true],
+  radius: [radius, true],
+  spread: [spread, false],
+  visible: [boolean, true],
+  blendMode: [blendMode, false],
+};
+const DROP_SHADOW_SHAPE: Shape = { ...SHADOW_SHAPE, showShadowBehindNode: [boolean, false] };
+const BLUR_SHAPE: Shape = { type: [() => null, true], radius: [radius, true], visible: [boolean, true] };
+
+const PAINT_SHAPES: Record<string, Shape> = { SOLID: SOLID_SHAPE, IMAGE: IMAGE_SHAPE };
+for (const t of GRADIENT_TYPES) PAINT_SHAPES[t] = GRADIENT_SHAPE;
+const EFFECT_SHAPES: Record<string, Shape> = {
+  DROP_SHADOW: DROP_SHADOW_SHAPE,
+  INNER_SHADOW: SHADOW_SHAPE,
+  LAYER_BLUR: BLUR_SHAPE,
+  BACKGROUND_BLUR: BLUR_SHAPE,
+};
+
+/** The problem with one object against its shape, or null. */
+function shapeProblem(o: Record<string, unknown>, shape: Shape): string | null {
+  for (const k of Object.keys(o)) {
+    if (!Object.prototype.hasOwnProperty.call(shape, k)) return `has an unknown field "${k.slice(0, 40)}"`;
+  }
+  for (const [k, [rule, required]] of Object.entries(shape)) {
+    const v = o[k];
+    if (v === undefined) {
+      if (required) return `has no "${k}"`;
+      continue;
+    }
+    const p = rule(v);
+    if (p) return `"${k}" ${p}`;
+  }
+  return null;
+}
+
+/** A list of typed objects (paints or effects), each checked against the shape for its `type`. */
+const typedList =
+  (shapes: Record<string, Shape>, what: string, max: number): Rule =>
+  (v) => {
+    if (!Array.isArray(v)) return `must be a list of ${what}s`;
+    if (v.length > max) return `must have at most ${max.toLocaleString("en-US")} ${what}s`;
+    for (let i = 0; i < v.length; i++) {
+      const p = v[i] as unknown;
+      if (!isObject(p)) return `${what} ${i} is not an object`;
+      const type = p.type;
+      const shape = typeof type === "string" && Object.prototype.hasOwnProperty.call(shapes, type) ? shapes[type] : undefined;
+      if (!shape) return `${what} ${i} has an unknown type${typeof type === "string" ? ` "${type.slice(0, 40)}"` : ""}`;
+      const problem = shapeProblem(p, shape);
+      if (problem) return `${what} ${i} (${type}) ${problem}`;
+    }
+    return null;
+  };
+
+const paints = typedList(PAINT_SHAPES, "paint", PAINT_LIMITS.maxPaints);
+const effects = typedList(EFFECT_SHAPES, "effect", PAINT_LIMITS.maxEffects);
 const constraintType = oneOf(CONSTRAINT_TYPES);
 const constraints: Rule = (v) => {
   if (!v || typeof v !== "object" || Array.isArray(v)) return "must be { horizontal, vertical }";
@@ -134,6 +237,9 @@ const RULES: { [K in keyof Node]-?: Rule } = {
   innerRadius: optional(fraction),
   strokeCap: optional(oneOf(STROKE_CAPS)),
   strokeJoin: optional(oneOf(STROKE_JOINS)),
+  effects: optional(effects),
+  blendMode: optional(blendMode),
+  strokeAlign: optional(oneOf(STROKE_ALIGNS)),
 };
 
 /** Every node field name, required and optional. */
@@ -171,6 +277,21 @@ export function validateFile(file: IlligmaFile): string[] {
   if (typeof m?.app !== "string") problems.push('The manifest\'s "app" must be text.');
   if (!Array.isArray(m?.pages) || m.pages.length === 0) problems.push("The file must have at least one page.");
   if (!Array.isArray(file?.nodes)) return [...problems, "The file has no node list."];
+  const images = file.images as unknown;
+  if (images !== undefined) {
+    if (!(images instanceof Map)) problems.push("The file's images must be a map from image hash to bytes.");
+    else {
+      for (const [hash, bytes] of images as Map<unknown, unknown>) {
+        const shown = typeof hash === "string" ? hash.slice(0, 64) : "?";
+        if (typeof hash !== "string" || !IMAGE_HASH_PATTERN.test(hash)) problems.push(`Image ${JSON.stringify(shown)} has no valid hash.`);
+        else {
+          const p = imageProblem(bytes);
+          if (p) problems.push(`Image ${shown.slice(0, 12)}… ${p}.`);
+        }
+        if (problems.length >= MAX_PROBLEMS) break;
+      }
+    }
+  }
 
   const byId = new Map<string, Node>();
   file.nodes.forEach((n, i) => {

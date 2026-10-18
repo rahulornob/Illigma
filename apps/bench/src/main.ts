@@ -3,7 +3,7 @@ import wasmUrl from "canvaskit-wasm/bin/canvaskit.wasm?url";
 // Inter (SIL OFL 1.1) from @fontsource/inter; see apps/bench/NOTICE. Bundled, never fetched from the network.
 import interUrl from "@fontsource/inter/files/inter-latin-400-normal.woff2?url";
 import { GpuCanvas, PageRenderer, type Camera } from "@illigma/renderer";
-import { buildScene } from "./scene";
+import { ALL_FX, buildScene, type SceneEffect } from "./scene";
 
 export interface BenchResult {
   layers: number;
@@ -34,6 +34,8 @@ const BUDGET_MS = 1000 / 60;
 const RUN_MS = 6000;
 const WARMUP_FRAMES = 30;
 const EDIT = new URLSearchParams(location.search).get("edit") === "1";
+/** `?plain=1`: the scene without gradients and shadows, as measured before paints and effects existed. */
+const PLAIN = new URLSearchParams(location.search).get("plain") === "1";
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
 
 async function main() {
@@ -49,7 +51,9 @@ async function main() {
   const dbg = gl?.getExtension("WEBGL_debug_renderer_info");
   const gpu = gl && dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : "unknown GPU";
 
-  const { doc, page, layers } = buildScene();
+  const fxParam = new URLSearchParams(location.search).get("fx");
+  const only = fxParam ? (new Set(fxParam.split(",")) as ReadonlySet<SceneEffect>) : ALL_FX;
+  const { doc, page, layers } = buildScene(100, 99, { effects: !PLAIN, only });
   // Edit mode recolours the first rectangle of the middle screen each frame.
   const screens = doc.children(page);
   const editTarget = doc.children(screens[Math.floor(screens.length / 2)]?.id ?? "").find((n) => n.type === "RECTANGLE")?.id;

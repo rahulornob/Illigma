@@ -4,8 +4,8 @@
  * Access API (Chromium).
  */
 
-import { isSafePageId, type FileTree } from "@illigma/format";
-import { assertFileId, listFiles, openDir, opfsRoot, readText, writeText } from "./fs.js";
+import { isBinaryPackagePath, isSafePageId, parseImagePath, type FileData, type FileTree } from "@illigma/format";
+import { assertFileId, listFiles, openDir, opfsRoot, readBytes, readText, writeText } from "./fs.js";
 import { atLocation, nextGeneration, type FileLocation, type LocationState } from "./location-queue.js";
 
 export interface ReadOptions {
@@ -165,6 +165,31 @@ async function tryRead(dir: FileSystemDirectoryHandle, path: string): Promise<st
   }
 }
 
+/** A package file's contents: bytes for images (and their staged copies), text for everything else. */
+function readData(handle: FileSystemFileHandle, path: string): Promise<FileData> {
+  return isBinaryPackagePath(path) ? readBytes(handle) : readText(handle);
+}
+
+/** `tryRead` for package files, which may be binary. */
+async function tryReadData(dir: FileSystemDirectoryHandle, path: string): Promise<FileData | undefined> {
+  try {
+    return await readData(await fileAt(dir, path, false), path);
+  } catch (err) {
+    if (isMissing(err)) return undefined;
+    throw err;
+  }
+}
+
+/** Size of the file at `path`, or undefined if there is none. */
+async function trySize(dir: FileSystemDirectoryHandle, path: string): Promise<number | undefined> {
+  try {
+    return (await (await fileAt(dir, path, false)).getFile()).size;
+  } catch (err) {
+    if (isMissing(err)) return undefined;
+    throw err;
+  }
+}
+
 async function removeAt(dir: FileSystemDirectoryHandle, path: string): Promise<void> {
   const { dirs, name } = splitPath(path);
   try {
@@ -177,7 +202,7 @@ async function removeAt(dir: FileSystemDirectoryHandle, path: string): Promise<v
 interface Commit {
   /** Final paths. Each has a staged copy at path + TEMP_SUFFIX until the commit is finished. */
   files: string[];
-  /** Page files the new save no longer has. */
+  /** Page and image files the new save no longer has. */
   remove: string[];
 }
 
@@ -215,16 +240,16 @@ async function snapshot(dir: FileSystemDirectoryHandle): Promise<Snapshot> {
     if (name.endsWith(TEMP_SUFFIX)) untidy = true;
     return isSkipped(name);
   })) {
-    tree.set(path, await readText(handle));
+    tree.set(path, await readData(handle, path));
   }
   let rev = await tryRead(dir, REV_FILE);
   const commit = await readCommit(dir);
   if (commit) untidy = true;
   if (commit && commit !== "invalid") {
     for (const path of commit.files) {
-      const staged = await tryRead(dir, path + TEMP_SUFFIX);
+      const staged = await tryReadData(dir, path + TEMP_SUFFIX);
       if (staged === undefined) continue; // already promoted
-      if (path === REV_FILE) rev = staged;
+      if (path === REV_FILE) rev = typeof staged === "string" ? staged : undefined;
       else tree.set(path, staged);
     }
     for (const path of commit.remove) tree.delete(path);
@@ -264,7 +289,7 @@ async function repair(dir: FileSystemDirectoryHandle): Promise<void> {
   const commit = await readCommit(dir);
   if (commit && commit !== "invalid") {
     for (const path of commit.files) {
-      const staged = await tryRead(dir, path + TEMP_SUFFIX);
+      const staged = await tryReadData(dir, path + TEMP_SUFFIX);
       if (staged !== undefined) await writeText(await fileAt(dir, path, true), staged);
     }
     for (const path of commit.remove) await removeAt(dir, path);
@@ -304,11 +329,14 @@ interface WriteCheck {
  * 2. Mark: COMMIT_FILE is written (atomically, on close) listing every file
  *    to promote and every stale page to remove. From here on the save
  *    counts: readers see the staged copies even before they are promoted.
- * 3. Promote: each file is rewritten from its text (atomically per file).
+ * 3. Promote: each file is rewritten from its contents (atomically per file).
  *    Copying rather than FileSystemHandle.move() keeps every staged copy
  *    until the marker is gone, so a repair can always redo this step; move()
  *    onto an existing file also differs between Chromium versions.
- * 4. Remove stale pages, then the marker, then the staged copies.
+ * 4. Remove stale pages and images, then the marker, then the staged copies.
+ *
+ * Images already on disk under the same name (their hash) and size are not
+ * written again: autosaves only write the images that are new.
  */
 async function writeTree(dir: FileSystemDirectoryHandle, tree: FileTree, saveId: string, check: WriteCheck): Promise<string> {
   for (const path of tree.keys()) checkTreePath(path);
@@ -317,7 +345,12 @@ async function writeTree(dir: FileSystemDirectoryHandle, tree: FileTree, saveId:
   await repair(dir);
   if (check.expectSaveIds && !check.expectSaveIds.has(parseRev(await tryRead(dir, REV_FILE)))) throw new ChangedOnDiskError(check.label);
   const previousManifest = await tryRead(dir, "manifest.json");
-  const files: [string, string][] = [...tree, [REV_FILE, revText(saveId)]];
+  const files: [string, FileData][] = [[REV_FILE, revText(saveId)]];
+  for (const [path, data] of tree) {
+    // An image's name is the hash of its bytes, so one already on disk at full size needn't be written again.
+    if (parseImagePath(path) && typeof data !== "string" && (await trySize(dir, path)) === data.length) continue;
+    files.push([path, data]);
+  }
   // The manifest goes last, so a reader that ignores the marker (an older Illigma) still never sees a page missing.
   files.sort(([a], [b]) => Number(a === "manifest.json") - Number(b === "manifest.json") || (a < b ? -1 : a > b ? 1 : 0));
 
@@ -334,7 +367,7 @@ async function writeTree(dir: FileSystemDirectoryHandle, tree: FileTree, saveId:
       staged.push(path + TEMP_SUFFIX);
       await writeText(await fileAt(dir, path + TEMP_SUFFIX, true), text);
     }
-    remove = stalePages(previousManifest, tree);
+    remove = [...stalePages(previousManifest, tree), ...(await staleImages(dir, tree))];
     staged.push(COMMIT_FILE); // a torn marker is "invalid" and ignored, but tidy it up too
     await writeText(await fileAt(dir, COMMIT_FILE, true), JSON.stringify({ files: files.map(([p]) => p), remove }));
   } catch (err) {
@@ -373,6 +406,23 @@ function stalePages(previousManifest: string | undefined, tree: FileTree): strin
     if (!tree.has(path) && !out.includes(path)) out.push(path);
   }
   return out;
+}
+
+/** Image files to remove: "images/<sha-256>.<ext>" files (Illigma's own names) the new save no longer has. Other files under images/ are never touched. */
+async function staleImages(dir: FileSystemDirectoryHandle, tree: FileTree): Promise<string[]> {
+  let images: FileSystemDirectoryHandle;
+  try {
+    images = await dir.getDirectoryHandle("images");
+  } catch (err) {
+    if (isMissing(err)) return [];
+    throw err;
+  }
+  const out: string[] = [];
+  for await (const [name, handle] of images.entries()) {
+    const path = `images/${name}`;
+    if (handle.kind === "file" && parseImagePath(path) && !tree.has(path)) out.push(path);
+  }
+  return out.sort();
 }
 
 /** How often a read retries while another tab keeps saving under it. */
