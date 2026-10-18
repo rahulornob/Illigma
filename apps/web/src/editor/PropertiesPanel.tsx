@@ -6,7 +6,7 @@ import { fmt, NumberField } from "../ui/NumberField";
 import { AutoLayoutCard } from "./AutoLayoutCard";
 import { ConstraintsCard } from "./ConstraintsCard";
 import { effectiveSizing, hasConstraints, isAutoLayoutNode, setSizing, sizingOptions, type Axis } from "./layout-model";
-import { setBoxField, setLayoutProps, type BoxField } from "./layout-props";
+import { setBoxFields, setLayoutProps, type BoxField } from "./layout-props";
 
 const FIELDS: { key: BoxField; letter: string; label: string; min?: number }[] = [
   { key: "x", letter: "X", label: "X position" },
@@ -118,8 +118,9 @@ export function PropertiesPanel({
                       values={values}
                       min={f.min}
                       readOnly={readOnly}
+                      read={() => ids.map((id) => doc.get(id)?.[f.key] ?? 0)}
                       onChange={(next) =>
-                        setBoxField(
+                        setBoxFields(
                           doc,
                           ids,
                           f.key,

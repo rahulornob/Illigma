@@ -370,15 +370,18 @@ export function addAutoLayout(doc: Document, selection: readonly NodeId[]): Node
 export function removeAutoLayout(doc: Document, ids: readonly NodeId[]): void {
   const frames = ids.filter((id) => isAutoLayoutNode(doc.get(id)));
   if (!frames.length) return;
-  // A plain frame can't hug: it keeps the size auto layout gave it.
+  // A plain frame can't hug, and its children can't fill: each keeps the size auto layout gave it (as in Figma).
   const fixed = (n: ReadonlyNode, axis: Axis) => (storedSizing(n, axis) === "HUG" ? "FIXED" : axis === "width" ? n.layoutSizingHorizontal : n.layoutSizingVertical);
-  setLayoutProps(
-    doc,
-    frames,
-    (id) => {
-      const n = doc.get(id) as ReadonlyNode;
-      return { layoutMode: undefined, layoutWrap: undefined, layoutSizingHorizontal: fixed(n, "width"), layoutSizingVertical: fixed(n, "height") };
-    },
-    "Remove auto layout",
-  );
+  const patches = new Map<NodeId, LayoutPatch>();
+  for (const id of frames) {
+    const n = doc.get(id) as ReadonlyNode;
+    patches.set(id, { layoutMode: undefined, layoutWrap: undefined, layoutSizingHorizontal: fixed(n, "width"), layoutSizingVertical: fixed(n, "height") });
+    for (const k of doc.children(id)) {
+      const p: LayoutPatch = {};
+      if (k.layoutSizingHorizontal === "FILL") p.layoutSizingHorizontal = "FIXED";
+      if (k.layoutSizingVertical === "FILL") p.layoutSizingVertical = "FIXED";
+      if (Object.keys(p).length && !patches.has(k.id)) patches.set(k.id, p);
+    }
+  }
+  setLayoutProps(doc, [...patches.keys()], (id) => patches.get(id) ?? {}, "Remove auto layout");
 }

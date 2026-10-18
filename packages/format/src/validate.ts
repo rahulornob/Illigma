@@ -16,12 +16,16 @@ import {
   LAYOUT_POSITIONINGS,
   LAYOUT_SIZINGS,
   LAYOUT_WRAPS,
+  MAX_POINT_COUNT,
   NODE_ID_PATTERN,
   NODE_TYPES,
   PRIMARY_AXIS_ALIGNS,
+  STROKE_CAPS,
+  STROKE_JOINS,
   type IlligmaFile,
   type Node,
 } from "./schema.js";
+import { vectorNetworkProblem } from "./vector.js";
 
 const MAX_PROBLEMS = 50;
 const isId = (v: unknown): v is string => typeof v === "string" && NODE_ID_PATTERN.test(v);
@@ -75,6 +79,10 @@ const constraints: Rule = (v) => {
   return p && `horizontal and vertical ${p}`;
 };
 
+const pointCount: Rule = (v) =>
+  typeof v === "number" && Number.isInteger(v) && v >= 3 && v <= MAX_POINT_COUNT ? null : `must be a whole number from 3 to ${MAX_POINT_COUNT.toLocaleString("en-US")}`;
+const fraction: Rule = (v) => (unit(v) ? null : "must be a number from 0 to 1");
+
 /** One rule per node field. Typed against `Node`, so a new field can't be forgotten here. */
 const RULES: { [K in keyof Node]-?: Rule } = {
   id: (v) => (isId(v) ? null : v === undefined || v === "" ? "is missing: the node has no id" : 'must be 1–64 letters, digits, "_" or "-"'),
@@ -121,6 +129,11 @@ const RULES: { [K in keyof Node]-?: Rule } = {
   maxWidth: optional(notNegative),
   minHeight: optional(notNegative),
   maxHeight: optional(notNegative),
+  vectorNetwork: optional(vectorNetworkProblem),
+  pointCount: optional(pointCount),
+  innerRadius: optional(fraction),
+  strokeCap: optional(oneOf(STROKE_CAPS)),
+  strokeJoin: optional(oneOf(STROKE_JOINS)),
 };
 
 /** Every node field name, required and optional. */

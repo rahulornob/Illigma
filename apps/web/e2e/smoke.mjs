@@ -29,7 +29,7 @@ await runE2E("smoke", {}, async ({ browser, url: URL_, log, check, outDir, error
   await canvasReady(page);
   check(/#\/file\/\w+/.test(page.url()), `the URL should name the file, got ${page.url()}`);
   const before = await layerRowsHere().count();
-  check(before === 3, `the sample file should have 3 layers, found ${before}`);
+  check(before === 7, `the sample file should have 7 layers (Desktop, Hero, Avatar, and a card with three), found ${before}`);
   await page.screenshot({ path: `${outDir}/editor-new.png` });
 
   log("draw a rectangle");

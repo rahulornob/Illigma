@@ -1014,6 +1014,19 @@ ul {
   border: 1px solid var(--accent-default);
   background: color-mix(in srgb, var(--accent-default) 8%, transparent);
 }
+/* Where a reordered auto layout child lands: a 2 px line in the gap (interactions.md §2, "Drop onto a frame"). */
+.insert-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: none;
+  height: 2px;
+  margin-top: -1px;
+  transform-origin: 0 1px;
+  border-radius: 1px;
+  background: var(--accent-default);
+  pointer-events: none;
+}
 .draft-box[data-shape="ellipse"] {
   border-radius: 50%;
 }

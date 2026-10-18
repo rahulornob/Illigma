@@ -1,5 +1,7 @@
 import type { Document, Operation, ReadonlyNode, Transaction } from "@illigma/core";
 import type { NodeId } from "@illigma/format";
+import { isInFlow, padding, rotatedBounds } from "@illigma/layout";
+import { flowParent, inFlow, resizeLayer } from "./layout";
 import {
   fromSpace,
   parentPlacement,
@@ -131,7 +133,9 @@ export function snapDelta(box: Rect, dx: number, dy: number): Point {
  * layer resizes in its own (possibly turned) space; several scale together
  * inside their shared box, and flip past the opposite edge.
  */
-export function resizeBy(tx: Transaction, starts: readonly Start[], handle: Handle, dx: number, dy: number, mods: ResizeModifiers): void {
+export function resizeBy(tx: Transaction, doc: Document, starts: readonly Start[], handle: Handle, dx: number, dy: number, mods: ResizeModifiers & { constraints?: boolean }): void {
+  // Through layout: children follow their constraints (not with ⌘/Ctrl held), Hug or Fill becomes Fixed, auto layout reflows.
+  const set = (id: NodeId, box: Rect) => resizeLayer(tx, doc, id, box, { constraints: mods.constraints !== false });
   const only = starts.length === 1 ? starts[0] : undefined;
   if (only && worldRotation(only) !== 0) {
     // Turned layer: resize in its own space, then put its top-left back in the parent's.
@@ -139,10 +143,7 @@ export function resizeBy(tx: Transaction, starts: readonly Start[], handle: Hand
     const box = { x: 0, y: 0, width: only.width, height: only.height };
     const r = scaleRect(box, resizeScale(box, handle, d.x, d.y, mods));
     const o = rotate(r.x, r.y, only.rotation);
-    tx.set(only.id, "x", tidy(only.x + o.x));
-    tx.set(only.id, "y", tidy(only.y + o.y));
-    tx.set(only.id, "width", r.width);
-    tx.set(only.id, "height", r.height);
+    set(only.id, { x: tidy(only.x + o.x), y: tidy(only.y + o.y), width: r.width, height: r.height });
     return;
   }
   const box = startBounds(starts);
@@ -153,10 +154,7 @@ export function resizeBy(tx: Transaction, starts: readonly Start[], handle: Hand
     if (rot === 0) {
       const r = scaleRect(s.bounds, t);
       const p = toSpace(s.parent, r.x, r.y);
-      tx.set(s.id, "x", tidy(p.x));
-      tx.set(s.id, "y", tidy(p.y));
-      tx.set(s.id, "width", r.width);
-      tx.set(s.id, "height", r.height);
+      set(s.id, { x: tidy(p.x), y: tidy(p.y), width: r.width, height: r.height });
       continue;
     }
     // A turned layer in a group: scale its size along its own axes and keep its centre in step.
@@ -168,10 +166,7 @@ export function resizeBy(tx: Transaction, starts: readonly Start[], handle: Hand
     const c = scalePoint(t, s.bounds.x + s.bounds.width / 2, s.bounds.y + s.bounds.height / 2);
     const half = rotate(w / 2, h / 2, rot);
     const p = toSpace(s.parent, c.x - half.x, c.y - half.y);
-    tx.set(s.id, "x", tidy(p.x));
-    tx.set(s.id, "y", tidy(p.y));
-    tx.set(s.id, "width", w);
-    tx.set(s.id, "height", h);
+    set(s.id, { x: tidy(p.x), y: tidy(p.y), width: w, height: h });
   }
 }
 
@@ -228,6 +223,131 @@ export function layerRange(rows: readonly NodeId[], anchor: NodeId | null, targe
   const b = rows.indexOf(target);
   if (a < 0 || b < 0) return [target];
   return rows.slice(Math.min(a, b), Math.max(a, b) + 1);
+}
+
+// ---- auto layout: reordering instead of moving ----
+
+/** The layers a drag or a nudge moves freely: layers in an auto layout flow get their position from their parent. */
+export function freeLayers(doc: Document, ids: readonly NodeId[]): NodeId[] {
+  return ids.filter((id) => !inFlow(doc, id));
+}
+
+/** The auto layout frame every one of `ids` flows in, or null (none, or not all in the same one). */
+export function sharedFlowParent(doc: Document, ids: readonly NodeId[]): NodeId | null {
+  let shared: NodeId | null = null;
+  for (const id of ids) {
+    const p = flowParent(doc, id);
+    if (!p || (shared !== null && p.id !== shared)) return null;
+    shared = p.id;
+  }
+  return shared;
+}
+
+/** A layer's upright box in its parent's space (rotation included). */
+function slotBox(n: ReadonlyNode): Rect {
+  const b = rotatedBounds(n.width, n.height, n.rotation || 0);
+  return { x: n.x + b.x, y: n.y + b.y, width: b.width, height: b.height };
+}
+
+/** Where a reorder lands: before `before` (null: after the last layer in the flow), and the insertion line to show, on the page. */
+export interface ReorderSlot {
+  before: NodeId | null;
+  /** A line on the page: `width` long along its own x axis, turned with the frame. */
+  line: SelectionFrame;
+}
+
+/**
+ * The slot among the other layers in `parentId`'s flow for a pointer at
+ * (`wx`, `wy`) on the page: before the first layer whose centre is past the
+ * pointer along the flow (Figma's insertion by pointer position). In a
+ * wrapping frame, the layer nearest the pointer decides.
+ */
+export function reorderSlot(doc: Document, parentId: NodeId, ids: readonly NodeId[], wx: number, wy: number): ReorderSlot | null {
+  const parent = doc.get(parentId);
+  if (!parent) return null;
+  const vertical = parent.layoutMode === "VERTICAL";
+  const moving = new Set(ids);
+  const rest = doc.children(parentId).filter((n) => isInFlow(n) && !moving.has(n.id));
+  const space = placementOf(doc, parentId);
+  const p = toSpace(space, wx, wy);
+  const boxes = rest.map(slotBox);
+  const start = (b: Rect) => (vertical ? b.y : b.x);
+  const end = (b: Rect) => (vertical ? b.y + b.height : b.x + b.width);
+  const centre = (b: Rect) => (start(b) + end(b)) / 2;
+  const along = vertical ? p.y : p.x;
+  let i: number;
+  if (parent.layoutWrap === "WRAP" && boxes.length) {
+    let best = 0;
+    let bestD = Infinity;
+    boxes.forEach((b, k) => {
+      const d = Math.hypot(b.x + b.width / 2 - p.x, b.y + b.height / 2 - p.y);
+      if (d < bestD) [best, bestD] = [k, d];
+    });
+    i = along < centre(boxes[best] as Rect) ? best : best + 1;
+  } else {
+    i = boxes.findIndex((b) => along < centre(b));
+    if (i < 0) i = boxes.length;
+  }
+  // The line: in the gap before slot i, across the frame's content box.
+  const pad = padding(parent);
+  const [padStart, padEnd] = vertical ? [pad.top, pad.bottom] : [pad.left, pad.right];
+  const prev = boxes[i - 1];
+  const next = boxes[i];
+  const at = prev && next ? (end(prev) + start(next)) / 2 : next ? start(next) - padStart / 2 : prev ? end(prev) + padEnd / 2 : padStart;
+  const crossFrom = vertical ? pad.left : pad.top;
+  const length = Math.max(1, (vertical ? parent.width - pad.left - pad.right : parent.height - pad.top - pad.bottom));
+  const local = vertical ? { x: crossFrom, y: at } : { x: at, y: crossFrom };
+  const origin = fromSpace(space, local.x, local.y);
+  const line = { x: origin.x, y: origin.y, width: length, height: 0, rotation: space.rotation + (vertical ? 0 : 90) };
+  return { before: next ? (rest[i] as ReadonlyNode).id : null, line };
+}
+
+/**
+ * Move `ids` (children of `parentId`, kept in their current order) to just
+ * before `before`, or after the last layer in the flow when it is null.
+ * Layers outside the flow (absolute, hidden) keep their places. Records
+ * nothing when the order would not change. Layout then reflows the frame.
+ */
+export function reorderLayers(tx: Transaction, doc: Document, parentId: NodeId, ids: readonly NodeId[], before: NodeId | null): boolean {
+  const order = doc.children(parentId);
+  const moving = order.filter((n) => ids.includes(n.id)).map((n) => n.id);
+  if (!moving.length) return false;
+  const rest = order.filter((n) => !ids.includes(n.id));
+  let at: number;
+  if (before !== null) {
+    at = rest.findIndex((n) => n.id === before);
+    if (at < 0) return false;
+  } else {
+    // After the last layer in the flow: absolute and hidden layers after it stay on top.
+    let last = -1;
+    rest.forEach((n, k) => isInFlow(n) && (last = k));
+    at = last + 1;
+  }
+  const target = [...rest.slice(0, at).map((n) => n.id), ...moving, ...rest.slice(at).map((n) => n.id)];
+  if (target.every((id, k) => id === order[k]?.id)) return false;
+  moving.forEach((id, k) => {
+    const ref = rest[at];
+    const position = k > 0 ? { after: moving[k - 1] as NodeId } : ref ? { before: ref.id } : at > 0 ? { after: (rest[at - 1] as ReadonlyNode).id } : ("first" as const);
+    tx.move(id, parentId, position);
+  });
+  return true;
+}
+
+/**
+ * Arrow keys on layers in an auto layout flow reorder them by one step
+ * (interactions.md): ←/↑ earlier, →/↓ later, along the frame's direction.
+ * Returns null for an arrow across the flow (nothing to do), else whether the order changed.
+ */
+export function reorderStep(tx: Transaction, doc: Document, parentId: NodeId, ids: readonly NodeId[], key: string): boolean | null {
+  const vertical = doc.get(parentId)?.layoutMode === "VERTICAL";
+  const dir = vertical ? { ArrowUp: -1, ArrowDown: 1 }[key] : { ArrowLeft: -1, ArrowRight: 1 }[key];
+  if (!dir) return null;
+  const flow = doc.children(parentId).filter(isInFlow);
+  const rest = flow.filter((n) => !ids.includes(n.id));
+  const first = flow.findIndex((n) => ids.includes(n.id));
+  if (first < 0) return false;
+  const slot = Math.min(rest.length, Math.max(0, flow.slice(0, first).length + dir));
+  return reorderLayers(tx, doc, parentId, ids, rest[slot]?.id ?? null);
 }
 
 /** The page point of a selection-frame corner given in the frame's own space. */

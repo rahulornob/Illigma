@@ -56,7 +56,7 @@ describe("moving", () => {
 describe("resizing", () => {
   it("resizes a single layer from a handle, in parent space", () => {
     const { doc, a } = setup();
-    doc.transact("Resize", (tx) => resizeBy(tx, snapshot(doc, [a]), "nw", -10, -10, {}));
+    doc.transact("Resize", (tx) => resizeBy(tx, doc, snapshot(doc, [a]), "nw", -10, -10, {}));
     expect(xywh(doc, a)).toEqual({ x: 0, y: 10, width: 110, height: 60 });
   });
 
@@ -65,7 +65,7 @@ describe("resizing", () => {
     const starts = snapshot(doc, [a, b]);
     expect(startBounds(starts)).toEqual({ x: 110, y: 50, width: 590, height: 100 });
     // Right edge dragged to the left edge's mirror: the box flips and keeps its width.
-    doc.transact("Resize", (tx) => resizeBy(tx, starts, "e", -1180, 0, {}));
+    doc.transact("Resize", (tx) => resizeBy(tx, doc, starts, "e", -1180, 0, {}));
     expect(worldBounds(doc, b)).toEqual({ x: -480, y: 50, width: 100, height: 100 });
     expect(worldBounds(doc, a)).toEqual({ x: 10, y: 70, width: 100, height: 50 });
     expect(xywh(doc, a)).toEqual({ x: -90, y: 20, width: 100, height: 50 });
@@ -75,10 +75,10 @@ describe("resizing", () => {
     const { doc, b } = setup();
     doc.transact("Turn", (tx) => tx.set(b, "rotation", 90));
     // Its own right edge now points down the page: dragging down widens it.
-    doc.transact("Resize", (tx) => resizeBy(tx, snapshot(doc, [b]), "e", 0, 40, {}));
+    doc.transact("Resize", (tx) => resizeBy(tx, doc, snapshot(doc, [b]), "e", 0, 40, {}));
     expect(xywh(doc, b)).toEqual({ x: 600, y: 50, width: 140, height: 100 });
     // Its own left edge points up: dragging it up widens it too, and moves its top-left.
-    doc.transact("Resize", (tx) => resizeBy(tx, snapshot(doc, [b]), "w", 0, -20, {}));
+    doc.transact("Resize", (tx) => resizeBy(tx, doc, snapshot(doc, [b]), "w", 0, -20, {}));
     expect(doc.get(b)?.width).toBe(160);
     expect(doc.get(b)?.x).toBeCloseTo(600);
     expect(doc.get(b)?.y).toBeCloseTo(30);
@@ -148,9 +148,9 @@ describe("resizing a line", () => {
     const { doc, page } = setup();
     const line = doc.transact("Line", (tx) => tx.create("LINE", page, { x: 0, y: 400, width: 100, height: 0 }));
     const starts = snapshot(doc, [line]);
-    doc.transact("Resize", (tx) => resizeBy(tx, starts, "e", 50, 0, {}));
+    doc.transact("Resize", (tx) => resizeBy(tx, doc, starts, "e", 50, 0, {}));
     expect(xywh(doc, line)).toEqual({ x: 0, y: 400, width: 150, height: 0 });
-    doc.transact("Resize", (tx) => resizeBy(tx, starts, "se", 50, 20, {}));
+    doc.transact("Resize", (tx) => resizeBy(tx, doc, starts, "se", 50, 20, {}));
     expect(xywh(doc, line)).toEqual({ x: 0, y: 400, width: 150, height: 0 });
   });
 });

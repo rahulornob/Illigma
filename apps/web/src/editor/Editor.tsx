@@ -17,7 +17,7 @@ import {
 import { onBeforeUpdate } from "../sw-update";
 import { Icon, LogoMark } from "../ui/Icon";
 import { Canvas, type CanvasHandle, type HitTest, type Tool } from "./Canvas";
-import { createdLayers, deleteLayers, duplicateLayers, movable, moveBy, snapshot } from "./edit";
+import { createdLayers, deleteLayers, duplicateLayers, freeLayers, movable, moveBy, reorderStep, sharedFlowParent, snapshot } from "./edit";
 import { nudgeFor } from "./geometry";
 import { autoLayoutSelection, removeAutoLayout } from "./layout-model";
 import { useDocVersion, useSaveDisplay } from "./hooks";
@@ -452,7 +452,14 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
         // Arrow keys nudge 1 px, Shift+arrow 10 px. Each press is one undo step; locked layers stay put.
         e.preventDefault();
         if (noEdits) return;
-        const starts = snapshot(doc, movable(doc, sel));
+        // Layers in an auto layout flow reorder one step instead (an arrow across the flow does nothing).
+        const flow = sharedFlowParent(doc, movable(doc, sel));
+        if (flow) {
+          const ids = movable(doc, sel);
+          doc.transact(ids.length === 1 ? "Reorder layer" : `Reorder ${ids.length} layers`, (tx) => reorderStep(tx, doc, flow, ids, e.key));
+          return;
+        }
+        const starts = snapshot(doc, freeLayers(doc, movable(doc, sel)));
         if (starts.length) doc.transact(starts.length === 1 ? "Move layer" : `Move ${starts.length} layers`, (tx) => moveBy(tx, starts, nudge.x, nudge.y));
         return;
       }

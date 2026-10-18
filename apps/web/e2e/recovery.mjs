@@ -39,7 +39,7 @@ await runE2E("recovery", {}, async ({ browser, url, log, check, outDir, errors }
     watchErrors(page, errors);
     await page.addInitScript(failWritesInit);
     const fileId = await createFile(page, url);
-    check((await layerRows(page).count()) === 3, `${label}: the sample file should have 3 layers`);
+    check((await layerRows(page).count()) === 7, `${label}: the sample file should have 7 layers`);
     await page.evaluate(() => (globalThis.__e2eFail = "package"));
 
     await page.keyboard.press("r");
@@ -79,7 +79,7 @@ await runE2E("recovery", {}, async ({ browser, url, log, check, outDir, errors }
     await banner(page).waitFor({ timeout: T(5_000) });
     const text = await banner(page).innerText();
     check(/\d+ edits? from your last session/.test(text), `the banner should count the recovered edits, got "${text}"`);
-    check((await layerRows(page).count()) === 3, "before choosing, the file should show its saved state (3 layers)");
+    check((await layerRows(page).count()) === 7, "before choosing, the file should show its saved state (7 layers)");
     check((await heroX(page)) === 120, "before choosing, Hero should still be at its saved X (120)");
     await page.screenshot({ path: `${outDir}/recovery-banner.png` });
 
@@ -87,7 +87,7 @@ await runE2E("recovery", {}, async ({ browser, url, log, check, outDir, errors }
     await banner(page).getByRole("button", { name: "Keep" }).click();
     await banner(page).waitFor({ state: "detached", timeout: T(5_000) });
     await canvasReady(page);
-    check((await layerRows(page).count()) === 4, `Keep should restore the drawn rectangle (4 layers), found ${await layerRows(page).count()}`);
+    check((await layerRows(page).count()) === 8, `Keep should restore the drawn rectangle (8 layers), found ${await layerRows(page).count()}`);
     check((await rectangles(page).count()) === 1, "Keep must not apply the rectangle twice");
     check((await heroX(page)) === 77, "Keep should restore Hero's X (77)");
     await waitSaved(page);
@@ -99,7 +99,7 @@ await runE2E("recovery", {}, async ({ browser, url, log, check, outDir, errors }
     await canvasReady(page);
     await page.waitForTimeout(300);
     check((await banner(page).count()) === 0, "the recovery banner should not come back after Keep");
-    check((await layerRows(page).count()) === 4, "the kept rectangle should be saved in the file");
+    check((await layerRows(page).count()) === 8, "the kept rectangle should be saved in the file");
     check((await rectangles(page).count()) === 1, "the file should hold exactly one drawn rectangle");
     check((await heroX(page)) === 77, "Hero's recovered X should be saved in the file");
     await context.close();
@@ -115,7 +115,7 @@ await runE2E("recovery", {}, async ({ browser, url, log, check, outDir, errors }
     log("discard: Discard drops the edits");
     await banner(page).getByRole("button", { name: "Discard" }).click();
     await banner(page).waitFor({ state: "detached", timeout: T(5_000) });
-    check((await layerRows(page).count()) === 3, "Discard should leave the saved 3 layers");
+    check((await layerRows(page).count()) === 7, "Discard should leave the saved 7 layers");
     check((await rectangles(page).count()) === 0, "Discard should not apply the drawn rectangle");
     check((await heroX(page)) === 120, "Discard should leave Hero at its saved X (120)");
     check((await readJournal(page, fileId)).trim() === "", "after Discard the recovery journal should be empty");
@@ -125,7 +125,7 @@ await runE2E("recovery", {}, async ({ browser, url, log, check, outDir, errors }
     await canvasReady(page);
     await page.waitForTimeout(300);
     check((await banner(page).count()) === 0, "the recovery banner should not come back after Discard (reload)");
-    check((await layerRows(page).count()) === 3, "the discarded rectangle should stay gone after reload");
+    check((await layerRows(page).count()) === 7, "the discarded rectangle should stay gone after reload");
     await page.getByRole("button", { name: "Back to files" }).click();
     await page.locator(".file-card").first().click();
     await canvasReady(page);
@@ -159,7 +159,7 @@ await runE2E("recovery", {}, async ({ browser, url, log, check, outDir, errors }
     await canvasReady(page);
     await page.waitForTimeout(300);
     const offered = (await banner(page).count()) === 1;
-    const inFile = (await layerRows(page).count()) === 4;
+    const inFile = (await layerRows(page).count()) === 8;
     check(offered || inFile, "recovered edits must survive editing (and an autosave) before choosing Keep/Discard");
     check(offered, "the recovery banner should come back after a reload while the person hasn't chosen");
     await context.close();
@@ -198,7 +198,7 @@ await runE2E("recovery", {}, async ({ browser, url, log, check, outDir, errors }
       await banner(next).waitFor({ state: "detached", timeout: T(5_000) });
       await canvasReady(next);
       check((await ellipses().count()) === 1, "Keep must not duplicate an edit that is already in the file");
-      check((await layerRows(next).count()) === 4, "Keep must not change the layer count when the edits are already saved");
+      check((await layerRows(next).count()) === 8, "Keep must not change the layer count when the edits are already saved");
     }
     await context.close();
   }

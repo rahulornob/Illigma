@@ -24,6 +24,7 @@ export function NumberField({
   onText,
   suffix,
   onChange,
+  read,
 }: {
   id: string;
   label: string;
@@ -37,6 +38,8 @@ export function NumberField({
   suffix?: ReactNode;
   /** The new value for each target, from its current one. */
   onChange(next: (current: number) => number): void;
+  /** The values after a change, read back from the document (layout may keep or adjust them). Default: the typed value. */
+  read?: (() => readonly number[]) | undefined;
 }) {
   const value = values[0] ?? 0;
   const mixed = values.some((v) => v !== value);
@@ -62,7 +65,10 @@ export function NumberField({
       return;
     }
     apply(() => parsed);
-    setDraft(fmt(clamp(parsed)));
+    // What the document holds now: layout may have kept a value (X of a layer in auto layout).
+    const now = read?.();
+    if (!now) setDraft(fmt(clamp(parsed)));
+    else setDraft(now.every((v) => v === now[0]) ? fmt(now[0] ?? 0) : "");
   };
 
   return (

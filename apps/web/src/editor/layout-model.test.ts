@@ -18,11 +18,12 @@ import {
   sizingOptions,
   type Cell,
 } from "./layout-model";
-import { setBoxField, setLayoutProps } from "./layout-props";
+import { DOCUMENT_OPTIONS } from "./layout";
+import { setBoxFields as setBoxField, setLayoutProps } from "./layout-props";
 
 /** The sample file: a 1440 × 900 frame with two layers in it, and one layer on the page. */
 function setup() {
-  const doc = new Document("Test");
+  const doc = new Document("Test", DOCUMENT_OPTIONS);
   const page = doc.transact("Add page", (tx) => tx.addPage("Page 1"));
   const ids = doc.transact("Add", (tx) => {
     const frame = tx.create("FRAME", page, { name: "Desktop", x: 0, y: 0, width: 1440, height: 900 });
@@ -192,7 +193,11 @@ describe("Shift+A", () => {
   it("removing auto layout keeps the frame's size and the children where they are", () => {
     const { doc, frame, avatar } = setup();
     autoLayoutSelection(doc, [frame]);
+    // A Fill child (it fills exactly the 96 px left over, so nothing moves) becomes Fixed, as in Figma.
+    setSizing(doc, [avatar], "width", "FILL");
+    expect(doc.get(avatar)?.layoutSizingHorizontal).toBe("FILL");
     removeAutoLayout(doc, [frame]);
+    expect(doc.get(avatar)?.layoutSizingHorizontal).toBe("FIXED");
     expect(doc.get(frame)?.layoutMode).toBeUndefined();
     expect(effectiveSizing(doc, doc.get(frame)!, "height")).toBe("FIXED");
     expect(box(doc, frame)).toEqual({ x: 0, y: 0, width: 1440, height: 780 });
