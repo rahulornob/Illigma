@@ -118,11 +118,17 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 const round = (v: number) => Math.round(v * 1e6) / 1e6;
 const plural = (n: number, one: string, many: string) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
+/** Random bytes, fetched in blocks: one getRandomValues call per id is slow for 100,000s of layers. */
+const pool = { bytes: new Uint8Array(12 * 1024), used: 12 * 1024 };
+
 function randomId(): string {
-  const bytes = new Uint8Array(12);
-  globalThis.crypto.getRandomValues(bytes);
+  if (pool.used + 12 > pool.bytes.length) {
+    globalThis.crypto.getRandomValues(pool.bytes);
+    pool.used = 0;
+  }
   let out = "";
-  for (const b of bytes) out += ID_ALPHABET[b % ID_ALPHABET.length];
+  for (let i = 0; i < 12; i++) out += ID_ALPHABET[(pool.bytes[pool.used + i] as number) % ID_ALPHABET.length];
+  pool.used += 12;
   return out;
 }
 
@@ -239,7 +245,8 @@ export function importPrototypeJson(json: unknown, opts: PrototypeImportOptions 
   if (typeof json === "string") {
     if (json.length > L.maxJsonChars) throw new FormatError(`This file is too large to import (more than ${L.maxJsonChars / 1024 / 1024} MB).`);
     try {
-      json = JSON.parse(json);
+      // Editors on Windows often save UTF-8 with a byte order mark; JSON.parse refuses it.
+      json = JSON.parse(json.charCodeAt(0) === 0xfeff ? json.slice(1) : json);
     } catch {
       throw new FormatError("This file is not valid JSON, so it can't be an Illigma prototype document.");
     }
@@ -368,11 +375,13 @@ function importPage(page: Obj, pageId: string, out: Node[], notes: Notes, freshI
     if (parent && parent !== f) f.parent = parent;
     else notes.add("missingFrame");
   }
-  // Break parent loops: walk up from each frame; one that reaches itself moves to the page.
+  // Break parent loops: walk up from each frame; one whose walk comes back to itself is in a
+  // loop and moves to the page, which breaks that loop for its other members. A frame that
+  // only hangs below a loop keeps its parent.
   for (const f of frames) {
-    const seen = new Set<FrameIn>([f]);
-    for (let cur = f.parent; cur; cur = cur.parent) {
-      if (seen.has(cur)) {
+    const seen = new Set<FrameIn>();
+    for (let cur = f.parent; cur && !seen.has(cur); cur = cur.parent) {
+      if (cur === f) {
         f.parent = null;
         notes.add("frameLoop");
         break;
@@ -403,12 +412,13 @@ function importPage(page: Obj, pageId: string, out: Node[], notes: Notes, freshI
 
   // Which frame holds each layer: `frameId`, or (older documents) the topmost frame containing its centre, as the prototype did.
   const holder = new Map<LayerIn, FrameIn | null>();
+  const topFirst = [...frames].reverse();
   for (const layer of layers) {
     const frameId = get(layer.raw, "frameId");
     if (frameId === undefined) {
       const cx = layer.x + layer.w / 2;
       const cy = layer.y + layer.h / 2;
-      holder.set(layer, [...frames].reverse().find((f) => cx >= f.x && cy >= f.y && cx <= f.x + f.width && cy <= f.y + f.height) ?? null);
+      holder.set(layer, topFirst.find((f) => cx >= f.x && cy >= f.y && cx <= f.x + f.width && cy <= f.y + f.height) ?? null);
     } else if (frameId === null) {
       holder.set(layer, null);
     } else {
@@ -446,11 +456,14 @@ function importPage(page: Obj, pageId: string, out: Node[], notes: Notes, freshI
   }
   // Note groups whose members weren't next to each other in the z-order (the stacking may change slightly).
   for (const [container, list] of children) {
-    const zs = list.flatMap((e) => (e.kind === "layer" ? [e.layer.z] : e.kind === "group" ? e.members.map((m) => m.z) : []));
+    // Every layer has its own z, so a group is interleaved when more layers lie strictly between
+    // its bottom and top member than its own middle members. Sorted once: O(n log n) per container.
+    const zs = list.flatMap((e) => (e.kind === "layer" ? [e.layer.z] : e.kind === "group" ? e.members.map((m) => m.z) : [])).sort((a, b) => a - b);
     for (const e of list) {
-      if (e.kind !== "group") continue;
-      const lo = e.members[0]?.z ?? 0;
-      if (zs.some((z) => z > lo && z < e.z && !e.members.some((m) => m.z === z))) notes.add("groupsMoved");
+      if (e.kind !== "group" || e.members.length < 2) continue;
+      const lo = (e.members[0] as LayerIn).z;
+      const between = firstAbove(zs, e.z - 1) - firstAbove(zs, lo);
+      if (between > e.members.length - 2) notes.add("groupsMoved");
     }
     const ez = (e: Entry) => (e.kind === "frame" ? -1 : e.kind === "group" ? e.z : e.layer.z);
     list.sort((a, b) => (a.kind === "frame" ? (b.kind === "frame" ? 0 : -1) : b.kind === "frame" ? 1 : ez(a) - ez(b)));
@@ -504,6 +517,18 @@ function importPage(page: Obj, pageId: string, out: Node[], notes: Notes, freshI
     });
   };
   emit(null, pageId, 0, 0);
+}
+
+/** Index of the first value in sorted `xs` greater than `v`. */
+function firstAbove(xs: readonly number[], v: number): number {
+  let lo = 0;
+  let hi = xs.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if ((xs[mid] as number) > v) hi = mid;
+    else lo = mid + 1;
+  }
+  return lo;
 }
 
 function coord(v: number, notes: Notes): number {
@@ -655,9 +680,10 @@ function layerNode(l: LayerIn, id: string, parentId: string, index: string, orig
 
 function textFields(raw: Obj, l: LayerIn, notes: Notes): Partial<Node> {
   const L = PROTOTYPE_IMPORT_LIMITS;
+  // Missing values take their defaults quietly; only values that are present but broken count as reset.
   let characters = get(raw, "text");
   if (typeof characters !== "string") {
-    notes.add("reset");
+    if (characters !== undefined) notes.add("reset");
     characters = "";
   }
   let chars = characters as string;
@@ -665,7 +691,7 @@ function textFields(raw: Obj, l: LayerIn, notes: Notes): Partial<Node> {
     notes.add("trimmed");
     chars = chars.slice(0, L.maxTextChars);
   }
-  let fontSize = numberOr(get(raw, "fontSize") ?? NaN, 16, (n) => n > 0, notes);
+  let fontSize = numberOr(get(raw, "fontSize"), 16, (n) => n > 0, notes);
   // The prototype drew text scaled by w/baseW and h/baseH. Format v0 has no
   // text scaling, so scale the font size by the height instead.
   const baseW = get(raw, "baseW");
@@ -679,7 +705,7 @@ function textFields(raw: Obj, l: LayerIn, notes: Notes): Partial<Node> {
   fontSize = round(Math.min(fontSize, MAX_SIZE));
   const family = get(raw, "fontFamily");
   const fontFamily = typeof family === "string" && family.trim() && family.length <= 100 ? family.trim() : "Inter";
-  if (fontFamily !== family) notes.add("reset");
+  if (family !== undefined && fontFamily !== family) notes.add("reset");
   // fontWeight 400–700 (any 100–900 is accepted) → Figma-style style name.
   // Never Number() an arbitrary JSON value: {"valueOf": 1} would throw.
   const rawWeight = get(raw, "fontWeight") ?? 400;

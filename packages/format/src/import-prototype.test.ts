@@ -388,6 +388,73 @@ describe("importPrototypeJson: auto layout and constraints", () => {
   });
 });
 
+describe("importPrototypeJson: QC round 5", () => {
+  it("breaks a loop of frames once, and keeps frames that only hang below it", () => {
+    // F sits in A; A and B sit in each other.
+    const doc = {
+      version: 1,
+      artboards: [
+        { id: "F", name: "F", parentId: "A", x: 0, y: 0, width: 10, height: 10 },
+        { id: "A", name: "A", parentId: "B", x: 0, y: 0, width: 50, height: 50 },
+        { id: "B", name: "B", parentId: "A", x: 0, y: 0, width: 100, height: 100 },
+      ],
+      objects: [],
+    };
+    const { file, warnings } = importPrototypeJson(doc, stable());
+    expect(validateFile(file)).toEqual([]);
+    const page = file.nodes.find((n) => n.type === "PAGE") as Node;
+    expect(byName(file, "A").parentId).toBe(page.id);
+    expect(byName(file, "B").parentId).toBe(byName(file, "A").id);
+    expect(byName(file, "F").parentId).toBe(byName(file, "A").id);
+    expect(warnings).toEqual(["Broke 1 loop of frames nested inside each other by moving one frame onto the page."]);
+  });
+
+  it("uses defaults quietly for missing text settings; only broken ones are reported", () => {
+    const text = (extra: Record<string, unknown>) => ({ version: 1, objects: [{ type: "text", x: 0, y: 0, w: 10, h: 10, ...extra }] });
+    const quiet = importPrototypeJson(text({}), stable());
+    expect(quiet.warnings).toEqual([]);
+    expect(byName(quiet.file, "Text")).toMatchObject({ characters: "", fontSize: 16, fontFamily: "Inter", fontStyle: "Regular" });
+    expect(importPrototypeJson(text({ text: 5, fontSize: "big", fontFamily: 7 }), stable()).warnings).toEqual([
+      "Reset 3 broken values (such as a non-number opacity) to their defaults.",
+    ]);
+  });
+
+  it("reads JSON text that starts with a UTF-8 byte order mark", () => {
+    expect(importPrototypeJson("\ufeff" + JSON.stringify(SAVED), stable())).toEqual(importPrototypeJson(SAVED, stable()));
+  });
+
+  /** Time budgets are tuned on a laptop. Shared CI runners are slower, so CI gets 3x (or PERF_BUDGET_SCALE). */
+  const budget = (ms: number) => ms * (Number(process.env.PERF_BUDGET_SCALE) || (process.env.CI ? 3 : 1));
+  const rect = (i: number, extra: Record<string, unknown> = {}) => ({ id: `o${i}`, type: "rect", x: (i % 100) * 10, y: Math.floor(i / 100) * 10, w: 5, h: 5, ...extra });
+
+  it("imports large groups and many frames within budget", () => {
+    // 10 pages of 10,000 layers each: once plain, once as one group per page with its members
+    // spread between other layers. The group check was quadratic in the group's size (about
+    // 4x the plain import before QC round 5); comparing with the plain import in the same run
+    // keeps the test steady on a busy machine.
+    const pages = (grouped: boolean) =>
+      Array.from({ length: 10 }, () => ({ objects: Array.from({ length: 10_000 }, (_, i) => rect(i, { frameId: null, ...(grouped && i % 10 ? { groupId: "g" } : {}) })) }));
+    const time = (doc: unknown) => {
+      const t = performance.now();
+      const result = importPrototypeJson(doc, stable());
+      return { ms: performance.now() - t, result };
+    };
+    time({ version: 1, pages: pages(false).slice(0, 2) }); // warm up
+    const plain = time({ version: 1, pages: pages(false) });
+    const grouped = time({ version: 1, pages: pages(true) });
+    expect(grouped.result.file.nodes.length).toBe(10 * (10_000 + 2));
+    expect(grouped.result.warnings).toContain("10 groups had other layers between their members; each group now sits where its top layer was, so stacking may differ slightly.");
+    expect(grouped.ms, `groups took ${Math.round(grouped.ms)} ms, plain ${Math.round(plain.ms)} ms`).toBeLessThan(2 * plain.ms + 100);
+
+    // An older document (no frameId): each layer goes to the topmost frame holding its centre.
+    // 5 pages × 1,000 frames × 10,000 layers: about 400 ms on a laptop (530 ms before).
+    const frames = Array.from({ length: 1_000 }, (_, i) => ({ id: `f${i}`, x: 2_000 + i * 20, y: 0, width: 10, height: 10 }));
+    const older = time({ version: 1, pages: Array.from({ length: 5 }, () => ({ artboards: frames, objects: Array.from({ length: 10_000 }, (_, i) => rect(i)) })) });
+    expect(plain.ms, `plain import took ${Math.round(plain.ms)} ms`).toBeLessThan(budget(3000));
+    expect(older.ms, `frames took ${Math.round(older.ms)} ms`).toBeLessThan(budget(3000));
+  });
+});
+
 describe("parsePrototypeColor", () => {
   it("reads hex and rgb forms, and none", () => {
     expect(parsePrototypeColor("#FFFFFF")).toEqual({ r: 1, g: 1, b: 1, a: 1 });
