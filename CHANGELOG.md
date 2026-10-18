@@ -22,8 +22,15 @@ After v1.0: a Tauri desktop app in v1.x, then optional multiplayer (CRDT over LA
 ## [Unreleased]
 
 ### Next
-- Phase 5: run the usability test in [docs/design/usability-test.md](docs/design/usability-test.md) with 5 working designers (floating vs docked panels), then fix what it finds.
-- Phase 6: approval gate. Once the visuals are approved, start Phase 0 (foundations): TypeScript monorepo, CanvasKit spike, operation-based document model, file format v0 and an offline web app.
+- Phase 0 (foundations): renderer spike (CanvasKit, 10,000 layers at 60 fps), offline web app, design tokens in code. See [docs/dev/phase-0.md](docs/dev/phase-0.md).
+- Run the real usability sessions (Phase 5) in parallel; fix what they find.
+
+### Added (2026-10-18, development Phase 0)
+- Design approved: all 15 areas signed off.
+- Monorepo: npm workspaces, strict TypeScript, Vitest; MPL-2.0 and MIT licence files.
+- `@illigma/format` (MIT): `.illigma` format v0 (package form, canonical output, fractional-index ordering, validation, migrations, JSON Schema).
+- `@illigma/core` (MPL-2.0): document model with operations, transactions, rollback on error, undo/redo (100+ steps) and change events.
+- 24 unit tests, including a lossless save-and-reopen round trip and a 10,000-layer file.
 
 ### Added (2026-10-13, design phase 4)
 - High-fidelity editor states in Figma, sections 11–20, each audited by the design QA agent with fixes applied: Home and files, empty canvas and frame presets, save and file states, components and variants, Variables manager and modes, Prototype mode with presentation and phone preview over the local network, Inspect mode, Export and token export, version history and compare, Preferences (including the local MCP server), and core states (text and font picker, multi-select, Light mode, comments, import report, stroke and constraints, styles, view menu, docked panels).

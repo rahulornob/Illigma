@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rahulornob/Illigma/packages/format/schema/node.v0.schema.json",
+  "title": "Illigma node, format version 0",
+  "type": "object",
+  "required": [
+    "id", "type", "parentId", "index", "name", "visible", "locked",
+    "x", "y", "width", "height", "rotation", "opacity",
+    "fills", "strokes", "strokeWeight", "cornerRadius"
+  ],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "type": {
+      "enum": ["PAGE", "SECTION", "FRAME", "GROUP", "RECTANGLE", "ELLIPSE", "LINE", "POLYGON", "STAR", "VECTOR", "TEXT", "COMPONENT", "COMPONENT_SET", "INSTANCE"]
+    },
+    "parentId": { "type": ["string", "null"], "description": "null only for pages" },
+    "index": { "type": "string", "pattern": "^[0-9A-Za-z]*[1-9A-Za-z]$", "description": "Fractional index among siblings; compare as plain strings" },
+    "name": { "type": "string" },
+    "visible": { "type": "boolean" },
+    "locked": { "type": "boolean" },
+    "x": { "type": "number" },
+    "y": { "type": "number" },
+    "width": { "type": "number" },
+    "height": { "type": "number" },
+    "rotation": { "type": "number", "description": "Degrees, clockwise" },
+    "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+    "fills": { "type": "array", "items": { "$ref": "#/$defs/paint" } },
+    "strokes": { "type": "array", "items": { "$ref": "#/$defs/paint" } },
+    "strokeWeight": { "type": "number" },
+    "cornerRadius": { "type": "number" },
+    "characters": { "type": "string" },
+    "fontFamily": { "type": "string" },
+    "fontStyle": { "type": "string" },
+    "fontSize": { "type": "number" },
+    "lineHeight": { "type": "number" }
+  },
+  "$defs": {
+    "unit": { "type": "number", "minimum": 0, "maximum": 1 },
+    "paint": {
+      "type": "object",
+      "required": ["type", "color", "visible"],
+      "properties": {
+        "type": { "const": "SOLID" },
+        "visible": { "type": "boolean" },
+        "color": {
+          "type": "object",
+          "required": ["r", "g", "b", "a"],
+          "properties": {
+            "r": { "$ref": "#/$defs/unit" },
+            "g": { "$ref": "#/$defs/unit" },
+            "b": { "$ref": "#/$defs/unit" },
+            "a": { "$ref": "#/$defs/unit" }
+          }
+        }
+      }
+    }
+  }
+}

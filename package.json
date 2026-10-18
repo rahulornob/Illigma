@@ -1,0 +1,26 @@
+{
+  "name": "illigma",
+  "private": true,
+  "description": "Open-source, local-first interface design tool with Figma's editing model.",
+  "license": "MPL-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "4.1.12",
+    "vite": "7.3.7",
+    "@types/node": "22.19.1"
+  }
+}

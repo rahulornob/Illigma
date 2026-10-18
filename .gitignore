@@ -2,3 +2,6 @@
 node_modules/
 dist/
 figma-rea-investigation/
+
+# build output
+*.tsbuildinfo
