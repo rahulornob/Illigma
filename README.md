@@ -30,6 +30,17 @@ npm test        # unit tests
 | [`@illigma/renderer`](packages/renderer) | MPL-2.0 | GPU canvas renderer (CanvasKit / Skia WASM on WebGL2) |
 | [`apps/bench`](apps/bench) | MPL-2.0 | Renderer benchmark: 10,000 layers, `npm run bench` |
 
+### Importing an old prototype document
+
+Documents saved by the retired browser prototype ("Save editable document", a JSON file) convert to `.illigma`:
+
+```sh
+npm run import:prototype -- old-document.json "My design.illigma"          # package form (a folder)
+npm run import:prototype -- old-document.json "My design.illigma" --zip    # single-file form
+```
+
+It runs offline and never overwrites an existing file unless you add `--force`. Pages, frames, shapes, text, groups, colours, opacity, rotation, visibility and locks carry over. Anything the file format can't hold yet (path outlines, effects, swatches, auto layout and constraint settings, letter spacing) is listed when the import finishes. From code: `importPrototypeJson(json)` in `@illigma/format`.
+
 ## Licence
 
 MPL-2.0 for the editor ([LICENSE](LICENSE)); MIT for the file format and SDK ([packages/format/LICENSE](packages/format/LICENSE)); AGPL-3.0 for the optional sync relay (later).

@@ -26,7 +26,7 @@ Started 18 October 2026, after the design sign-off. Planned to run through Decem
 | 0.5 Offline web app | Done 2026-10-18 (`apps/web`, `@illigma/host-web`): installable PWA with service worker and update prompt, OPFS store, folder access in Chromium, atomic multi-file saves, autosave, recovery journal with Keep/Discard, editing lock per tab, changed-on-disk detection, per-file write queue shared across sessions. 256 unit tests; 7 Playwright suites, 241 checks, no known bugs (`npm run test:e2e`) |
 | 0.6 Design tokens in code | Done 2026-10-18 (`@illigma/tokens`: `tokens.json` in DTCG form, `tokens.css` with Dark and Light, `npm run build:tokens -w @illigma/tokens`) |
 | 0.7 Layout engine | In progress: auto layout and constraints in `@illigma/layout`, ported from the prototype's tested logic (PRD section 9) |
-| 0.8 Prototype import | In progress: read the old prototype's JSON into `.illigma` (PRD section 9) |
+| 0.8 Prototype import | Done 2026-10-18 (`importPrototypeJson` in `@illigma/format`): `npm run import:prototype -- old.json "My file.illigma"` (add `--zip` for the single-file form); anything format v0 can't hold yet (path outlines, effects, swatches, auto layout, constraints, letter spacing) is listed as a warning |
 
 ## How the renderer spike works
 

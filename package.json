@@ -19,6 +19,7 @@
     "test:watch": "vitest",
     "bench": "npm run dev -w @illigma/bench",
     "bench:measure": "node scripts/bench.mjs",
+    "import:prototype": "tsc -b packages/format && node packages/format/bin/import-prototype.mjs",
     "test:e2e": "node apps/web/e2e/run-all.mjs"
   },
   "devDependencies": {
