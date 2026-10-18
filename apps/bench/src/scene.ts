@@ -9,6 +9,7 @@ const PALETTE: Color[] = [
   { r: 0.93, g: 0.93, b: 0.95, a: 1 },
   { r: 0.12, g: 0.12, b: 0.13, a: 1 },
 ];
+const WORDS = ["Label", "Title", "Price", "Menu", "Done", "Save", "Share", "Inbox", "Log out", "Sign in"];
 const solid = (color: Color) => ({ type: "SOLID" as const, visible: true, color });
 
 /** A page of `frames` phone screens, each holding `perFrame` shapes. 100 × 99 + 100 = 10,000 layers. */
@@ -38,8 +39,10 @@ export function buildScene(frames = 100, perFrame = 99): { doc: Document; page: 
           width: 36,
           height: kind === "TEXT" ? 18 : 64,
           cornerRadius: kind === "RECTANGLE" ? 8 : 0,
-          fills: [solid(PALETTE[(i + f) % PALETTE.length] as Color)],
+          fills: [solid((kind === "TEXT" ? PALETTE[5] : PALETTE[(i + f) % PALETTE.length]) as Color)], // dark text reads on the white screens
           strokes: i % 11 === 0 ? [solid(PALETTE[5] as Color)] : [],
+          // Two-word labels wrap onto a second line at this width.
+          ...(kind === "TEXT" ? { characters: WORDS[(i + f) % WORDS.length] as string, fontFamily: "Inter", fontStyle: "Regular", fontSize: 12, lineHeight: 16 } : {}),
         });
       }
     }

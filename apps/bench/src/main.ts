@@ -1,6 +1,8 @@
 import CanvasKitInit from "canvaskit-wasm";
 import wasmUrl from "canvaskit-wasm/bin/canvaskit.wasm?url";
-import { makeSurface, PageRenderer, type Camera } from "@illigma/renderer";
+// Inter (SIL OFL 1.1) from @fontsource/inter; see apps/bench/NOTICE. Bundled, never fetched from the network.
+import interUrl from "@fontsource/inter/files/inter-latin-400-normal.woff2?url";
+import { GpuCanvas, PageRenderer, type Camera } from "@illigma/renderer";
 import { buildScene } from "./scene";
 
 export interface BenchResult {
@@ -11,6 +13,13 @@ export interface BenchResult {
   withinBudget: number;
   drawMsAvg: number;
   recordMs: number;
+  /** `?edit=1`: one rectangle changes colour every frame while panning. */
+  edit: boolean;
+  /** Re-recording per measured frame (edit mode), average and slowest. */
+  editRecordMsAvg: number;
+  editRecordMsMax: number;
+  /** Record + draw per measured frame, slowest 5%. */
+  cpuP95Ms: number;
   passed: boolean;
   renderer: string;
 }
@@ -24,19 +33,32 @@ declare global {
 const BUDGET_MS = 1000 / 60;
 const RUN_MS = 6000;
 const WARMUP_FRAMES = 30;
+const EDIT = new URLSearchParams(location.search).get("edit") === "1";
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
 
 async function main() {
-  const ck = await CanvasKitInit({ locateFile: () => wasmUrl });
+  const [ck, inter] = await Promise.all([
+    CanvasKitInit({ locateFile: () => wasmUrl }),
+    fetch(interUrl).then((r) => r.arrayBuffer()),
+  ]);
+  const options = { fonts: [{ family: "Inter", data: inter }] };
   const canvasEl = $("c") as HTMLCanvasElement;
   const dpr = window.devicePixelRatio || 1;
-  let surface = makeSurface(ck, canvasEl, dpr);
+  const gpuCanvas = GpuCanvas.create(ck, canvasEl, dpr);
   const gl = (canvasEl.getContext("webgl2") as WebGL2RenderingContext | null);
   const dbg = gl?.getExtension("WEBGL_debug_renderer_info");
   const gpu = gl && dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : "unknown GPU";
 
   const { doc, page, layers } = buildScene();
-  let renderer = new PageRenderer(ck, surface, doc, page, dpr);
+  // Edit mode recolours the first rectangle of the middle screen each frame.
+  const screens = doc.children(page);
+  const editTarget = doc.children(screens[Math.floor(screens.length / 2)]?.id ?? "").find((n) => n.type === "RECTANGLE")?.id;
+  const recolour = (i: number) => {
+    if (!editTarget) return;
+    const h = (i * 0.02) % 1;
+    doc.transact("Recolour", (tx) => tx.set(editTarget, "fills", [{ type: "SOLID", visible: true, color: { r: h, g: 1 - h, b: 0.5, a: 1 } }]));
+  };
+  const renderer = new PageRenderer(ck, gpuCanvas.surface, doc, page, dpr, options);
   $("layers").textContent = layers.toLocaleString();
 
   const b = renderer.bounds() ?? { x: 0, y: 0, width: 1000, height: 1000 };
@@ -67,6 +89,8 @@ async function main() {
       $("verdict").textContent = "Measuring…";
       const deltas: number[] = [];
       const draws: number[] = [];
+      const records: number[] = [];
+      const cpu: number[] = [];
       let start = 0;
       let last = 0;
       let n = 0;
@@ -76,10 +100,15 @@ async function main() {
         if (n > WARMUP_FRAMES && last) deltas.push(now - last);
         last = now;
         n++;
+        if (EDIT) recolour(n);
         const stats = renderer.render(cameraAt(t));
-        if (n > WARMUP_FRAMES) draws.push(stats.drawMs);
+        if (n > WARMUP_FRAMES) {
+          draws.push(stats.drawMs);
+          records.push(stats.recordMs);
+          cpu.push(stats.recordMs + stats.drawMs);
+        }
         if (t < RUN_MS) requestAnimationFrame(frame);
-        else resolve(summarize(deltas, draws));
+        else resolve(summarize(deltas, draws, records, cpu));
       };
       requestAnimationFrame(frame);
     }).then((r) => {
@@ -89,9 +118,13 @@ async function main() {
       return r;
     });
 
-  const summarize = (deltas: number[], draws: number[]): BenchResult => {
-    const sorted = [...deltas].sort((a, z) => a - z);
-    const pct = (p: number) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] ?? 0;
+  const summarize = (deltas: number[], draws: number[], records: number[], cpu: number[]): BenchResult => {
+    const pctOf = (xs: number[], p: number) => {
+      const sorted = [...xs].sort((a, z) => a - z);
+      return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] ?? 0;
+    };
+    const pct = (p: number) => pctOf(deltas, p);
+    const avg = (xs: number[]) => xs.reduce((a, z) => a + z, 0) / Math.max(1, xs.length);
     // A frame counts as within budget if it arrived on the next 60 Hz vsync (allowing 10% jitter).
     const within = deltas.filter((d) => d <= BUDGET_MS * 1.1).length / Math.max(1, deltas.length);
     const result: BenchResult = {
@@ -100,8 +133,12 @@ async function main() {
       medianFps: 1000 / Math.max(0.001, pct(0.5)),
       p95Ms: pct(0.95),
       withinBudget: within,
-      drawMsAvg: draws.reduce((a, z) => a + z, 0) / Math.max(1, draws.length),
+      drawMsAvg: avg(draws),
       recordMs,
+      edit: EDIT,
+      editRecordMsAvg: EDIT ? avg(records) : 0,
+      editRecordMsMax: EDIT ? Math.max(0, ...records) : 0,
+      cpuP95Ms: pctOf(cpu, 0.95),
       passed: within >= 0.95,
       renderer: gpu,
     };
@@ -115,6 +152,7 @@ async function main() {
     $("p95").textContent = `${r.p95Ms.toFixed(1)} ms`;
     $("within").textContent = `${(r.withinBudget * 100).toFixed(0)}%`;
     $("draw").textContent = `${r.drawMsAvg.toFixed(2)} ms`;
+    if (r.edit) $("record").textContent = `${r.editRecordMsAvg.toFixed(2)} ms per edit (max ${r.editRecordMsMax.toFixed(1)})`;
     $("verdict").className = r.passed ? "ok" : "bad";
     $("verdict").textContent = r.passed ? "Gate met: 60 fps with 10,000 layers" : "Below the 60 fps gate";
     $("verdict").title = r.renderer;
@@ -149,10 +187,8 @@ async function main() {
     { passive: false },
   );
   window.addEventListener("resize", () => {
-    renderer.dispose();
-    surface.delete();
-    surface = makeSurface(ck, canvasEl, dpr);
-    renderer = new PageRenderer(ck, surface, doc, page, dpr);
+    // Same GPU context, new surface; the recorded pictures stay valid.
+    renderer.setSurface(gpuCanvas.resize());
     renderer.render(camera);
   });
   $("run").addEventListener("click", () => void run());
