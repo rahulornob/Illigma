@@ -17,7 +17,9 @@
  *   outside strokes are doubled and clipped or masked to their side.
  * - Drop shadows, inner shadows and layer blur are one `<filter>` per layer,
  *   from its pixels (shapes: from their outline as opaque geometry, as the
- *   renderer casts them). Background blur has no SVG equivalent (a warning).
+ *   renderer casts them). A shape's shadows with a spread are SVG shapes
+ *   instead, grown or shrunk from its outline, moved and blurred: a filter
+ *   can only grow pixels with a square. Background blur has no SVG equivalent (a warning).
  *   Opacity, blend mode and filter never share an element with a clip, a
  *   mask or a paint's blend mode: those get a `<g>` of their own. A NORMAL
  *   group whose children blend is `isolation: isolate`.
@@ -32,7 +34,7 @@
 import type { ReadonlyNode } from "@illigma/core";
 import { PATH_CLOSE, PATH_CUBIC, PATH_LINE, PATH_MOVE } from "@illigma/format";
 import { CLIPPING, type TextLine } from "@illigma/renderer";
-import { draws, hasVisibleStroke, IDENTITY, localMatrix, multiply, subtreeBounds, translation, type ExportScene, type ExportSource, type Matrix } from "./scene.js";
+import { draws, hasVisibleStroke, IDENTITY, localMatrix, multiply, subtreeBounds, translation, type ExportScene, type ExportSource, type Matrix, type TextBounds } from "./scene.js";
 import {
   base64,
   blendsInside,
@@ -76,6 +78,8 @@ export interface SvgWriterOptions {
   idAttribute?: boolean;
   /** Line breaks and baselines of a TEXT layer, from the renderer's text engine; null to use the fallback. */
   textLayout?: (n: ReadonlyNode) => TextLine[] | null;
+  /** What TEXT layers draw past their box (see `TextBounds`), for filter areas; without it, text counts as its box. */
+  textBounds?: TextBounds;
   /** Called once per limitation met, in plain language. */
   warn?: (message: string) => void;
 }
@@ -87,6 +91,8 @@ interface Element {
   attrs: Attr[];
   /** Serialized child markup, on the same line (used by `<text>`). */
   inner?: string;
+  /** A stroke (drawn after the fills and inner shadows). */
+  stroke?: boolean;
 }
 
 /** Characters XML 1.0 can't hold at all: control characters and unpaired surrogates. */
@@ -224,11 +230,28 @@ class SvgWriter {
     if (blend) group.push(["style", `mix-blend-mode: ${blend}`]);
     // A NORMAL layer keeps its children's blend modes inside it, as the renderer does.
     else if (n.blendMode === "NORMAL" && kids.length && blendsInside((id) => this.source.children(id), kids)) group.push(["style", "isolation: isolate"]);
-    const filter = this.effects(n, kids.length > 0);
+    const shadows = this.outlineShadows(n, kids.length > 0);
+    const filter = this.effects(n, kids.length > 0, shadows !== null);
     if (filter) group.push(["filter", `url(#${filter})`]);
     common.push(...group);
 
     const own = this.own(n);
+    if (shadows) {
+      // Drop shadows under the layer; inner shadows over its fills, under its strokes and children (as the renderer draws them).
+      this.lines.push(`<g${attrText(common)}>`, ...shadows.drops);
+      let inners = false;
+      for (const e of own) {
+        if (e.stroke && !inners) {
+          this.lines.push(...shadows.inners);
+          inners = true;
+        }
+        this.lines.push(serialize(e));
+      }
+      if (!inners) this.lines.push(...shadows.inners);
+      this.children(n, kids);
+      this.lines.push("</g>");
+      return;
+    }
     if (!kids.length) {
       if (!own.length) return;
       if (own.length === 1) {
@@ -243,6 +266,12 @@ class SvgWriter {
     }
     this.lines.push(`<g${attrText(common)}>`);
     for (const e of own) this.lines.push(serialize(e));
+    this.children(n, kids);
+    this.lines.push("</g>");
+  }
+
+  /** A layer's children, clipped to its box when it clips. */
+  private children(n: ReadonlyNode, kids: readonly ReadonlyNode[]): void {
     if (kids.length && CLIPPING.has(n.type)) {
       const clip = this.generatedId("clip", n);
       const r = outlineOf(n);
@@ -254,7 +283,6 @@ class SvgWriter {
     } else {
       for (const k of kids) this.node(k, localMatrix(k));
     }
-    this.lines.push("</g>");
   }
 
   private paints(n: ReadonlyNode, stroke: boolean): ResolvedPaint[] {
@@ -287,13 +315,13 @@ class SvgWriter {
       case "rect": {
         const shape = rectAttrs(outline.width, outline.height, outline.radius);
         for (const p of fills) out.push({ tag: "rect", attrs: [...shape, ...this.paintAttrs(p, "fill", n)] });
-        for (const p of strokes) out.push({ tag: "rect", attrs: [...shape, ...strokeAttrs(p)] });
+        for (const p of strokes) out.push({ tag: "rect", attrs: [...shape, ...strokeAttrs(p)], stroke: true });
         break;
       }
       case "ellipse": {
         const shape = ellipseAttrs(outline.width, outline.height);
         for (const p of fills) out.push({ tag: "ellipse", attrs: [...shape, ...this.paintAttrs(p, "fill", n)] });
-        for (const p of strokes) out.push({ tag: "ellipse", attrs: [...shape, ...strokeAttrs(p)] });
+        for (const p of strokes) out.push({ tag: "ellipse", attrs: [...shape, ...strokeAttrs(p)], stroke: true });
         break;
       }
       case "paths": {
@@ -306,7 +334,7 @@ class SvgWriter {
         }
         if (outline.stroke.length) {
           const d = svgPathData(outline.stroke);
-          for (const p of strokes) out.push({ tag: "path", attrs: [["d", d], ...strokeAttrs(p)] });
+          for (const p of strokes) out.push({ tag: "path", attrs: [["d", d], ...strokeAttrs(p)], stroke: true });
         }
         break;
       }
@@ -438,18 +466,153 @@ class SvgWriter {
   }
 
   /**
+   * A shape's shadows as SVG shapes, when one of them has a spread: the
+   * outline grown or shrunk by the spread (rectangles, rounded rectangles and
+   * ellipses exactly, as the renderer does; paths by a stroke twice the
+   * spread, mitred), moved and blurred. A filter can only grow pixels with a
+   * square (`feMorphology`), which would turn round shapes square. Drop
+   * shadows are cast from the filled outline and a centred stroke, kept out
+   * from under a see-through layer unless shown behind it; inner shadows are
+   * the blurred outside of the moved, shrunk outline, clipped to the outline.
+   * Null when the filter casts the shadows: no spread, layers that cast from
+   * their pixels (groups, text, frames without a fill), or a one-sided stroke.
+   */
+  private outlineShadows(n: ReadonlyNode, hasKids: boolean): { drops: string[]; inners: string[] } | null {
+    const fx = visibleEffects(n);
+    if (![...fx.drops, ...fx.inners].some((e) => (e.spread ?? 0) !== 0) || !shadowsFromOutline(n, hasKids)) return null;
+    const outline = outlineOf(n);
+    if (outline.kind !== "rect" && outline.kind !== "ellipse" && !(outline.kind === "paths" && outline.fills.length)) return null;
+    const filled = n.fills.some((p) => p.visible);
+    const stroked = hasVisibleStroke(n);
+    const align = strokeAlignOf(n);
+    // Drop shadows come from the filled outline and a centred stroke; a one-sided stroke's ring stays with the filter.
+    const ring = stroked && align === "CENTER";
+    if (fx.drops.length && stroked && !ring && !(align === "INSIDE" && filled)) return null;
+    if (ring && fx.drops.some((e) => (e.spread ?? 0) < 0)) return null;
+    const base = subtreeBounds(this.source, n, IDENTITY, this.options.textBounds) ?? { x: 0, y: 0, width: n.width, height: n.height };
+    const reach = Math.max(0, ...[...fx.drops, ...fx.inners].map((e) => Math.abs(e.offset.x) + Math.abs(e.offset.y) + 1.5 * e.radius + Math.abs(e.spread ?? 0)));
+    const pad = reach + 2;
+    const area = { x: base.x - pad, y: base.y - pad, width: base.width + 2 * pad, height: base.height + 2 * pad };
+    const areaAttrs = `x="${fmt(area.x)}" y="${fmt(area.y)}" width="${fmt(area.width)}" height="${fmt(area.height)}"`;
+    const fullRect = (fill: string) => `<rect ${areaAttrs} fill="${fill}"/>`;
+    const blurred = (radius: number, opacity: number, transform: string | null, body: string[]): string[] => {
+      const attrs: string[] = [];
+      if (transform) attrs.push(` transform="${transform}"`);
+      if (radius > 0) {
+        const id = this.generatedId("shadow_blur", n);
+        this.defs.push(`<filter id="${id}" ${areaAttrs} filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">`, `<feGaussianBlur stdDeviation="${fmt(radius / 2)}"/>`, "</filter>");
+        attrs.push(` filter="url(#${id})"`);
+      }
+      if (opacity < 1) attrs.push(` opacity="${fmt(opacity)}"`);
+      return [`<g${attrs.join("")}>`, ...body, "</g>"];
+    };
+    const move = (e: { offset: { x: number; y: number } }) => (fmt(e.offset.x) !== "0" || fmt(e.offset.y) !== "0" ? `translate(${fmt(e.offset.x)} ${fmt(e.offset.y)})` : null);
+    const strokeRing = (color: string, width: number): string[] => {
+      if (!ring || !(width > 0)) return [];
+      const style = strokeStyle(n).filter(([k]) => k !== "stroke-width");
+      const attrs: Attr[] = [["fill", "none"], ["stroke", color], ["stroke-width", fmt(width)], ...style];
+      if (outline.kind === "rect") return [serialize({ tag: "rect", attrs: [...rectAttrs(outline.width, outline.height, outline.radius), ...attrs] })];
+      if (outline.kind === "ellipse") return [serialize({ tag: "ellipse", attrs: [...ellipseAttrs(outline.width, outline.height), ...attrs] })];
+      return outline.kind === "paths" && outline.stroke.length ? [serialize({ tag: "path", attrs: [["d", svgPathData(outline.stroke)], ...attrs] })] : [];
+    };
+
+    const drops: string[] = [];
+    const castsDrops = filled || ring;
+    if (fx.drops.length && castsDrops) {
+      // Not under the layer where it lets the shadow show through, unless asked.
+      let knockout: string | null = null;
+      if (!opaque(n) && fx.drops.some((e) => !e.showShadowBehindNode)) {
+        knockout = this.generatedId("shadow_knockout", n);
+        this.defs.push(`<mask id="${knockout}" maskUnits="userSpaceOnUse" ${areaAttrs}>`, fullRect("white"), ...(filled ? this.spreadShape(n, outline, 0, "black") : []), ...strokeRing("black", n.strokeWeight), "</mask>");
+      }
+      for (const e of fx.drops) {
+        const s = e.spread ?? 0;
+        const color = hex(e.color);
+        const body = [...(filled ? this.spreadShape(n, outline, s, color, areaAttrs) : []), ...strokeRing(color, n.strokeWeight + 2 * s)];
+        if (!body.length) continue;
+        const shadow = blurred(e.radius, e.color.a, move(e), body);
+        drops.push(...(knockout && !e.showShadowBehindNode ? [`<g mask="url(#${knockout})">`, ...shadow, "</g>"] : shadow));
+      }
+    }
+
+    const inners: string[] = [];
+    if (fx.inners.length) {
+      const clip = this.generatedId("shadow_clip", n);
+      this.defs.push(`<clipPath id="${clip}">`, ...this.spreadShape(n, outline, 0, "black", undefined, true), "</clipPath>");
+      for (const e of fx.inners) {
+        // The hole the shadow is cast around: the outline shrunk by the spread (grown for a negative one), moved.
+        const hole = this.generatedId("shadow_hole", n);
+        const t = move(e);
+        this.defs.push(
+          `<mask id="${hole}" maskUnits="userSpaceOnUse" ${areaAttrs}>`,
+          fullRect("white"),
+          ...(t ? [`<g transform="${t}">`] : []),
+          ...this.spreadShape(n, outline, -(e.spread ?? 0), "black", undefined, false, "white"),
+          ...(t ? ["</g>"] : []),
+          "</mask>",
+        );
+        inners.push(`<g clip-path="url(#${clip})">`, ...blurred(e.radius, e.color.a, null, [`<rect ${areaAttrs} fill="${hex(e.color)}" mask="url(#${hole})"/>`]), "</g>");
+      }
+    }
+    return { drops, inners };
+  }
+
+  /**
+   * The outline grown by `s` (shrunk when negative), filled with `color`:
+   * rectangles keep square corners square and grow round ones, ellipses grow
+   * their radii, as the renderer does; paths grow by a mitred stroke of 2s
+   * and shrink through a mask (`area`) whose stroke cuts 2s off, or, over a
+   * known `background`, by a stroke in it. `clip`: clip-path children.
+   */
+  private spreadShape(n: ReadonlyNode, outline: Outline, s: number, color: string, area?: string, clip = false, background?: string): string[] {
+    const paint: Attr[] = clip ? [] : [["fill", color]];
+    if (outline.kind === "rect" || outline.kind === "ellipse") {
+      const w = outline.width + 2 * s, h = outline.height + 2 * s;
+      if (!(w > 0) || !(h > 0)) return [];
+      if (outline.kind === "ellipse") {
+        const [cx, cy] = [outline.width / 2, outline.height / 2];
+        return [serialize({ tag: "ellipse", attrs: [["cx", fmt(cx)], ["cy", fmt(cy)], ["rx", fmt(w / 2)], ["ry", fmt(h / 2)], ...paint] })];
+      }
+      const r = outline.radius > 0 ? Math.max(0, outline.radius + s) : 0;
+      const at: Attr[] = s ? [["x", fmt(-s)], ["y", fmt(-s)]] : [];
+      return [serialize({ tag: "rect", attrs: [...at, ...rectAttrs(w, h, r), ...paint] })];
+    }
+    if (outline.kind !== "paths") return [];
+    const path = (f: (typeof outline.fills)[number], extra: Attr[]): string => {
+      const attrs: Attr[] = [["d", svgPathData(f.commands)]];
+      if (f.evenOdd) attrs.push([clip ? "clip-rule" : "fill-rule", "evenodd"]);
+      return serialize({ tag: "path", attrs: [...attrs, ...paint, ...extra] });
+    };
+    const edge = (c: string): Attr[] => [["stroke", c], ["stroke-width", fmt(2 * Math.abs(s))], ["stroke-miterlimit", "4"]];
+    if (s === 0 || clip) return outline.fills.map((f) => path(f, []));
+    if (s > 0) return outline.fills.map((f) => path(f, edge(color)));
+    if (background) return outline.fills.map((f) => path(f, edge(background)));
+    const id = this.generatedId("shadow_shrink", n);
+    this.defs.push(`<mask id="${id}" maskUnits="userSpaceOnUse" ${area ?? `x="${fmt(-n.width)}" y="${fmt(-n.height)}" width="${fmt(3 * n.width)}" height="${fmt(3 * n.height)}"`}>`);
+    for (const f of outline.fills) this.defs.push(serialize({ tag: "path", attrs: [["d", svgPathData(f.commands)], ...(f.evenOdd ? ([["fill-rule", "evenodd"]] as Attr[]) : []), ["fill", "white"], ...edge("black")] }));
+    this.defs.push("</mask>");
+    return [`<g mask="url(#${id})">`, ...outline.fills.map((f) => path(f, [])), "</g>"];
+  }
+
+  /**
    * A `<filter>` for the layer's drop shadows, inner shadows and layer blur,
    * from its pixels (as Figma's SVG export does), or null when it has none.
-   * Background blur has no SVG equivalent: reported, left out.
+   * Background blur has no SVG equivalent: reported, left out. With
+   * `outlineShadows`, the shadows are drawn as shapes (see `outlineShadows`)
+   * and the filter only blurs the layer.
    */
-  private effects(n: ReadonlyNode, hasKids: boolean): string | null {
-    const fx = visibleEffects(n);
-    if (fx.backgroundBlur > 0) this.warn("SVG has no background blur, so it was left out.");
-    if (!fx.drops.length && !fx.inners.length && !(fx.layerBlur > 0)) return null;
-    for (const e of [...fx.drops, ...fx.inners]) {
+  private effects(n: ReadonlyNode, hasKids: boolean, outlineShadows = false): string | null {
+    const all = visibleEffects(n);
+    if (all.backgroundBlur > 0) this.warn("SVG has no background blur, so it was left out.");
+    for (const e of [...all.drops, ...all.inners]) {
       if (e.blendMode && e.blendMode !== "NORMAL" && e.blendMode !== "PASS_THROUGH") this.warn("Shadow blend modes aren't written to SVG; those shadows are drawn normally.");
     }
-    const area = subtreeBounds(this.source, n, IDENTITY) ?? { x: 0, y: 0, width: n.width, height: n.height };
+    const fx = outlineShadows ? { ...all, drops: [], inners: [] } : all;
+    if (!fx.drops.length && !fx.inners.length && !(fx.layerBlur > 0)) return null;
+    if ([...fx.drops, ...fx.inners].some((e) => (e.spread ?? 0) !== 0)) {
+      this.warn("SVG filters grow shadows by their spread with square corners, so the spread shadows of groups, text and shapes with one-sided strokes are approximate.");
+    }
+    const area = subtreeBounds(this.source, n, IDENTITY, this.options.textBounds) ?? { x: 0, y: 0, width: n.width, height: n.height };
     const id = this.generatedId("effects", n);
     const f: string[] = [
       `<filter id="${id}" x="${fmt(area.x - 2)}" y="${fmt(area.y - 2)}" width="${fmt(area.width + 4)}" height="${fmt(area.height + 4)}" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">`,
@@ -500,6 +663,13 @@ class SvgWriter {
     this.defs.push(...f);
     return id;
   }
+}
+
+/** True when every visible fill and stroke is an opaque solid colour, so nothing under the layer shows through it (as the renderer decides). */
+function opaque(n: ReadonlyNode): boolean {
+  return [...n.fills, ...n.strokes].every(
+    (p) => !p.visible || (p.type === "SOLID" && p.color.a >= 1 && (p.opacity ?? 1) >= 1 && (!p.blendMode || p.blendMode === "NORMAL" || p.blendMode === "PASS_THROUGH")),
+  );
 }
 
 function rectAttrs(w: number, h: number, r: number): Attr[] {

@@ -34,7 +34,7 @@ import type { ReadonlyNode } from "@illigma/core";
 import { PATH_CLOSE, PATH_CUBIC, PATH_LINE, PATH_MOVE } from "@illigma/format";
 import { CLIPPING } from "@illigma/renderer";
 import { zlibSync } from "fflate";
-import { draws, hasVisibleStroke, IDENTITY, localMatrix, multiply, subtreeBounds, translation, type ExportScene, type ExportSource, type Matrix, type Rect } from "./scene.js";
+import { draws, hasVisibleStroke, IDENTITY, localMatrix, multiply, subtreeBounds, translation, type ExportScene, type ExportSource, type Matrix, type Rect, type TextBounds } from "./scene.js";
 import {
   blendsInside,
   ellipseCommands,
@@ -60,13 +60,15 @@ export interface RasterText {
   height: number;
   /** RGBA, unpremultiplied, row by row from the top. Includes the layer's opacity. */
   rgba: Uint8Array;
-  /** The area the pixels cover, from the layer's top-left, in its own units. */
-  area: { width: number; height: number };
+  /** The area the pixels cover in the layer's own units: from `x`, `y` (default its top-left). */
+  area: { x?: number; y?: number; width: number; height: number };
 }
 
 export interface PdfWriterOptions {
-  /** Draws a TEXT layer's box (its own space) into pixels; null leaves the text out. */
+  /** Draws a TEXT layer (its box, and its lines where they run past it, in its own space) into pixels; null leaves the text out. */
   rasterText?: (n: ReadonlyNode) => RasterText | null;
+  /** What TEXT layers draw past their box (see `TextBounds`), for the areas of groups and effects; without it, text counts as its box. */
+  textBounds?: TextBounds;
   /**
    * Draws a layer and its children (the `area` of its own space) into pixels,
    * at about `scale` pixels per unit, for layers with shadows or blurs; null
@@ -214,7 +216,7 @@ class PageWriter {
       if (blend) out.push(`/${this.state(null, null, blend)} gs`);
       this.content(n, out, here);
     } else if (n.opacity < 1 || blend || isolate) {
-      const bounds = subtreeBounds(this.source, n, IDENTITY);
+      const bounds = subtreeBounds(this.source, n, IDENTITY, this.options.textBounds);
       if (bounds) {
         const body: string[] = [];
         this.content(n, body, IDENTITY); // a form's content starts in the space it is drawn in
@@ -240,7 +242,7 @@ class PageWriter {
    * "failed" when it is drawn as vectors without its effects.
    */
   private rasterized(n: ReadonlyNode, out: string[], blend: string | null): "drawn" | "skipped" | "failed" | "no-engine" {
-    const area = subtreeBounds(this.source, n, IDENTITY);
+    const area = subtreeBounds(this.source, n, IDENTITY, this.options.textBounds);
     if (!area || !(area.width > 0) || !(area.height > 0)) return "failed";
     const units = area.width * area.height;
     // The file's scale, then no more than the layer's share and what is left of the budget.
@@ -476,7 +478,7 @@ class PageWriter {
     return name;
   }
 
-  /** Text as an image of what the renderer draws, over the layer's box. */
+  /** Text as an image of what the renderer draws, over the layer's box and wherever its lines run past it. */
   private text(n: ReadonlyNode, out: string[]): void {
     if (!n.characters || !n.fills.some((f) => f.visible)) return;
     const raster = this.options.rasterText?.(n) ?? null;
@@ -489,7 +491,8 @@ class PageWriter {
     this.warnedText = true;
     const name = this.imageXObject(raster.width, raster.height, raster.rgba);
     // The image's unit square, flipped so its first row is at the top of the box.
-    out.push("q", `${fmt(raster.area.width)} 0 0 ${fmt(-raster.area.height)} 0 ${fmt(raster.area.height)} cm`, `/${name} Do`, "Q");
+    const { x = 0, y = 0, width, height } = raster.area;
+    out.push("q", `${fmt(width)} 0 0 ${fmt(-height)} ${fmt(x)} ${fmt(y + height)} cm`, `/${name} Do`, "Q");
   }
 }
 
@@ -531,12 +534,12 @@ function rasterEffects(fx: ReturnType<typeof visibleEffects>): boolean {
  * area (in units) of what they draw, outermost layers only, as the writer
  * will draw them.
  */
-function rasterScale(source: ExportSource, scenes: readonly ExportScene[]): number {
+function rasterScale(source: ExportSource, scenes: readonly ExportScene[], text?: TextBounds): number {
   let units = 0;
   const visit = (n: ReadonlyNode) => {
     if (!draws(n)) return;
     if (rasterEffects(visibleEffects(n))) {
-      const area = subtreeBounds(source, n, IDENTITY);
+      const area = subtreeBounds(source, n, IDENTITY, text);
       if (area) units += area.width * area.height;
       return;
     }
@@ -598,7 +601,7 @@ export function writePdf(source: ExportSource, scenes: readonly ExportScene[], o
   const info = file.reserve();
   const kids: number[] = [];
   // One pixel budget for the whole file's shadows and blurs.
-  const budget: RasterBudget = { remaining: MAX_RASTER_PIXELS, scale: options.rasterNode ? rasterScale(source, scenes) : RASTER_SCALE };
+  const budget: RasterBudget = { remaining: MAX_RASTER_PIXELS, scale: options.rasterNode ? rasterScale(source, scenes, options.textBounds) : RASTER_SCALE };
   for (const scene of scenes) {
     const page = file.reserve();
     const contents = file.reserve();

@@ -7,7 +7,7 @@
 
 import type { ReadonlyNode } from "@illigma/core";
 import type { NodeId } from "@illigma/format";
-import { CLIPPING, flatten, shapeGeometry } from "@illigma/renderer";
+import { CLIPPING, flatten, shapeGeometry, type TextLine } from "@illigma/renderer";
 import { ExportError, type ExportSettings } from "./settings.js";
 
 /** The part of `Document` export reads. A `Document` is one. */
@@ -137,17 +137,63 @@ export function boxBounds(n: ReadonlyNode, m: Matrix): Rect {
 }
 
 /**
+ * What a TEXT layer draws, in its own space: its box, and past it wherever
+ * its lines run out of it (text that doesn't fit its box still draws, as on
+ * the canvas). Null for just the box. See `textLinesBounds`.
+ */
+export type TextBounds = (n: ReadonlyNode) => Rect | null;
+
+/** Inter's ascender and descender, in ems (the default font), for lines whose metrics the text engine doesn't give. */
+const ASCENT = 0.96875;
+const DESCENT = 0.2421875;
+
+/**
+ * The area a TEXT layer's laid-out `lines` cover, with its box, in its own
+ * space: from above the first line's glyphs (when a tight line height lifts
+ * them over the top) to below the last line's, and the box's width (lines
+ * wrap at it; a line counts past it when the engine gives its width). A
+ * line reaches down to its line box's bottom, and at least the font's descent.
+ */
+export function textLinesBounds(n: ReadonlyNode, lines: readonly TextLine[] | null): Rect {
+  const box = { x: 0, y: 0, width: Math.max(0, n.width), height: Math.max(0, n.height) };
+  type Measured = TextLine & { ascent?: number; descent?: number; width?: number };
+  const all = (lines ?? []) as readonly Measured[];
+  const inked = all.filter((l) => l.text.trim().length > 0);
+  const first = inked[0];
+  const last = inked[inked.length - 1];
+  const top = all[0];
+  if (!first || !last || !top) return box;
+  const size = n.fontSize ?? 12;
+  // The distance between baselines; a single line's is its line height.
+  const pitch = all.length > 1 ? ((all[all.length - 1] as Measured).baseline - top.baseline) / (all.length - 1) : (n.lineHeight ?? (ASCENT + DESCENT) * size);
+  const descent = typeof last.descent === "number" ? last.descent : Math.max(DESCENT * size, pitch - top.baseline);
+  const ascent = typeof first.ascent === "number" ? Math.abs(first.ascent) : ASCENT * size;
+  let x0 = 0, y0 = 0, x1 = box.width, y1 = box.height;
+  // Above the top only when a tight line height lifts the glyphs: the text engine rounds line heights
+  // to whole units, which can put the font's ascent up to half a unit above the first line.
+  if (first.baseline - ascent < -0.5) y0 = first.baseline - ascent;
+  if (last.baseline + descent > y1 + 1e-3) y1 = last.baseline + descent;
+  for (const l of inked) {
+    if (typeof l.width !== "number") continue;
+    x0 = Math.min(x0, l.left);
+    if (l.left + l.width > x1 + 1e-3) x1 = l.left + l.width;
+  }
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+}
+
+/**
  * The bounds of what `n` and its children draw, under `m` (the transform
  * from `n`'s own space), or null when it draws nothing. Strokes reach past
  * the outline by their alignment (mitred corners of paths can reach a little
- * further); drop shadows and layer blur count. Text counts as its box.
+ * further); drop shadows and layer blur count. Text counts as `text` says
+ * (with its lines where they run past its box), else as its box.
  */
-export function subtreeBounds(source: ExportSource, n: ReadonlyNode, m: Matrix): Rect | null {
+export function subtreeBounds(source: ExportSource, n: ReadonlyNode, m: Matrix, text?: TextBounds): Rect | null {
   const b = new Box();
-  ownBounds(n, m, b);
+  ownBounds(n, m, b, text);
   const kids = new Box();
   for (const child of source.children(n.id)) {
-    if (draws(child)) kids.addBox(subtreeBounds(source, child, multiply(m, localMatrix(child))));
+    if (draws(child)) kids.addBox(subtreeBounds(source, child, multiply(m, localMatrix(child)), text));
   }
   const kidRect = kids.rect();
   if (kidRect) b.addBox(CLIPPING.has(n.type) ? intersect(kidRect, boxBounds(n, m)) : kidRect);
@@ -184,11 +230,11 @@ function strokeReach(n: ReadonlyNode): number {
 }
 
 /** The bounds of what `n` draws, in its parent's space under `parent`. */
-export function renderBounds(source: ExportSource, n: ReadonlyNode, parent: Matrix): Rect | null {
-  return draws(n) ? subtreeBounds(source, n, multiply(parent, localMatrix(n))) : null;
+export function renderBounds(source: ExportSource, n: ReadonlyNode, parent: Matrix, text?: TextBounds): Rect | null {
+  return draws(n) ? subtreeBounds(source, n, multiply(parent, localMatrix(n)), text) : null;
 }
 
-function ownBounds(n: ReadonlyNode, m: Matrix, b: Box): void {
+function ownBounds(n: ReadonlyNode, m: Matrix, b: Box, text?: TextBounds): void {
   const fill = hasVisibleFill(n);
   const stroke = hasVisibleStroke(n);
   const half = stroke ? strokeReach(n) : 0;
@@ -215,7 +261,9 @@ function ownBounds(n: ReadonlyNode, m: Matrix, b: Box): void {
   }
   if (n.type === "GROUP" || n.type === "PAGE") return;
   if (n.type === "TEXT") {
-    if (n.characters && n.fills.some((p) => p.visible)) b.addRect(m, 0, 0, n.width, n.height);
+    if (!n.characters || !n.fills.some((p) => p.visible)) return;
+    const r = text?.(n) ?? { x: 0, y: 0, width: n.width, height: n.height };
+    b.addRect(m, r.x, r.y, r.x + r.width, r.y + r.height);
     return;
   }
   // Frames always cover their box (an empty frame exports at its size, as in Figma).
@@ -311,9 +359,10 @@ export interface ExportScene {
 
 /**
  * The area and layers an export covers. Throws `ExportError` for a missing,
- * hidden or empty layer.
+ * hidden or empty layer. `text` says what TEXT layers draw (see
+ * `TextBounds`); without it, text counts as its box.
  */
-export function exportScene(source: ExportSource, nodeId: NodeId, settings: Pick<ExportSettings, "contentsOnly" | "useAbsoluteBounds">): ExportScene {
+export function exportScene(source: ExportSource, nodeId: NodeId, settings: Pick<ExportSettings, "contentsOnly" | "useAbsoluteBounds">, text?: TextBounds): ExportScene {
   const node = source.get(nodeId);
   if (!node) throw new ExportError(`There is no layer with id "${nodeId}" to export.`);
   const label = `“${node.name}”`;
@@ -321,21 +370,21 @@ export function exportScene(source: ExportSource, nodeId: NodeId, settings: Pick
     // A page exports everything on it.
     const roots = source.children(node.id).filter(draws);
     const b = new Box();
-    for (const r of roots) b.addBox(renderBounds(source, r, IDENTITY));
+    for (const r of roots) b.addBox(renderBounds(source, r, IDENTITY, text));
     const region = b.rect();
     if (!region) throw new ExportError(`The page ${label} has nothing visible to export.`);
     return { node, region, roots, rootMatrix: IDENTITY };
   }
   if (!draws(node)) throw new ExportError(`${label} is hidden, so there is nothing to export. Show the layer first.`);
   const parent = parentMatrix(source, node);
-  const region = settings.useAbsoluteBounds ? boxBounds(node, multiply(parent, localMatrix(node))) : renderBounds(source, node, parent);
+  const region = settings.useAbsoluteBounds ? boxBounds(node, multiply(parent, localMatrix(node))) : renderBounds(source, node, parent, text);
   if (!region) throw new ExportError(`${label} has nothing visible to export.`);
   if (settings.contentsOnly === false) {
     // Everything on the page that shows inside the region, as on the canvas.
     const page = pageOf(source, node);
     const roots = page
       ? source.children(page.id).filter((r) => {
-          const rb = renderBounds(source, r, IDENTITY);
+          const rb = renderBounds(source, r, IDENTITY, text);
           return rb !== null && intersect(rb, region) !== null;
         })
       : [node];
