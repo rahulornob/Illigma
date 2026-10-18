@@ -4,6 +4,9 @@
 // Properties), Fixed / Hug / Fill sizing menus (mouse and keyboard),
 // absolute position, Shift+A wrapping several layers in one undo step,
 // constraints following a typed frame size, and undo of each change.
+// QC round 6: an arrow step then Tab (one undo step), huge typed values kept
+// in range, Shift+A on absolute children, Shift+A by character (AZERTY),
+// Auto gap on a hugging frame, and a #/file/<id> hash change opening a file.
 //
 // The sample file: Desktop (1440 × 900, plain) holds Hero (120, 160, 560 × 320),
 // Avatar (1200, 40, 96 × 96, pinned right) and Card, a vertical auto layout
@@ -11,7 +14,7 @@
 //
 // Usage (from the repo root):  node apps/web/e2e/autolayout.mjs [--headed] [--no-build]
 
-import { createFile, eventually, field, layerRow, layerRows, newContext, runE2E, selectedRows, setField, watchErrors } from "./lib.mjs";
+import { createFile, eventually, field, layerRow, layerRows, newContext, runE2E, selectedRows, setField, waitSaved, watchErrors } from "./lib.mjs";
 
 await runE2E("autolayout", {}, async ({ browser, url, log, check, outDir, errors }) => {
   const context = await newContext(browser);
@@ -133,8 +136,8 @@ await runE2E("autolayout", {}, async ({ browser, url, log, check, outDir, errors
   check((await props.getByRole("button", { name: /^Horizontal resizing/ }).getAttribute("aria-label")) === "Horizontal resizing: Fill container", "the W menu button should say Fill");
   await layerRow(page, "Card").click();
   check(
-    (await props.getByRole("button", { name: /^Horizontal resizing/ }).getAttribute("aria-label")) === "Horizontal resizing: Fixed",
-    "a child set to Fill makes its hugging parent Fixed",
+    (await props.getByRole("button", { name: /^Horizontal resizing/ }).getAttribute("aria-label")) === "Horizontal resizing: Hug contents",
+    "across a vertical stack, a Fill child leaves its parent hugging (it hugs the other children; the Fill one stretches to it)",
   );
   await setField(page, "Width", 400);
   await expectBox("Title", { w: 400 - 64 }, "Title fills the wider frame");
@@ -153,8 +156,8 @@ await runE2E("autolayout", {}, async ({ browser, url, log, check, outDir, errors
   await page.keyboard.press("Enter");
   check(await wMenu.evaluate((el) => el === document.activeElement), "focus returns to the menu button");
   check((await page.getByRole("menu").count()) === 0, "the menu closes");
-  await expectBox("Title", { w: 336 }, "Hug on the frame makes its Fill child Fixed at its size");
-  await expectBox("Card", { w: 400 }, "the frame hugs the 336 px Title plus padding");
+  await expectBox("Card", { w: 32 + 272 + 32 }, "the frame hugs Image (the widest child that doesn't fill) plus padding");
+  await expectBox("Title", { w: 272 }, "across the stack, Hug on the frame keeps the Fill child, which fills the hugged width");
   await layerRow(page, "Card").click();
   await wMenu.focus();
   await page.keyboard.press("Enter");
@@ -226,6 +229,94 @@ await runE2E("autolayout", {}, async ({ browser, url, log, check, outDir, errors
   await undo();
   await expectBox("Hero", { w: 560 }, "undo of the width undoes the stretch too");
   await expectBox("Desktop", { w: 1440 }, "and the width");
+
+  // ---- QC round 6 ----
+
+  log("an arrow step in a field survives an immediate Tab, as one undo step");
+  await createFile(page, url);
+  await layerRow(page, "Card").click();
+  await props.getByLabel("Gap between items", { exact: true }).focus();
+  await page.keyboard.press("Shift+ArrowUp");
+  await page.keyboard.press("Tab");
+  check(await eventually(async () => (await value("Gap between items")) === "26"), `Shift+↑ then Tab should keep 26, got ${await value("Gap between items")}`);
+  await expectBox("Button", { y: 24 + 120 + 26 + 24 + 26 }, "the stepped gap stays");
+  await page.locator(".canvas").focus();
+  await undo();
+  await expectBox("Button", { y: 200 }, "one undo restores the gap (the step was one undo step)");
+
+  log("huge typed values stay in range: no error, no Infinity");
+  await layerRow(page, "Card").click();
+  await setField(page, "Horizontal padding", "1e308");
+  check(await eventually(async () => (await value("Horizontal padding")) === "100000"), `padding should stop at 100,000, got ${await value("Horizontal padding")}`);
+  await setField(page, "Gap between items", "1e200");
+  check(await eventually(async () => (await value("Gap between items")) === "100000"), `gap should stop at 100,000, got ${await value("Gap between items")}`);
+  await setField(page, "Width", "1e308");
+  const text = (label) => page.getByLabel(label).inputValue();
+  check(await eventually(async () => (await text("Width")) === "1000000"), `W should stop at 1,000,000, got ${await text("Width")}`);
+  await setField(page, "X position", "-1e308");
+  check(await eventually(async () => (await text("X position")) === "-1000000"), `X should stop at -1,000,000, got ${await text("X position")}`);
+  check((await props.getByRole("alert").count()) === 0, "values in range are applied without an error");
+  check(errors.length === 0, `no page errors, got ${errors.join(" | ")}`);
+  for (let i = 0; i < 4; i++) {
+    await page.locator(".canvas").focus();
+    await undo();
+  }
+  await expectBox("Card", { x: 120, w: 320 }, "four undos restore the card");
+
+  log("Shift+A on absolute children: they join the new frame's flow and stay where they were");
+  await layerRow(page, "Title").click();
+  await layerRow(page, "Button").click({ modifiers: ["Shift"] });
+  await props.getByRole("button", { name: "Absolute position" }).click();
+  check(await eventually(async () => (await props.getByRole("button", { name: "Absolute position" }).getAttribute("aria-pressed")) === "true"), "both absolute");
+  await page.keyboard.press("Shift+A");
+  check(await eventually(async () => (await selectedName()) === "Frame"), `the new frame should be selected, got ${await selectedName()}`);
+  await expectBox("Frame", { x: 24, y: 160, w: 200, h: 24 + 16 + 40 }, "the frame takes the layers' bounds (not 1 × 1)");
+  await expectBox("Title", { x: 0, y: 0, w: 200, h: 24 }, "Title flows first in the new frame");
+  await expectBox("Button", { x: 0, y: 40 }, "Button follows after the guessed 16 px gap");
+  check((await props.getByRole("button", { name: "Absolute position" }).getAttribute("aria-pressed")) === "false", "the wrapped layers are back in a flow");
+  await page.locator(".canvas").focus();
+  await undo();
+  check(await eventually(async () => !(await layerRow(page, "Frame").count())), "one undo removes the frame");
+  await undo();
+  await expectBox("Title", { x: 24, y: 160 }, "undo the absolute position");
+
+  log("Shift+A follows the character typed (AZERTY's A key sends code KeyQ)");
+  await layerRow(page, "Hero").click();
+  const shiftKey = (key, code) => page.evaluate(([key, code]) => window.dispatchEvent(new KeyboardEvent("keydown", { key, code, shiftKey: true, bubbles: true, cancelable: true })), [key, code]);
+  await shiftKey("Q", "KeyA"); // AZERTY Shift+Q (the key where QWERTY has A)
+  check((await selectedName()) === "Hero" && (await layerRow(page, "Frame").count()) === 0, "Shift+Q on AZERTY must not wrap");
+  await shiftKey("A", "KeyQ");
+  check(await eventually(async () => (await selectedName()) === "Frame"), `Shift+A on AZERTY should wrap Hero, got ${await selectedName()}`);
+  await page.locator(".canvas").focus();
+  await undo();
+  check(await eventually(async () => !(await layerRow(page, "Frame").count())), "undo the wrap");
+
+  log("Auto gap on a frame hugging its stack keeps its size (that axis turns Fixed)");
+  await layerRow(page, "Card").click();
+  await props.getByRole("button", { name: /^Gap mode/ }).click();
+  await page.getByRole("menuitemradio", { name: "Auto (space between)" }).click();
+  check(await eventually(async () => (await value("Gap between items")) === "Auto"), "the gap reads Auto");
+  check(await eventually(async () => (await props.locator(".field-unit").allInnerTexts()).join(",") === "Hug"), "H turns Fixed; W still hugs");
+  await expectBox("Card", { h: 264 }, "the card keeps its height");
+  await expectBox("Button", { y: 264 - 24 - 40 }, "the spacing stays visible: Button at the bottom padding");
+  await page.locator(".canvas").focus();
+  await undo();
+  await layerRow(page, "Card").click();
+  check(await eventually(async () => (await value("Gap between items")) === "16"), "one undo restores the 16 px gap");
+
+  log("a #/file/<id> link typed into an open tab opens that file");
+  const first = await createFile(page, url);
+  await layerRow(page, "Hero").click();
+  await setField(page, "X position", 500);
+  await waitSaved(page);
+  await createFile(page, url);
+  await expectBox("Hero", { x: 120 }, "a second, new file");
+  await page.evaluate((id) => {
+    location.hash = `#/file/${id}`;
+  }, first);
+  await expectBox("Hero", { x: 500 }, "the hash change opens the first file");
+  check(page.url().endsWith(`#/file/${first}`), `the URL names the first file, got ${page.url()}`);
+  check(errors.length === 0, `no page errors, got ${errors.join(" | ")}`);
 
   await context.close();
 });

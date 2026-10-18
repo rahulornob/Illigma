@@ -20,6 +20,7 @@ import {
   type FolderBackend,
   type LocationStore,
 } from "@illigma/host-web";
+import { relayout } from "@illigma/layout";
 import { DOCUMENT_OPTIONS } from "./editor/layout";
 
 /** An open file: the document, where it is saved, and any recovered edits. */
@@ -46,9 +47,30 @@ const solid = (r: number, g: number, b: number) => ({ type: "SOLID" as const, vi
 /**
  * A document read from a file, laid out on every edit: the editor's documents
  * all come through here (or `sampleDocument`), so layout never misses one.
+ *
+ * The file is laid out once as it opens, deeply, on every page: a file
+ * written elsewhere (an import, another app, an older Illigma) may hold
+ * positions its layout settings don't produce. Without this, the first
+ * unrelated edit would make those layers jump, and recovery (which replays
+ * edits made on the laid-out version) would start from a different one. It
+ * is not an undo step; the layout is the same every time the file opens, and
+ * the file holds it after the next save.
  */
 export function loadDocument(file: IlligmaFile): Document {
-  return Document.fromFile(file, DOCUMENT_OPTIONS);
+  const doc = Document.fromFile(file, DOCUMENT_OPTIONS);
+  layOutOnOpen(doc);
+  return doc;
+}
+
+/** Lay out every page of `doc` as if nothing had been laid out yet, without undo history. */
+export function layOutOnOpen(doc: Document): void {
+  const tops = doc.pages().flatMap((p) => doc.children(p.id).map((n) => n.id));
+  const ops: Operation[] = [];
+  for (const c of relayout(doc, tops, { deep: true })) {
+    const prev = doc.get(c.id)?.[c.key];
+    if (prev !== c.value) ops.push({ op: "set", id: c.id, key: c.key, value: c.value, prev } as Operation);
+  }
+  if (ops.length) doc.replay(ops);
 }
 
 /**

@@ -2,24 +2,24 @@ import type { Document, ReadonlyNode } from "@illigma/core";
 import type { LayoutSizing, NodeId } from "@illigma/format";
 import { Icon } from "../ui/Icon";
 import { MenuButton, type MenuEntry } from "../ui/Menu";
-import { fmt, NumberField } from "../ui/NumberField";
+import { fmt, LIMITS, NumberField } from "../ui/NumberField";
 import { AutoLayoutCard } from "./AutoLayoutCard";
 import { ConstraintsCard } from "./ConstraintsCard";
 import { effectiveSizing, hasConstraints, isAutoLayoutNode, setSizing, sizingOptions, type Axis } from "./layout-model";
-import { setBoxFields, setLayoutProps, type BoxField } from "./layout-props";
+import { guard, setBoxFields, setLayoutProps, type BoxField, type OnEditError } from "./layout-props";
 
-const FIELDS: { key: BoxField; letter: string; label: string; min?: number }[] = [
-  { key: "x", letter: "X", label: "X position" },
-  { key: "y", letter: "Y", label: "Y position" },
-  { key: "width", letter: "W", label: "Width", min: 0.01 },
-  { key: "height", letter: "H", label: "Height", min: 0.01 },
+const FIELDS: { key: BoxField; letter: string; label: string; min: number; max: number }[] = [
+  { key: "x", letter: "X", label: "X position", min: -LIMITS.position, max: LIMITS.position },
+  { key: "y", letter: "Y", label: "Y position", min: -LIMITS.position, max: LIMITS.position },
+  { key: "width", letter: "W", label: "Width", min: 0.01, max: LIMITS.size },
+  { key: "height", letter: "H", label: "Height", min: 0.01, max: LIMITS.size },
 ];
 
 const SIZING_NAME: Record<LayoutSizing, string> = { FIXED: "Fixed", HUG: "Hug", FILL: "Fill" };
 const SHORT: Record<LayoutSizing, string> = { FIXED: "Fixed", HUG: "Hug contents", FILL: "Fill container" };
 
 /** The sizing menu on W or H (Figma board "21 · width sizing menu"): only the options that apply to every selected layer. */
-function SizingMenu({ doc, nodes, axis, readOnly }: { doc: Document; nodes: readonly ReadonlyNode[]; axis: Axis; readOnly: boolean }) {
+function SizingMenu({ doc, nodes, axis, readOnly, onError }: { doc: Document; nodes: readonly ReadonlyNode[]; axis: Axis; readOnly: boolean; onError?: OnEditError | undefined }) {
   const options = (["FIXED", "HUG", "FILL"] as const).filter((s) => nodes.every((n) => sizingOptions(doc, n).includes(s)));
   if (options.length < 2) return null;
   const current = nodes.map((n) => effectiveSizing(doc, n, axis));
@@ -38,11 +38,13 @@ function SizingMenu({ doc, nodes, axis, readOnly }: { doc: Document; nodes: read
       disabled={readOnly}
       entries={entries}
       onSelect={(s) =>
-        setSizing(
-          doc,
-          nodes.map((n) => n.id),
-          axis,
-          s,
+        guard(onError, () =>
+          setSizing(
+            doc,
+            nodes.map((n) => n.id),
+            axis,
+            s,
+          ),
         )
       }
     >
@@ -57,6 +59,7 @@ export function PropertiesPanel({
   selection,
   readOnly = false,
   onSelect,
+  onError,
 }: {
   doc: Document;
   pageId: NodeId;
@@ -64,6 +67,8 @@ export function PropertiesPanel({
   readOnly?: boolean;
   /** The selection after a command that makes a new layer (wrapping layers in an auto layout frame). */
   onSelect?(ids: NodeId[]): void;
+  /** An edit the document refused (nothing changed). Number fields say so themselves, under the field. */
+  onError?: OnEditError | undefined;
 }) {
   const ids = selection.filter((id) => doc.has(id));
   const nodes = ids.map((id) => doc.get(id) as ReadonlyNode);
@@ -97,7 +102,9 @@ export function PropertiesPanel({
                     title="Absolute position (ignore auto layout)"
                     aria-pressed={absolute}
                     disabled={readOnly}
-                    onClick={() => setLayoutProps(doc, ids, { layoutPositioning: absolute ? undefined : "ABSOLUTE" }, absolute ? "Use auto layout position" : "Absolute position")}
+                    onClick={() =>
+                      guard(onError, () => setLayoutProps(doc, ids, { layoutPositioning: absolute ? undefined : "ABSOLUTE" }, absolute ? "Use auto layout position" : "Absolute position"))
+                    }
                   >
                     <Icon name="square-dashed-mouse-pointer" />
                   </button>
@@ -117,14 +124,15 @@ export function PropertiesPanel({
                       prefix={f.letter}
                       values={values}
                       min={f.min}
+                      max={f.max}
                       readOnly={readOnly}
-                      read={() => ids.map((id) => doc.get(id)?.[f.key] ?? 0)}
                       onChange={(next) =>
                         setBoxFields(
                           doc,
                           ids,
                           f.key,
-                          values.map((v) => next(v)),
+                          // From the document as it is now, not as this render saw it.
+                          ids.map((id) => next(doc.get(id)?.[f.key] ?? 0)),
                           `Change ${f.label.toLowerCase()}`,
                         )
                       }
@@ -136,7 +144,7 @@ export function PropertiesPanel({
                                 {unit}
                               </span>
                             )}
-                            <SizingMenu doc={doc} nodes={nodes} axis={axis} readOnly={readOnly} />
+                            <SizingMenu doc={doc} nodes={nodes} axis={axis} readOnly={readOnly} onError={onError} />
                           </>
                         )
                       }
@@ -145,8 +153,8 @@ export function PropertiesPanel({
                 })}
               </div>
             </section>
-            <AutoLayoutCard key={ids.join(",")} doc={doc} nodes={nodes} readOnly={readOnly} onSelect={onSelect} />
-            {constrained && <ConstraintsCard doc={doc} nodes={nodes} readOnly={readOnly} />}
+            <AutoLayoutCard key={ids.join(",")} doc={doc} nodes={nodes} readOnly={readOnly} onSelect={onSelect} onError={onError} />
+            {constrained && <ConstraintsCard doc={doc} nodes={nodes} readOnly={readOnly} onError={onError} />}
           </>
         ) : (
           <section className="card" aria-labelledby="page-heading">

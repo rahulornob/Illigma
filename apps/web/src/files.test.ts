@@ -1,10 +1,10 @@
 // Regression tests for opening files and crash recovery in the web app (QC review).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Document } from "@illigma/core";
-import { readPackage, writePackage } from "@illigma/format";
+import { Document, type Operation } from "@illigma/core";
+import { importPrototypeJson, readPackage, writePackage } from "@illigma/format";
 import { Autosaver, opfsBackend, RecoveryJournal } from "@illigma/host-web";
 import { FakeFileSystem, installFakeOpfs } from "@illigma/host-web/testing";
-import { closeSession, discardRecovered, keepRecovered, openStoredFile, replayRecovered, whileClosing, CLOSING_WAIT_MS } from "./files";
+import { closeSession, discardRecovered, keepRecovered, loadDocument, openStoredFile, replayRecovered, whileClosing, CLOSING_WAIT_MS } from "./files";
 
 let fs: FakeFileSystem;
 let restore: () => void;
@@ -217,5 +217,49 @@ describe("closing and reopening a file", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("files are laid out as they open (QC round 6)", () => {
+  // The importer's "known difference" (packages/layout/src/import.test.ts): the prototype let a Fill
+  // layer prop a hugging frame open, so the file holds a 300 px card that layout makes 200 px.
+  const proto = {
+    version: 1,
+    artboards: [{ id: "C", name: "Card", x: 0, y: 0, width: 300, height: 20, autoLayout: { enabled: true, direction: "vertical", gap: 0, paddingX: 0, paddingY: 0 } }],
+    objects: [
+      { id: "fill", name: "fill", type: "rect", frameId: "C", x: 0, y: 0, w: 300, h: 10, widthSizing: "fill" },
+      { id: "fixed", name: "fixed", type: "rect", frameId: "C", x: 0, y: 10, w: 200, h: 10 },
+    ],
+  };
+  const file = () => importPrototypeJson(proto, { now: new Date(0) }).file;
+  const byName = (doc: Document, name: string) => [...doc.toFile().nodes].find((n) => n.name === name)!;
+
+  it("opens laid out, without an undo step", () => {
+    expect(byName(Document.fromFile(file()), "Card").width).toBe(300); // as stored
+    const doc = loadDocument(file());
+    expect(byName(doc, "Card").width).toBe(200);
+    expect(byName(doc, "fill").width).toBe(200);
+    expect(doc.canUndo).toBe(false);
+  });
+
+  it("an unrelated edit moves nothing else, and recovery replays onto the same layout", () => {
+    const stored = file();
+    const doc = loadDocument(stored);
+    const card = byName(doc, "Card");
+    let ops: readonly Operation[] = [];
+    doc.subscribe((c) => (ops = c.ops));
+    doc.transact("Move", (tx) => tx.set(card.id, "x", 40));
+    expect(ops).toHaveLength(1);
+    expect(byName(doc, "Card")).toMatchObject({ x: 40, width: 200 });
+    const { doc: kept, skipped } = replayRecovered(loadDocument(stored), [ops]);
+    expect(skipped).toBe(0);
+    expect(kept.toFile().nodes).toEqual(doc.toFile().nodes);
+  });
+
+  it("a file that is already laid out opens unchanged", () => {
+    const laidOut = loadDocument(file()).toFile();
+    const again = loadDocument(laidOut);
+    expect(again.toFile().nodes).toEqual(laidOut.nodes);
+    expect(again.canUndo).toBe(false);
   });
 });
