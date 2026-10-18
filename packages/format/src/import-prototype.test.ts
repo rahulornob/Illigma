@@ -224,6 +224,16 @@ describe("importPrototypeJson: every prototype feature", () => {
     expect(children("Card")).toEqual(["b2", "b1"]);
   });
 
+  it("maps auto layout with the prototype's defaults, and constraints", () => {
+    expect(byName(file, "Card")).toMatchObject({
+      layoutMode: "VERTICAL", itemSpacing: 8, paddingLeft: 16, paddingRight: 16, paddingTop: 16, paddingBottom: 16,
+      primaryAxisAlignItems: "MIN", counterAxisAlignItems: "MIN", primaryAxisSizingMode: "AUTO", counterAxisSizingMode: "AUTO",
+      layoutSizingHorizontal: "HUG", layoutSizingVertical: "HUG",
+    });
+    expect(byName(file, "b1").constraints).toEqual({ horizontal: "STRETCH", vertical: "MIN" });
+    expect(byName(file, "Desktop").layoutMode).toBeUndefined();
+  });
+
   it("turns groupId into a group at its top member's position, sized to its members", () => {
     expect(children("Desktop")).toEqual(["Card", "bottom", "between", "Group 1", "bold", "stretched", "scaled", "hidden"]);
     const group = byName(file, "Group 1");
@@ -261,9 +271,6 @@ describe("importPrototypeJson: every prototype feature", () => {
       "Left out 1 gradient: format v0 holds solid colours only.",
       "Left out letter spacing on 1 text layer: format v0 has no letter spacing yet.",
       "1 text layer was stretched unevenly; the font size now matches the height, so it may look narrower or wider.",
-      "1 frame uses auto layout. Layers keep their current positions, but the auto layout settings are left out until format v0 can hold them.",
-      "Left out resizing constraints on 1 layer.",
-      "Left out sizing rules (hug, fill, minimum and maximum size, grid span or absolute position) on 1 layer.",
       "1 frame didn't clip its content; in format v0 frames always clip.",
       "1 group had other layers between its members; each group now sits where its top layer was, so stacking may differ slightly.",
       "Left out the document's 1 colour swatch: format v0 has no colour styles yet.",
@@ -274,6 +281,110 @@ describe("importPrototypeJson: every prototype feature", () => {
 
   it("round-trips through the package form", () => {
     expect(readPackage(writePackage(file)).nodes.length).toBe(file.nodes.length);
+  });
+});
+
+describe("importPrototypeJson: auto layout and constraints", () => {
+  /** Laid out by the prototype's own code (8e3bd2f: autolayout.js, constraints.js and main.js's applyAllAutoLayouts). */
+  const LAYOUT = fixture("auto-layout-document");
+  const { file, warnings } = importPrototypeJson(LAYOUT, stable());
+  const layoutFields = (name: string) => {
+    const n = byName(file, name) as unknown as Record<string, unknown>;
+    const keys = ["layoutMode", "itemSpacing", "counterAxisSpacing", "paddingLeft", "paddingRight", "paddingTop", "paddingBottom",
+      "primaryAxisAlignItems", "counterAxisAlignItems", "counterAxisAlignContent", "primaryAxisSizingMode", "counterAxisSizingMode",
+      "layoutWrap", "layoutPositioning", "layoutSizingHorizontal", "layoutSizingVertical", "constraints", "minWidth", "maxWidth", "minHeight", "maxHeight"];
+    return Object.fromEntries(keys.filter((k) => n[k] !== undefined).map((k) => [k, n[k]]));
+  };
+
+  it("imports into a valid file with nothing left out", () => {
+    expect(validateFile(file)).toEqual([]);
+    expect(warnings).toEqual(["Left out the canvas background colour (#090909): format v0 has no page background colour yet."]);
+  });
+
+  it("maps direction, gap, padding, alignment, spacing mode, wrap and sizing", () => {
+    expect(layoutFields("Card")).toEqual({
+      layoutMode: "VERTICAL", itemSpacing: 12, paddingLeft: 24, paddingRight: 24, paddingTop: 16, paddingBottom: 16,
+      primaryAxisAlignItems: "MIN", counterAxisAlignItems: "MIN", primaryAxisSizingMode: "AUTO", counterAxisSizingMode: "AUTO",
+      layoutSizingHorizontal: "HUG", layoutSizingVertical: "HUG", constraints: { horizontal: "MAX", vertical: "MIN" },
+    });
+    // "center-left" in a row: centred across, Between along (the spacing mode wins over the alignment along the row).
+    expect(layoutFields("Header")).toEqual({
+      layoutMode: "HORIZONTAL", itemSpacing: 8, paddingLeft: 8, paddingRight: 8, paddingTop: 4, paddingBottom: 4,
+      primaryAxisAlignItems: "SPACE_BETWEEN", counterAxisAlignItems: "CENTER", primaryAxisSizingMode: "FIXED", counterAxisSizingMode: "AUTO",
+      layoutSizingHorizontal: "FILL", layoutSizingVertical: "HUG",
+    });
+    expect(layoutFields("Tags")).toMatchObject({ layoutWrap: "WRAP", itemSpacing: 8, counterAxisSpacing: 6, paddingLeft: 0, layoutSizingHorizontal: "FIXED", layoutSizingVertical: "HUG" });
+    expect(layoutFields("Toolbar")).toMatchObject({ primaryAxisAlignItems: "CENTER", counterAxisAlignItems: "CENTER", paddingLeft: 12, paddingTop: 8, layoutSizingHorizontal: "FIXED", layoutSizingVertical: "HUG" });
+    // "top-right" in a column: right is across the column.
+    expect(layoutFields("List")).toMatchObject({ layoutMode: "VERTICAL", primaryAxisAlignItems: "SPACE_EVENLY", counterAxisAlignItems: "MAX", primaryAxisSizingMode: "FIXED", counterAxisSizingMode: "FIXED" });
+    expect(layoutFields("Avatars")).toMatchObject({ itemSpacing: -8, layoutSizingHorizontal: "HUG", layoutSizingVertical: "HUG" });
+  });
+
+  it("maps layer sizing, limits, ignore auto layout and constraints", () => {
+    expect(layoutFields("body")).toEqual({ minWidth: 200 });
+    expect(layoutFields("button")).toEqual({ layoutSizingHorizontal: "FILL", maxWidth: 200 });
+    expect(layoutFields("t4")).toEqual({ layoutSizingVertical: "FILL", maxHeight: 30 });
+    expect(layoutFields("title")).toEqual({ layoutSizingVertical: "HUG" }); // text: auto height
+    expect(layoutFields("badge")).toEqual({ layoutPositioning: "ABSOLUTE", constraints: { horizontal: "MAX", vertical: "MIN" } });
+    expect(layoutFields("pinned")).toEqual({ constraints: { horizontal: "MAX", vertical: "MAX" } });
+    expect(layoutFields("stretchy")).toEqual({ constraints: { horizontal: "STRETCH", vertical: "SCALE" } });
+    expect(layoutFields("centred")).toEqual({ constraints: { horizontal: "CENTER", vertical: "CENTER" } });
+  });
+
+  it("orders children by childOrder, then layers before frames, as the prototype flowed them", () => {
+    const doc = {
+      version: 1,
+      artboards: [
+        { id: "F", x: 0, y: 0, width: 100, height: 100, autoLayout: { enabled: true, childOrder: ["c"] } },
+        { id: "inner", name: "inner", parentId: "F", x: 0, y: 0, width: 10, height: 10 },
+      ],
+      objects: ["a", "b", "c"].map((id) => ({ id, name: id, type: "rect", frameId: "F", x: 0, y: 0, w: 10, h: 10 })),
+    };
+    const out = importPrototypeJson(doc, stable()).file;
+    expect(kids(out, byName(out, "Frame 1").id).map((n) => n.name)).toEqual(["c", "a", "b", "inner"]);
+  });
+
+  it("turns grid auto layout into a plain frame, with a warning", () => {
+    const doc = {
+      version: 1,
+      artboards: [{ id: "G", x: 0, y: 0, width: 100, height: 100, autoLayout: { enabled: true, direction: "grid", columns: 2, columnTracks: "1fr 1fr", childOrder: ["b", "a"], flex: 1 } }],
+      objects: [
+        { id: "a", name: "a", type: "rect", frameId: "G", x: 0, y: 0, w: 10, h: 10, columnSpan: 2, widthSizing: "fill" },
+        { id: "b", name: "b", type: "rect", frameId: "G", x: 0, y: 20, w: 10, h: 10, columnSpan: 1 },
+      ],
+    };
+    const { file: out, warnings: w } = importPrototypeJson(doc, stable());
+    const grid = byName(out, "Frame 1");
+    expect(grid.layoutMode).toBeUndefined();
+    expect(kids(out, grid.id).map((n) => n.name)).toEqual(["a", "b"]); // stacking as drawn, not childOrder
+    expect(byName(out, "a").layoutSizingHorizontal).toBe("FILL");
+    expect(w).toEqual([
+      "1 frame uses grid auto layout, which format v0 can't hold yet: it is now a plain frame and its layers keep their current positions.",
+      "Left out grid column and row spans on 1 layer.",
+      "Left out settings Illigma doesn't recognise on 1 layer: autoLayout.flex.",
+    ]);
+  });
+
+  it("resets broken layout values to the prototype's defaults", () => {
+    const doc = {
+      version: 1,
+      artboards: [{ x: 0, y: 0, width: 100, height: 100, autoLayout: { enabled: true, direction: "sideways", gap: "8", paddingX: -4, align: 7, spacingMode: "spread", wrap: "yes", sizing: "big" } }],
+      objects: [{ type: "rect", x: 0, y: 0, w: 10, h: 10, widthSizing: "huge", minWidth: "1", layoutAbsolute: 1, constraints: { horizontal: "left", vertical: "end" } }],
+    };
+    const { file: out, warnings: w } = importPrototypeJson(doc, stable());
+    expect(validateFile(out)).toEqual([]);
+    const frame = byName(out, "Frame 1");
+    expect(frame).toMatchObject({
+      layoutMode: "HORIZONTAL", itemSpacing: 16, paddingLeft: 0, paddingTop: 16, primaryAxisAlignItems: "MIN", counterAxisAlignItems: "MIN",
+      layoutSizingHorizontal: "FIXED", layoutSizingVertical: "FIXED",
+    });
+    expect(frame.layoutWrap).toBeUndefined();
+    const rect = byName(out, "Rectangle");
+    expect(rect.layoutSizingHorizontal).toBeUndefined();
+    expect(rect.minWidth).toBeUndefined();
+    expect(rect.layoutPositioning).toBeUndefined();
+    expect(rect.constraints).toEqual({ horizontal: "MIN", vertical: "MAX" });
+    expect(w).toEqual(["Reset 9 broken values (such as a non-number opacity) to their defaults."]);
   });
 });
 

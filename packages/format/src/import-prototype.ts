@@ -19,7 +19,20 @@
 
 import { keysBetween } from "./fractional-index.js";
 import { FormatError } from "./package.js";
-import { defaultNode, FORMAT_NAME, FORMAT_VERSION, type Color, type IlligmaFile, type Node, type NodeType, type Paint } from "./schema.js";
+import {
+  defaultNode,
+  FORMAT_NAME,
+  FORMAT_VERSION,
+  type Color,
+  type ConstraintType,
+  type CounterAxisAlign,
+  type IlligmaFile,
+  type LayoutFields,
+  type LayoutSizing,
+  type Node,
+  type NodeType,
+  type Paint,
+} from "./schema.js";
 import { validateFile } from "./validate.js";
 
 export interface PrototypeImportOptions {
@@ -58,7 +71,20 @@ const ID_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvw
 
 /** Prototype layout-item properties (auto layout children and constraints). */
 const SIZING_KEYS = ["widthSizing", "heightSizing", "minWidth", "maxWidth", "minHeight", "maxHeight", "layoutAbsolute", "columnSpan", "rowSpan"];
+/** `constraintTextWrap` marks text that wraps at its box width, which is how Illigma always draws text. */
 const CONSTRAINT_KEYS = ["constraints", "constraintTextWrap"];
+/** Keys of a frame's `autoLayout` object. The grid ones (`columns`, `*Tracks`) only matter for grid layout. */
+const AUTO_LAYOUT_KEYS = new Set([
+  "enabled", "direction", "gap", "crossGap", "spacingMode", "paddingX", "paddingY", "paddingLeft", "paddingRight", "paddingTop", "paddingBottom",
+  "align", "sizing", "widthSizing", "heightSizing", "wrap", "childOrder", "columns", "columnTracks", "rowTracks",
+]);
+/** The prototype's defaults (`autolayout.js`): a 16 px gap and 16 px padding, where Figma's are 0. */
+const DEFAULT_GAP = 16;
+const DEFAULT_PADDING = 16;
+const SPACING_MODES: Record<string, "SPACE_BETWEEN" | "SPACE_AROUND" | "SPACE_EVENLY" | null> = {
+  packed: null, between: "SPACE_BETWEEN", around: "SPACE_AROUND", evenly: "SPACE_EVENLY",
+};
+const CONSTRAINTS: Record<string, ConstraintType> = { start: "MIN", end: "MAX", center: "CENTER", stretch: "STRETCH", scale: "SCALE" };
 const OBJECT_KEYS = new Set([
   "id", "type", "name", "x", "y", "w", "h", "rotation", "opacity", "fill", "stroke", "strokeWidth", "visible", "locked",
   "effects", "frameId", "groupId", "radius", "d", "baseW", "baseH", "text", "fontSize", "fontFamily", "fontWeight",
@@ -155,9 +181,8 @@ class Notes {
     if (n("badColors")) w.push(`Left out ${plural(n("badColors"), "colour", "colours")} that couldn't be read.`);
     if (n("letterSpacing")) w.push(`Left out letter spacing on ${plural(n("letterSpacing"), "text layer", "text layers")}: format v0 has no letter spacing yet.`);
     if (n("stretchedText")) w.push(`${plural(n("stretchedText"), "text layer was", "text layers were")} stretched unevenly; the font size now matches the height, so ${n("stretchedText") === 1 ? "it" : "they"} may look narrower or wider.`);
-    if (n("autoLayout")) w.push(`${plural(n("autoLayout"), "frame uses", "frames use")} auto layout. Layers keep their current positions, but the auto layout settings are left out until format v0 can hold them.`);
-    if (n("constraints")) w.push(`Left out resizing constraints on ${plural(n("constraints"), "layer", "layers")}.`);
-    if (n("sizing")) w.push(`Left out sizing rules (hug, fill, minimum and maximum size, grid span or absolute position) on ${plural(n("sizing"), "layer", "layers")}.`);
+    if (n("grid")) w.push(`${plural(n("grid"), "frame uses", "frames use")} grid auto layout, which format v0 can't hold yet: ${n("grid") === 1 ? "it is now a plain frame and its" : "they are now plain frames and their"} layers keep their current positions.`);
+    if (n("gridSpan")) w.push(`Left out grid column and row spans on ${plural(n("gridSpan"), "layer", "layers")}.`);
     if (n("noClip")) w.push(`${plural(n("noClip"), "frame", "frames")} didn't clip ${n("noClip") === 1 ? "its" : "their"} content; in format v0 frames always clip.`);
     if (n("groupsMoved")) w.push(`${plural(n("groupsMoved"), "group had", "groups had")} other layers between ${n("groupsMoved") === 1 ? "its" : "their"} members; each group now sits where its top layer was, so stacking may differ slightly.`);
     if (n("swatches")) w.push(`Left out the document's ${plural(n("swatches"), "colour swatch", "colour swatches")}: format v0 has no colour styles yet.`);
@@ -431,17 +456,20 @@ function importPage(page: Obj, pageId: string, out: Node[], notes: Notes, freshI
     list.sort((a, b) => (a.kind === "frame" ? (b.kind === "frame" ? 0 : -1) : b.kind === "frame" ? 1 : ez(a) - ez(b)));
     // Auto layout frames order their children by `childOrder`. That order is
     // also the z-order in Illigma (as in Figma), so it decides the sibling order.
-    const al = container ? get(container.raw, "autoLayout") : undefined;
-    const order = isObj(al) && get(al, "enabled") === true ? get(al, "childOrder") : undefined;
-    if (Array.isArray(order)) {
+    // A grid frame becomes a plain frame, so its layers keep the stacking the prototype drew.
+    if (container && layoutKind(container.raw) === "flow") {
+      const order = get(get(container.raw, "autoLayout") as Obj, "childOrder");
       const rank = new Map<string, number>();
-      order.forEach((id, i) => typeof id === "string" && !rank.has(id) && rank.set(id, i));
+      if (Array.isArray(order)) order.forEach((id, i) => typeof id === "string" && !rank.has(id) && rank.set(id, i));
+      // Children missing from `childOrder` flow after it: layers first, then frames (the prototype's `layoutChildren`).
+      const layersFirst = [...list.filter((e) => e.kind !== "frame"), ...list.filter((e) => e.kind === "frame")];
+      const fallback = new Map(layersFirst.map((e, i) => [e, rank.size + i]));
       const r = (e: Entry): number => {
         const ids = e.kind === "frame" ? [e.frame.protoId] : e.kind === "layer" ? [e.layer.protoId] : e.members.map((m) => m.protoId);
         const ranks = ids.flatMap((id) => (id !== null && rank.has(id) ? [rank.get(id) as number] : []));
-        return ranks.length ? Math.min(...ranks) : Infinity;
+        return ranks.length ? Math.min(...ranks) : (fallback.get(e) as number);
       };
-      const before = new Map(list.map((e, i) => [e, i]));
+      const before = new Map(layersFirst.map((e, i) => [e, i]));
       list.sort((a, b) => r(a) - r(b) || (before.get(a) as number) - (before.get(b) as number));
     }
   }
@@ -502,7 +530,7 @@ function paints(v: unknown, notes: Notes): Paint[] {
   return color ? [{ type: "SOLID", visible: true, color }] : [];
 }
 
-function noteCommon(raw: Obj, known: Set<string>, notes: Notes): void {
+function noteCommon(raw: Obj, known: Set<string>, notes: Notes, extraUnknown: string[] = []): void {
   const effects = get(raw, "effects");
   if (Array.isArray(effects) && effects.length) {
     notes.add("effectLayers");
@@ -512,10 +540,7 @@ function noteCommon(raw: Obj, known: Set<string>, notes: Notes): void {
       notes.effects.set(key, (notes.effects.get(key) ?? 0) + 1);
     }
   }
-  // TODO(0.7): map these to the auto layout and constraint fields once they are in the schema.
-  if (CONSTRAINT_KEYS.some((k) => get(raw, k) !== undefined)) notes.add("constraints");
-  if (SIZING_KEYS.some((k) => get(raw, k) !== undefined)) notes.add("sizing");
-  const unknown = Object.keys(raw).filter((k) => !known.has(k));
+  const unknown = [...Object.keys(raw).filter((k) => !known.has(k)), ...extraUnknown];
   if (unknown.length) {
     notes.add("unknownLayers");
     for (const k of unknown) if (notes.unknownKeys.size < 50) notes.unknownKeys.add(k.slice(0, 40));
@@ -540,10 +565,9 @@ function flag(raw: Obj, key: string, fallback: boolean, notes: Notes): boolean {
 
 function frameNode(f: FrameIn, parentId: string, index: string, originX: number, originY: number, notes: Notes, text: (v: unknown, fallback: string) => string): Node {
   const raw = f.raw;
-  noteCommon(raw, FRAME_KEYS, notes);
   const al = get(raw, "autoLayout");
-  // TODO(0.7): map `autoLayout` (direction, gap, padding, alignment, wrap, sizing, grid tracks) once the schema has auto layout fields.
-  if (isObj(al) && get(al, "enabled") === true) notes.add("autoLayout");
+  const alUnknown = isObj(al) ? Object.keys(al).filter((k) => !AUTO_LAYOUT_KEYS.has(k)).map((k) => `autoLayout.${k}`) : [];
+  noteCommon(raw, FRAME_KEYS, notes, alUnknown);
   if (get(raw, "clipContent") === false) notes.add("noClip");
   return {
     ...defaultNode("FRAME", f.id, parentId, index),
@@ -555,6 +579,7 @@ function frameNode(f: FrameIn, parentId: string, index: string, originX: number,
     width: f.width,
     height: f.height,
     fills: paints(get(raw, "fill"), notes),
+    ...frameLayout(raw, notes),
   };
 }
 
@@ -607,7 +632,14 @@ function layerNode(l: LayerIn, id: string, parentId: string, index: string, orig
     fills: paints(get(raw, "fill"), notes),
     strokes,
     strokeWeight: strokes.length ? Math.min(strokeWidth, MAX_SIZE) : 1,
+    ...itemLayout(raw, notes),
   };
+  for (const axis of ["width", "height"] as const) {
+    // Text "Hug contents" is Figma's auto height (or width); other layers can only be Fixed or Fill.
+    const sizing = sizingOf(get(raw, `${axis}Sizing`), notes);
+    const value: LayoutSizing | undefined = sizing === "fill" ? "FILL" : sizing === "hug" && l.kind === "text" ? "HUG" : undefined;
+    if (value) node[axis === "width" ? "layoutSizingHorizontal" : "layoutSizingVertical"] = value;
+  }
   if (l.kind === "rect") {
     const radius = get(raw, "radius");
     if (radius !== undefined && !finite(radius)) notes.add("reset");
@@ -661,4 +693,135 @@ function textFields(raw: Obj, l: LayerIn, notes: Notes): Partial<Node> {
   const letterSpacing = get(raw, "letterSpacing");
   if (letterSpacing !== undefined && letterSpacing !== 0) notes.add("letterSpacing");
   return { characters: chars, fontFamily, fontStyle, fontSize, lineHeight: round(Math.min(fontSize * lineHeight, MAX_SIZE)) };
+}
+
+// ---- auto layout and constraints ----
+
+type LayoutKind = "none" | "flow" | "grid";
+type Sizing = "fixed" | "fill" | "hug";
+const AXES = [
+  ["width", "layoutSizingHorizontal"],
+  ["height", "layoutSizingVertical"],
+] as const;
+
+/** "flow" for a horizontal or vertical auto layout frame, "grid" for grid auto layout (which format v0 can't hold yet). */
+function layoutKind(raw: Obj): LayoutKind {
+  const al = get(raw, "autoLayout");
+  if (!isObj(al) || get(al, "enabled") !== true) return "none";
+  return get(al, "direction") === "grid" ? "grid" : "flow";
+}
+
+/** A prototype sizing word. A broken one counts as "fixed" (the prototype's fallback) and, given `notes`, is noted. */
+function sizingOf(v: unknown, notes?: Notes): Sizing | undefined {
+  if (v === undefined) return undefined;
+  if (v === "fixed" || v === "fill" || v === "hug") return v;
+  notes?.add("reset");
+  return "fixed";
+}
+
+/** A number, or `fallback` when missing; a broken value is noted and replaced by `fallback`. Result within `lo`…`hi`. */
+function bounded(v: unknown, fallback: number, lo: number, hi: number, notes: Notes): number {
+  return clamp(numberOr(v, fallback, () => true, notes), lo, hi);
+}
+
+/**
+ * How a frame or layer sits in its parent: "Ignore auto layout", min and
+ * max sizes and constraints. Sizing (Fixed, Hug, Fill) depends on the node
+ * type, so the callers map it.
+ */
+function itemLayout(raw: Obj, notes: Notes): LayoutFields {
+  const out: LayoutFields = {};
+  const absolute = get(raw, "layoutAbsolute");
+  if (absolute === true) out.layoutPositioning = "ABSOLUTE";
+  else if (absolute !== undefined && absolute !== false) notes.add("reset");
+  for (const key of ["minWidth", "maxWidth", "minHeight", "maxHeight"] as const) {
+    const v = get(raw, key);
+    if (v === undefined) continue;
+    // The prototype ignored limits under 1, so a negative one is the same as 0.
+    if (finite(v)) out[key] = clamp(v, 0, MAX_SIZE);
+    else notes.add("reset");
+  }
+  const c = get(raw, "constraints");
+  if (isObj(c)) {
+    const axis = (key: string): ConstraintType => {
+      const v = get(c, key);
+      if (v === undefined) return "MIN";
+      if (typeof v === "string" && Object.prototype.hasOwnProperty.call(CONSTRAINTS, v)) return CONSTRAINTS[v] as ConstraintType;
+      notes.add("reset");
+      return "MIN";
+    };
+    const constraints = { horizontal: axis("horizontal"), vertical: axis("vertical") };
+    // Left and top is the default; it is left out so the file stays as small as before.
+    if (constraints.horizontal !== "MIN" || constraints.vertical !== "MIN") out.constraints = constraints;
+  } else if (c !== undefined) notes.add("reset");
+  const span = (k: string) => {
+    const v = get(raw, k);
+    return v !== undefined && v !== 1;
+  };
+  if (span("columnSpan") || span("rowSpan")) notes.add("gridSpan");
+  return out;
+}
+
+/**
+ * A frame's own auto layout (`autoLayout`), mapped the way the prototype's
+ * `computeLayout` read it, so `@illigma/layout` puts every layer where the
+ * prototype did. The prototype's defaults differ from Figma's (16 px gap and
+ * padding, Hug), so every setting is written out.
+ */
+function frameLayout(raw: Obj, notes: Notes): LayoutFields {
+  const out = itemLayout(raw, notes);
+  const kind = layoutKind(raw);
+  const al = get(raw, "autoLayout");
+  // How the parent sees the frame's size: `applyAutoLayout` reads `autoLayout.widthSizing`, then the frame's own `widthSizing`.
+  const inParent = (axis: "width" | "height"): Sizing | undefined =>
+    sizingOf((isObj(al) ? get(al, `${axis}Sizing`) : undefined) || get(raw, `${axis}Sizing`), notes);
+  if (kind === "grid") notes.add("grid");
+  if (kind !== "flow" || !isObj(al)) {
+    for (const [axis, key] of AXES) if (inParent(axis) === "fill") out[key] = "FILL";
+    return out;
+  }
+
+  const vertical = get(al, "direction") === "vertical";
+  out.layoutMode = vertical ? "VERTICAL" : "HORIZONTAL";
+  out.itemSpacing = bounded(get(al, "gap"), DEFAULT_GAP, -MAX_SIZE, MAX_SIZE, notes);
+  // Absent, the gap between wrapped lines follows the gap (never negative), in both the prototype and Illigma.
+  const crossGap = get(al, "crossGap");
+  if (finite(crossGap)) out.counterAxisSpacing = clamp(crossGap, 0, MAX_SIZE);
+  else if (crossGap !== undefined) notes.add("reset");
+  const padX = numberOr(get(al, "paddingX"), DEFAULT_PADDING, () => true, notes);
+  const padY = numberOr(get(al, "paddingY"), DEFAULT_PADDING, () => true, notes);
+  out.paddingLeft = bounded(get(al, "paddingLeft"), padX, 0, MAX_SIZE, notes);
+  out.paddingRight = bounded(get(al, "paddingRight"), padX, 0, MAX_SIZE, notes);
+  out.paddingTop = bounded(get(al, "paddingTop"), padY, 0, MAX_SIZE, notes);
+  out.paddingBottom = bounded(get(al, "paddingBottom"), padY, 0, MAX_SIZE, notes);
+
+  // Alignment: one of nine words such as "top-left" or "center"; the prototype read it by the words it contains.
+  let align = get(al, "align");
+  if (typeof align !== "string") {
+    if (align !== undefined) notes.add("reset");
+    align = "top-left";
+  }
+  const word = align as string;
+  const x: CounterAxisAlign = word.includes("left") ? "MIN" : word.includes("right") ? "MAX" : "CENTER";
+  const y: CounterAxisAlign = word.includes("top") ? "MIN" : word.includes("bottom") ? "MAX" : "CENTER";
+  // Spacing mode: "packed" uses the gap; Between, Around and Evenly are Figma's Auto gaps.
+  const spacing = get(al, "spacingMode");
+  let auto: (typeof SPACING_MODES)[string] = null;
+  if (typeof spacing === "string" && Object.prototype.hasOwnProperty.call(SPACING_MODES, spacing)) auto = SPACING_MODES[spacing] ?? null;
+  else if (spacing !== undefined) notes.add("reset");
+  out.primaryAxisAlignItems = auto ?? (vertical ? y : x);
+  out.counterAxisAlignItems = vertical ? x : y;
+
+  const wrap = get(al, "wrap");
+  if (wrap === true) out.layoutWrap = "WRAP";
+  else if (wrap !== undefined && wrap !== false) notes.add("reset");
+
+  // Sizing. The frame's own layout hugs unless `autoLayout.widthSizing` (or `sizing`) says otherwise.
+  sizingOf(get(al, "sizing"), notes); // noted once if broken; read per axis below
+  for (const [axis, key] of AXES) {
+    const hug = sizingOf(get(al, `${axis}Sizing`) || get(al, "sizing") || "hug") === "hug";
+    out[key] = inParent(axis) === "fill" ? "FILL" : hug ? "HUG" : "FIXED";
+    out[(axis === "width") === !vertical ? "primaryAxisSizingMode" : "counterAxisSizingMode"] = hug ? "AUTO" : "FIXED";
+  }
+  return out;
 }
