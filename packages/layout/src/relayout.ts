@@ -20,11 +20,11 @@
  * constraints from the old size to the new one.
  */
 
-import type { NodeId } from "@illigma/format";
+import type { NodeId, VectorNetwork } from "@illigma/format";
 import { FRAME_TYPES, frameSize, isAutoLayout, isInFlow, layoutFrame, layoutSizing, type Axis, type FrameLayout } from "./auto-layout.js";
 import { applyConstraints } from "./constraints.js";
-import { quarterTurns, rotatedBounds } from "./geometry.js";
-import type { Box, LayoutChange, LayoutNode, LayoutReader, Size } from "./types.js";
+import { quarterTurns, rotatedBounds, roundLayout } from "./geometry.js";
+import type { Box, LayoutChange, LayoutNode, LayoutReader, ReadonlyVectorNetwork, Size } from "./types.js";
 
 export interface RelayoutOptions {
   /**
@@ -64,9 +64,28 @@ export interface ResizeOptions {
  * user resizes such a layer.
  */
 export function resize(doc: LayoutReader, id: NodeId, box: Partial<Box>, options: ResizeOptions = {}): LayoutChange[] {
-  const overlay = new Map<NodeId, Partial<Box>>([[id, box]]);
-  const ignore = new Set<NodeId>(options.constraints === false ? [id] : []);
-  return new Engine(doc, overlay, ignore, false).run([id]);
+  return resizeMany(doc, [{ id, box }], options);
+}
+
+/** One node and its new box, for `resizeMany`. */
+export interface ResizeEntry {
+  id: NodeId;
+  box: Partial<Box>;
+}
+
+/**
+ * `resize` for many nodes at once, in one layout pass: resizing N children
+ * of one auto layout frame costs one layout of that frame, not N. All boxes
+ * apply together: constraints work from the sizes before any of them (a
+ * resized node inside another resized frame follows its constraints on the
+ * axes its own box leaves out), and auto layout reflows once around all of
+ * them. A later entry for the same node merges over an earlier one.
+ */
+export function resizeMany(doc: LayoutReader, entries: Iterable<ResizeEntry>, options: ResizeOptions = {}): LayoutChange[] {
+  const overlay = new Map<NodeId, Partial<Box>>();
+  for (const { id, box } of entries) overlay.set(id, { ...overlay.get(id), ...box });
+  const ignore = new Set<NodeId>(options.constraints === false ? overlay.keys() : []);
+  return new Engine(doc, overlay, ignore, false).run(overlay.keys());
 }
 
 /** The shape of a `@illigma/core` operation, as far as `changedIds` needs it. */
@@ -149,6 +168,9 @@ class Engine {
     for (const [id, box] of this.#out) {
       const raw = this.#doc.get(id) as LayoutNode;
       for (const key of KEYS) if (box[key] !== raw[key]) changes.push({ id, key, value: box[key] });
+      // A vector's network is in its own space: it scales with the node.
+      const net = raw.vectorNetwork && scaleVectorNetwork(raw.vectorNetwork, raw, box);
+      if (net) changes.push({ id, key: "vectorNetwork", value: net });
     }
     return changes;
   }
@@ -218,16 +240,21 @@ class Engine {
 
   // ---- placing ----
 
-  #record(id: NodeId, box: Box): void {
+  /** Record `box` (rounded, see `roundLayout`) as `id`'s new box. Returns the rounded box. */
+  #record(id: NodeId, unrounded: Box): Box {
     const raw = this.#doc.get(id) as LayoutNode;
+    // Only computed values are rounded: a value layout leaves as it is stays exactly as stored.
+    const box = roundBox(unrounded, raw);
     if (box.x !== raw.x || box.y !== raw.y || box.width !== raw.width || box.height !== raw.height) this.#out.set(id, box);
     else this.#out.delete(id);
+    return box;
   }
 
   /** Give `n` its final box (from its parent), then lay out its children if anything they depend on changed. */
-  #place(n: LayoutNode, box: Box, width: number | undefined, height: number | undefined): void {
+  #place(n: LayoutNode, unrounded: Box, width: number | undefined, height: number | undefined): void {
     const raw = this.#doc.get(n.id) as LayoutNode;
-    this.#record(n.id, box);
+    // Children follow the size that is stored, so the next layout sees the same numbers.
+    const box = this.#record(n.id, unrounded);
     const old: Size = { width: raw.width, height: raw.height };
     const resized = box.width !== old.width || box.height !== old.height;
     if (!this.#deep && !resized && !this.#dirty.has(n.id)) return;
@@ -263,6 +290,16 @@ class Engine {
   #constrain(k: LayoutNode, old: Size, now: Size): void {
     if (this.#isFlatGroup(k)) {
       this.#record(k.id, this.#constrainGroup(k, 0, 0, old, now));
+      return;
+    }
+    const own = this.#overlay.get(k.id);
+    if (own) {
+      // Resized itself in the same pass (`resizeMany`): it follows its constraints from where it
+      // was, then its own box wins on the fields it gives.
+      const raw = this.#doc.get(k.id) as LayoutNode;
+      const at = { ...applyConstraints(old, now, raw), ...own };
+      const [box, fw, fh] = this.#constrained({ ...k, width: at.width, height: at.height }, at, now, now);
+      this.#place(k, box, fw, fh);
       return;
     }
     const [box, fw, fh] = this.#constrained(k, k, old, now);
@@ -323,4 +360,34 @@ class Engine {
     }
     return { x: x0 - ox, y: y0 - oy, width: x1 - x0, height: y1 - y0 };
   }
+}
+
+/** `b` rounded (`roundLayout`), except values equal to `raw`'s, which are kept exactly. */
+const roundBox = (b: Box, raw: Box): Box => {
+  const r = (key: keyof Box) => (b[key] === raw[key] ? raw[key] : roundLayout(b[key]));
+  return { x: r("x"), y: r("y"), width: r("width"), height: r("height") };
+};
+
+/**
+ * `net` (in a `from`-sized node's space) scaled to a `to`-sized node, or null
+ * when the size is unchanged. An axis that was zero long (a straight vertical
+ * or horizontal line) has nothing to scale and keeps its coordinates. Corner
+ * radii keep their value, as in Figma.
+ */
+export function scaleVectorNetwork(net: ReadonlyVectorNetwork, from: Size, to: Size): VectorNetwork | null {
+  const sx = from.width > 0 && to.width !== from.width ? to.width / from.width : 1;
+  const sy = from.height > 0 && to.height !== from.height ? to.height / from.height : 1;
+  if (sx === 1 && sy === 1) return null;
+  const x = (v: number) => roundLayout(v * sx);
+  const y = (v: number) => roundLayout(v * sy);
+  return {
+    vertices: net.vertices.map((v) => ({ ...v, x: x(v.x), y: y(v.y) })),
+    segments: net.segments.map((s) => ({
+      start: s.start,
+      end: s.end,
+      tangentStart: { x: x(s.tangentStart.x), y: y(s.tangentStart.y) },
+      tangentEnd: { x: x(s.tangentEnd.x), y: y(s.tangentEnd.y) },
+    })),
+    regions: net.regions.map((r) => ({ windingRule: r.windingRule, loops: r.loops.map((l) => [...l]) })),
+  };
 }

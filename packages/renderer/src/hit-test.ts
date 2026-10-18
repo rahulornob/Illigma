@@ -119,7 +119,9 @@ function onGeometry(n: ReadonlyNode, geo: ShapeGeometry, x: number, y: number, t
   }
   if (testStroke && geo.stroke.length) {
     const reach = Math.max(0, n.strokeWeight) / 2 + tolerance;
-    if (nearStroke(flatten(geo.stroke), x, y, reach)) return true;
+    // A drawn stroke also reaches out with square caps and miter joins (lines have no joins).
+    const shape = hasStroke ? { half: n.strokeWeight / 2, cap: n.strokeCap, join: n.type === "LINE" ? ("ROUND" as const) : n.strokeJoin } : undefined;
+    if (nearStroke(flatten(geo.stroke), x, y, reach, shape)) return true;
   }
   return false;
 }

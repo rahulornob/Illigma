@@ -13,11 +13,14 @@
 
 import type { Document, DocumentOptions, Normalizer, ReadonlyNode, Transaction } from "@illigma/core";
 import type { NodeId } from "@illigma/format";
-import { changedIds, isAutoLayout, isInFlow, layoutSizing, relayout, resize, type Box, type LayoutChange } from "@illigma/layout";
+import { changedIds, isAutoLayout, isInFlow, layoutSizing, relayout, resizeMany, type Box, type LayoutChange, type ResizeEntry } from "@illigma/layout";
 
 /** Apply layout's changes inside the running transaction. */
 export function applyLayout(tx: Transaction, changes: readonly LayoutChange[]): void {
-  for (const c of changes) tx.set(c.id, c.key, c.value);
+  for (const c of changes) {
+    if (c.key === "vectorNetwork") tx.set(c.id, c.key, c.value);
+    else tx.set(c.id, c.key, c.value);
+  }
 }
 
 /** Lays out whatever an edit changed, inside the edit (see `Normalizer` in `@illigma/core`). */
@@ -49,6 +52,23 @@ const SIZING_KEY = { width: "layoutSizingHorizontal", height: "layoutSizingVerti
  * A layer in an auto layout flow keeps the position its parent gives it.
  */
 export function resizeLayer(tx: Transaction, doc: Document, id: NodeId, box: Partial<Box>, opts: { constraints?: boolean } = {}): void {
+  resizeLayers(tx, doc, [{ id, box }], opts);
+}
+
+/**
+ * `resizeLayer` for many layers, in one layout pass (`resizeMany` in
+ * `@illigma/layout`): resizing N children of one auto layout frame lays the
+ * frame out once, not N times. The boxes apply together.
+ */
+export function resizeLayers(tx: Transaction, doc: Document, entries: readonly ResizeEntry[], opts: { constraints?: boolean } = {}): void {
+  const live = entries.filter((e) => doc.has(e.id));
+  if (!live.length) return;
+  for (const { id, box } of live) toFixed(tx, doc, id, box);
+  applyLayout(tx, resizeMany(doc, live, opts.constraints === false ? { constraints: false } : {}));
+}
+
+/** A Hug or Fill axis that `box` changes becomes Fixed. */
+function toFixed(tx: Transaction, doc: Document, id: NodeId, box: Partial<Box>): void {
   const n = doc.get(id);
   if (!n) return;
   const flowing = inFlow(doc, id);
@@ -65,7 +85,6 @@ export function resizeLayer(tx: Transaction, doc: Document, id: NodeId, box: Par
       if ((n[mode] ?? "AUTO") === "AUTO") tx.set(id, mode, "FIXED");
     }
   }
-  applyLayout(tx, resize(doc, id, box, opts.constraints === false ? { constraints: false } : {}));
 }
 
 /**
@@ -74,9 +93,21 @@ export function resizeLayer(tx: Transaction, doc: Document, id: NodeId, box: Par
  * layout flow are its parent's to set, so they change nothing.
  */
 export function setBoxField(tx: Transaction, doc: Document, id: NodeId, field: keyof Box, value: number): void {
+  setBoxValues(tx, doc, field, [[id, value]]);
+}
+
+/**
+ * `setBoxField` for many layers (a typed value per layer), with every size
+ * resized in one layout pass (`resizeLayers`).
+ */
+export function setBoxValues(tx: Transaction, doc: Document, field: keyof Box, values: readonly (readonly [NodeId, number])[]): void {
   if (field === "x" || field === "y") {
-    if (!inFlow(doc, id)) tx.set(id, field, value);
+    for (const [id, value] of values) if (doc.has(id) && !inFlow(doc, id)) tx.set(id, field, value);
     return;
   }
-  resizeLayer(tx, doc, id, { [field]: value });
+  resizeLayers(
+    tx,
+    doc,
+    values.map(([id, value]) => ({ id, box: { [field]: value } })),
+  );
 }

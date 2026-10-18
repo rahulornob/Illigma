@@ -6,7 +6,10 @@
  * the page picture replays those. A document change re-records only the
  * top-level children whose subtree it touched, so editing one layer on a
  * 10k-layer page costs one screen's worth of recording, not the whole page.
- * Each frame only replays the page picture under the camera transform.
+ * A top-level child with many children (a screen holding thousands of
+ * layers) records them in chunks, each its own picture: editing one layer
+ * re-records its chunk and replays the rest. Each frame only replays the
+ * page picture under the camera transform.
  */
 
 import type { Change, DeepReadonly, Document, ReadonlyNode } from "@illigma/core";
@@ -74,13 +77,32 @@ const WEIGHTS: [RegExp, number][] = [
 interface ChildPicture {
   picture: SkPicture | null; // null when the child draws nothing (hidden)
   nodes: number;
+  /** Set when its children are recorded in chunks (more than CHUNK_THRESHOLD of them); `picture` replays them. */
+  chunks?: Chunk[];
+  /** Child id → index of the chunk that draws it. */
+  chunkOf?: Map<NodeId, number>;
 }
+
+/** A run of consecutive children of a top-level node, recorded in that node's own space. */
+interface Chunk {
+  picture: SkPicture | null;
+  nodes: number;
+}
+
+/** Above this many children, a top-level node records its children in chunks. */
+export const CHUNK_THRESHOLD = 256;
+/** Children per chunk: about √n, at least 64, so an edit re-records about √n layers and replays about √n chunks. */
+const chunkSize = (n: number) => Math.max(64, Math.ceil(Math.sqrt(n)));
 
 export class PageRenderer {
   private picture: SkPicture | null = null;
   private readonly children = new Map<NodeId, ChildPicture>();
-  /** Top-level children to re-record; `all` after a page switch or font change. */
-  private readonly stale = new Set<NodeId>();
+  /**
+   * Top-level children to re-record; `all` after a page switch or font change.
+   * null: the whole child. A set: only the chunks drawing these of its children
+   * (empty: just its own picture, which replays the chunks).
+   */
+  private readonly stale = new Map<NodeId, Set<NodeId> | null>();
   private all = true;
   private dirty = true;
   private nodeCount = 0;
@@ -171,7 +193,7 @@ export class PageRenderer {
   dispose(): void {
     this.unsubscribe();
     this.picture?.delete();
-    for (const c of this.children.values()) c.picture?.delete();
+    for (const c of this.children.values()) dropChild(c);
     this.children.clear();
     this.fonts?.delete();
     this.paint.delete();
@@ -185,29 +207,49 @@ export class PageRenderer {
     for (const o of change.ops) {
       if (o.op === "set") {
         const n = this.doc.get(o.id);
-        if (n) this.markFrom(n.id, n.parentId);
+        // A new parent or place in the order changes which chunk draws it.
+        if (n) this.markFrom(n.id, n.parentId, o.key === "parentId" || o.key === "index");
         // A move also changes what the old parent draws.
-        if (o.key === "parentId" && typeof o.prev === "string") this.markFrom(o.id, o.prev);
+        if (o.key === "parentId" && typeof o.prev === "string") this.markFrom(o.id, o.prev, true);
       } else {
         // Created or deleted: its parent's top-level ancestor changes. Deleted
         // ancestors can't be walked, but the topmost deleted node's parent can.
-        this.markFrom(o.node.id, o.node.parentId);
+        this.markFrom(o.node.id, o.node.parentId, true);
       }
     }
   }
 
-  /** Mark the top-level ancestor of node `id`, whose parent is `parentId`. */
-  private markFrom(id: NodeId, parentId: NodeId | null): void {
+  /**
+   * Mark the top-level ancestor of node `id`, whose parent is `parentId`: the
+   * chunk drawing `id` (or its ancestor among the top-level node's children),
+   * or the whole top-level node when `id` joins, leaves or moves among its
+   * children (`structural`), which changes the chunks.
+   */
+  private markFrom(id: NodeId, parentId: NodeId | null, structural: boolean): void {
     let cur: NodeId | null = id;
+    let below: NodeId | null = null; // cur's child on the way up from id
     let parent = parentId;
     // Bounded by depth; stops at another page or at a deleted ancestor.
     while (parent !== null && parent !== this.pageId) {
       const p = this.doc.get(parent);
       if (!p) return;
+      below = cur;
       cur = p.id;
       parent = p.parentId;
     }
-    if (parent === this.pageId && cur !== null) this.stale.add(cur);
+    if (parent !== this.pageId || cur === null) return;
+    const marked = this.stale.get(cur);
+    if (marked === null) return; // already re-recorded whole
+    if (below === null) {
+      // The top-level node itself: re-record it whole if it moved among the page's layers,
+      // else only its own picture (its chunks are in its own space).
+      if (structural) this.stale.set(cur, null);
+      else if (!marked) this.stale.set(cur, new Set());
+      return;
+    }
+    if (structural && below === id) this.stale.set(cur, null);
+    else if (marked) marked.add(below);
+    else this.stale.set(cur, new Set([below]));
   }
 
   /** Re-record stale top-level children, then the page picture. Returns how many children were recorded. */
@@ -216,15 +258,21 @@ export class PageRenderer {
     const live = new Set(top.map((n) => n.id));
     for (const [id, c] of this.children) {
       if (live.has(id)) continue;
-      c.picture?.delete();
+      dropChild(c);
       this.children.delete(id);
     }
     let recorded = 0;
     for (const n of top) {
-      if (!this.all && !this.stale.has(n.id) && this.children.has(n.id)) continue;
-      this.children.get(n.id)?.picture?.delete();
-      this.children.set(n.id, this.recordChild(n));
+      const stale = this.stale.get(n.id);
+      const cached = this.children.get(n.id);
+      if (!this.all && stale === undefined && cached) continue;
       recorded++;
+      if (!this.all && stale && cached?.chunks && n.visible && n.opacity > 0) {
+        this.rerecordChunks(n, cached, stale);
+        continue;
+      }
+      if (cached) dropChild(cached);
+      this.children.set(n.id, this.recordChild(n));
     }
     this.stale.clear();
     this.all = false;
@@ -248,6 +296,18 @@ export class PageRenderer {
 
   private recordChild(n: ReadonlyNode): ChildPicture {
     if (!n.visible || n.opacity <= 0) return { picture: null, nodes: 0 };
+    const kids = this.doc.children(n.id);
+    if (kids.length > CHUNK_THRESHOLD) {
+      const size = chunkSize(kids.length);
+      const chunks: Chunk[] = [];
+      const chunkOf = new Map<NodeId, number>();
+      for (let i = 0; i < kids.length; i += size) {
+        const run = kids.slice(i, i + size);
+        for (const k of run) chunkOf.set(k.id, chunks.length);
+        chunks.push(this.recordRun(run));
+      }
+      return this.compose(n, { picture: null, nodes: 0, chunks, chunkOf });
+    }
     const recorder = new this.ck.PictureRecorder();
     const canvas = recorder.beginRecording(EVERYWHERE(this.ck), true);
     this.nodeCount = 0; // drawNode counts into this; record() re-sums the page total after
@@ -258,7 +318,59 @@ export class PageRenderer {
     return { picture, nodes };
   }
 
-  private drawNode(canvas: Canvas, n: ReadonlyNode): void {
+  /** Re-record the chunks drawing `kids` (children of the chunked top-level node `n`), then `n`'s own picture. */
+  private rerecordChunks(n: ReadonlyNode, c: ChildPicture, kids: ReadonlySet<NodeId>): void {
+    const chunks = c.chunks as Chunk[];
+    const chunkOf = c.chunkOf as Map<NodeId, number>;
+    const redo = new Set<number>();
+    for (const id of kids) {
+      const i = chunkOf.get(id);
+      if (i !== undefined) redo.add(i);
+    }
+    if (redo.size) {
+      // Chunks are runs of consecutive children; the order is unchanged (a change to it marks `n` whole).
+      const all = this.doc.children(n.id);
+      const size = chunkSize(all.length);
+      for (const i of redo) {
+        chunks[i]?.picture?.delete();
+        chunks[i] = this.recordRun(all.slice(i * size, i * size + size));
+      }
+    }
+    c.picture?.delete();
+    this.compose(n, c);
+  }
+
+  /** Record `nodes` (siblings, in their parent's space) into one picture. */
+  private recordRun(nodes: readonly ReadonlyNode[]): Chunk {
+    const recorder = new this.ck.PictureRecorder();
+    const canvas = recorder.beginRecording(EVERYWHERE(this.ck), true);
+    this.nodeCount = 0;
+    for (const k of nodes) this.drawNode(canvas, k);
+    const chunk = { picture: recorder.finishRecordingAsPicture(), nodes: this.nodeCount };
+    recorder.delete();
+    return chunk;
+  }
+
+  /** Record chunked top-level node `n` itself, replaying its chunks for its children, into `c`. */
+  private compose(n: ReadonlyNode, c: ChildPicture): ChildPicture {
+    const recorder = new this.ck.PictureRecorder();
+    const canvas = recorder.beginRecording(EVERYWHERE(this.ck), true);
+    this.nodeCount = 0;
+    let nodes = 0;
+    this.drawNode(canvas, n, (inner) => {
+      for (const chunk of c.chunks ?? []) {
+        if (chunk.picture) inner.drawPicture(chunk.picture);
+        nodes += chunk.nodes;
+      }
+    });
+    c.picture = recorder.finishRecordingAsPicture();
+    c.nodes = this.nodeCount + nodes;
+    recorder.delete();
+    return c;
+  }
+
+  /** Draw `n` and its subtree; `children`, if given, draws its children instead (in its space, inside its clip). */
+  private drawNode(canvas: Canvas, n: ReadonlyNode, children?: (canvas: Canvas) => void): void {
     if (!n.visible || n.opacity <= 0) return;
     this.nodeCount++;
     const saved = canvas.save();
@@ -289,7 +401,8 @@ export class PageRenderer {
         canvas.clipRect(rect, this.ck.ClipOp.Intersect, true);
       }
     }
-    for (const child of this.doc.children(n.id)) this.drawNode(canvas, child);
+    if (children) children(canvas);
+    else for (const child of this.doc.children(n.id)) this.drawNode(canvas, child);
     canvas.restoreToCount(saved);
   }
 
@@ -398,6 +511,12 @@ export class PageRenderer {
     const W = this.ck.FontWeight;
     return ({ 100: W.Thin, 200: W.ExtraLight, 300: W.Light, 400: W.Normal, 500: W.Medium, 600: W.SemiBold, 700: W.Bold, 800: W.ExtraBold, 900: W.Black } as Record<number, FontWeight>)[w] ?? W.Normal;
   }
+}
+
+/** Free a top-level child's pictures, chunks included. */
+function dropChild(c: ChildPicture): void {
+  c.picture?.delete();
+  for (const chunk of c.chunks ?? []) chunk.picture?.delete();
 }
 
 /**

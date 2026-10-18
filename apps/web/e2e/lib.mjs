@@ -153,7 +153,7 @@ export function watchErrors(page, errors) {
 export const layerRows = (page) => page.locator(".layer-list .layer-row");
 /** A layer row by its exact layer name (the row's accessible name is "<name>, <type>"). */
 export const layerRow = (page, name) => page.locator(".layer-list .layer-row", { hasText: new RegExp(`^${name}$`) });
-export const selectedRows = (page) => page.locator('.layer-list .layer-row[aria-pressed="true"]');
+export const selectedRows = (page) => page.locator('.layer-list .layer-row[aria-selected="true"]');
 
 /** Wait until the editor is up and the canvas has started. On failure, says why the canvas didn't start (e.g. no WebGL). */
 export async function canvasReady(page) {

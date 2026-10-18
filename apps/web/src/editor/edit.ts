@@ -1,7 +1,7 @@
 import type { Document, Operation, ReadonlyNode, Transaction } from "@illigma/core";
 import type { NodeId } from "@illigma/format";
-import { isInFlow, padding, rotatedBounds } from "@illigma/layout";
-import { flowParent, inFlow, resizeLayer } from "./layout";
+import { isInFlow, padding, rotatedBounds, type ResizeEntry } from "@illigma/layout";
+import { flowParent, inFlow, resizeLayers } from "./layout";
 import {
   fromSpace,
   parentPlacement,
@@ -135,7 +135,10 @@ export function snapDelta(box: Rect, dx: number, dy: number): Point {
  */
 export function resizeBy(tx: Transaction, doc: Document, starts: readonly Start[], handle: Handle, dx: number, dy: number, mods: ResizeModifiers & { constraints?: boolean }): void {
   // Through layout: children follow their constraints (not with ⌘/Ctrl held), Hug or Fill becomes Fixed, auto layout reflows.
-  const set = (id: NodeId, box: Rect) => resizeLayer(tx, doc, id, box, { constraints: mods.constraints !== false });
+  // All layers in one layout pass: N children of one auto layout frame lay it out once, not N times.
+  const batch: ResizeEntry[] = [];
+  const set = (id: NodeId, box: Rect) => void batch.push({ id, box });
+  const flush = () => resizeLayers(tx, doc, batch, { constraints: mods.constraints !== false });
   const only = starts.length === 1 ? starts[0] : undefined;
   if (only && worldRotation(only) !== 0) {
     // Turned layer: resize in its own space, then put its top-left back in the parent's.
@@ -144,6 +147,7 @@ export function resizeBy(tx: Transaction, doc: Document, starts: readonly Start[
     const r = scaleRect(box, resizeScale(box, handle, d.x, d.y, mods));
     const o = rotate(r.x, r.y, only.rotation);
     set(only.id, { x: tidy(only.x + o.x), y: tidy(only.y + o.y), width: r.width, height: r.height });
+    flush();
     return;
   }
   const box = startBounds(starts);
@@ -168,6 +172,7 @@ export function resizeBy(tx: Transaction, doc: Document, starts: readonly Start[
     const p = toSpace(s.parent, c.x - half.x, c.y - half.y);
     set(s.id, { x: tidy(p.x), y: tidy(p.y), width: w, height: h });
   }
+  flush();
 }
 
 /** Delete the layers (and everything inside them). */

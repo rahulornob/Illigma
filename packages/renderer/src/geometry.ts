@@ -151,17 +151,75 @@ export interface Flattened {
   bounds: [number, number, number, number];
 }
 
+/**
+ * How far (world units) a flattened curve may stray from the true curve.
+ * Zoom-independent; it grows with very large paths (a 10,000th of their size)
+ * so they don't explode into millions of points.
+ */
+export const FLATTEN_TOLERANCE = 0.05;
+/** At most this many points per flattened path: a 100,000-segment network stays a few megabytes and a few milliseconds per hit test. */
+export const MAX_FLAT_POINTS = 250_000;
+/** At most this many straight pieces per cubic. */
+const MAX_PIECES = 1024;
+
 const flatCache = new WeakMap<readonly number[], Flattened>();
 
-/** Path commands as polylines; cubics are split into short straight pieces. */
+/**
+ * Path commands as polylines; each cubic is split into as few straight
+ * pieces as keep it within the tolerance (Wang's formula), and the whole path
+ * into at most MAX_FLAT_POINTS points. Cached per commands array.
+ */
 export function flatten(commands: readonly number[]): Flattened {
   const cached = flatCache.get(commands);
   if (cached) return cached;
+  const c = commands;
+
+  // Pass 1: bounds, and each cubic's second-difference size (Wang's formula needs it).
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  const grow = (x: number, y: number) => {
+    if (x < x0) x0 = x;
+    if (x > x1) x1 = x;
+    if (y < y0) y0 = y;
+    if (y > y1) y1 = y;
+  };
+  const curvature: number[] = [];
+  let straight = 0; // points from moves and lines
+  let px = 0, py = 0, sx = 0, sy = 0;
+  for (let i = 0; i < c.length; ) {
+    const verb = c[i++];
+    if (verb === PATH_MOVE || verb === PATH_LINE) {
+      px = c[i++] as number;
+      py = c[i++] as number;
+      if (verb === PATH_MOVE) [sx, sy] = [px, py];
+      grow(px, py);
+      straight++;
+    } else if (verb === PATH_CUBIC) {
+      const bx = c[i++] as number, by = c[i++] as number, cx = c[i++] as number, cy = c[i++] as number, dx = c[i++] as number, dy = c[i++] as number;
+      grow(bx, by);
+      grow(cx, cy);
+      grow(dx, dy);
+      curvature.push(Math.max(Math.hypot(px - 2 * bx + cx, py - 2 * by + cy), Math.hypot(bx - 2 * cx + dx, by - 2 * cy + dy)));
+      px = dx;
+      py = dy;
+    } else if (verb === PATH_CLOSE) {
+      [px, py] = [sx, sy];
+    } else break;
+  }
+  const size = Number.isFinite(x1 - x0 + y1 - y0) ? Math.max(x1 - x0, y1 - y0) : 0;
+  const tolerance = Math.max(FLATTEN_TOLERANCE, size / 10_000);
+  const pieces = curvature.map((m) => Math.max(1, Math.min(MAX_PIECES, Math.ceil(Math.sqrt((0.75 * m) / tolerance)))));
+  let curved = 0;
+  for (const n of pieces) curved += n;
+  // Over the point budget: share what is left after the corners among the curves (at least one piece each).
+  if (straight + curved > MAX_FLAT_POINTS) {
+    const scale = Math.max(0, MAX_FLAT_POINTS - straight) / curved;
+    for (let k = 0; k < pieces.length; k++) pieces[k] = Math.max(1, Math.floor((pieces[k] as number) * scale));
+  }
+
+  // Pass 2: the polylines.
   const polys: Float64Array[] = [];
   const closed: boolean[] = [];
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   let cur: number[] = [];
-  let px = 0, py = 0;
   const end = (isClosed: boolean) => {
     if (cur.length >= 2) {
       polys.push(Float64Array.from(cur));
@@ -171,14 +229,10 @@ export function flatten(commands: readonly number[]): Flattened {
   };
   const add = (x: number, y: number) => {
     cur.push(x, y);
-    if (x < x0) x0 = x;
-    if (x > x1) x1 = x;
-    if (y < y0) y0 = y;
-    if (y > y1) y1 = y;
     px = x;
     py = y;
   };
-  const c = commands;
+  let k = 0;
   for (let i = 0; i < c.length; ) {
     const verb = c[i++];
     if (verb === PATH_MOVE) {
@@ -189,20 +243,18 @@ export function flatten(commands: readonly number[]): Flattened {
     } else if (verb === PATH_CUBIC) {
       const ax = px, ay = py;
       const bx = c[i++] as number, by = c[i++] as number, cx = c[i++] as number, cy = c[i++] as number, dx = c[i++] as number, dy = c[i++] as number;
-      // Pieces by the control polygon's length: about one per 4 units, 2 to 64.
-      const len = Math.hypot(bx - ax, by - ay) + Math.hypot(cx - bx, cy - by) + Math.hypot(dx - cx, dy - cy);
-      const steps = Math.max(2, Math.min(64, Math.ceil(len / 4)));
+      const steps = pieces[k++] as number;
       for (let s = 1; s <= steps; s++) {
         const t = s / steps, u = 1 - t;
         const w0 = u * u * u, w1 = 3 * u * u * t, w2 = 3 * u * t * t, w3 = t * t * t;
         add(w0 * ax + w1 * bx + w2 * cx + w3 * dx, w0 * ay + w1 * by + w2 * cy + w3 * dy);
       }
     } else if (verb === PATH_CLOSE) {
-      const sx = cur[0], sy = cur[1];
+      const startX = cur[0], startY = cur[1];
       end(true);
-      if (sx !== undefined && sy !== undefined) {
-        px = sx;
-        py = sy;
+      if (startX !== undefined && startY !== undefined) {
+        px = startX;
+        py = startY;
       }
     } else break;
   }
@@ -238,15 +290,38 @@ export function insideFill(flat: Flattened, x: number, y: number, evenOdd: boole
   return evenOdd ? crossings % 2 === 1 : winding !== 0;
 }
 
-/** Whether (x, y) is within `reach` of any line of `flat`. */
-export function nearStroke(flat: Flattened, x: number, y: number, reach: number): boolean {
+/** How a stroke ends and turns, for `nearStroke`. */
+export interface StrokeShape {
+  /** Half the stroke weight: how far caps and miters reach past the line. */
+  half: number;
+  cap?: "NONE" | "ROUND" | "SQUARE" | undefined;
+  join?: "MITER" | "BEVEL" | "ROUND" | undefined;
+}
+
+/** Skia's default miter limit, which the renderer uses: sharper joins are drawn bevelled. */
+export const MITER_LIMIT = 4;
+
+/**
+ * Whether (x, y) is within `reach` of any line of `flat`. With `stroke`, also
+ * on the parts a stroke draws past its lines' round reach: square caps (half
+ * the weight past each open end) and miter joins (out to the miter tip, up to
+ * the miter limit), each with the same extra tolerance (`reach − stroke.half`).
+ */
+export function nearStroke(flat: Flattened, x: number, y: number, reach: number, stroke?: StrokeShape): boolean {
+  const half = stroke ? Math.max(0, Math.min(stroke.half, reach)) : 0;
+  const tol = reach - half;
+  const square = half > 0 && stroke?.cap === "SQUARE";
+  const miter = half > 0 && (stroke?.join ?? "MITER") === "MITER";
+  // A square cap reaches √2 × half from its end point; a miter up to MITER_LIMIT × half from its corner.
+  const far = miter ? half * MITER_LIMIT + tol : square ? half * Math.SQRT2 + tol : reach;
   const [bx0, by0, bx1, by1] = flat.bounds;
-  if (x < bx0 - reach || x > bx1 + reach || y < by0 - reach || y > by1 + reach) return false;
+  if (x < bx0 - far || x > bx1 + far || y < by0 - far || y > by1 + far) return false;
   const r2 = reach * reach;
   for (let k = 0; k < flat.polys.length; k++) {
     const p = flat.polys[k] as Float64Array;
     const n = p.length;
-    const last = flat.closed[k] ? n : n - 2;
+    const isClosed = flat.closed[k] as boolean;
+    const last = isClosed ? n : n - 2;
     for (let i = 0; i < last; i += 2) {
       const ax = p[i] as number, ay = p[i + 1] as number;
       const j = i + 2 < n ? i + 2 : 0;
@@ -259,7 +334,96 @@ export function nearStroke(flat: Flattened, x: number, y: number, reach: number)
     if (n === 2) {
       const ex = (p[0] as number) - x, ey = (p[1] as number) - y;
       if (ex * ex + ey * ey <= r2) return true;
+      continue;
     }
+    if (square && !isClosed && (squareCap(p, 0, 2, x, y, half, tol) || squareCap(p, n - 2, n - 4, x, y, half, tol))) return true;
+    if (miter) {
+      const points = n / 2;
+      // Corners: every inner point, and on a closed polyline its first point too.
+      for (let v = isClosed ? 0 : 1; v < (isClosed ? points : points - 1); v++) {
+        const prev = (v + points - 1) % points;
+        const next = (v + 1) % points;
+        if (miterJoin(p, prev * 2, v * 2, next * 2, x, y, half, tol)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/** On the square cap at point `at` of polyline `p` (its neighbour on the line at `from`)? */
+function squareCap(p: Float64Array, at: number, from: number, x: number, y: number, half: number, tol: number): boolean {
+  const ex = p[at] as number, ey = p[at + 1] as number;
+  let dx = ex - (p[from] as number), dy = ey - (p[from + 1] as number);
+  const len = Math.hypot(dx, dy);
+  if (!len) return false;
+  dx /= len;
+  dy /= len;
+  // In the cap's own axes: along the line past its end, and across it.
+  const u = (x - ex) * dx + (y - ey) * dy;
+  const v = -(x - ex) * dy + (y - ey) * dx;
+  return u >= 0 && u <= half + tol && Math.abs(v) <= half + tol;
+}
+
+/** On the miter at corner `v` of polyline `p`, between the lines from `a` and to `b`? */
+function miterJoin(p: Float64Array, a: number, v: number, b: number, x: number, y: number, half: number, tol: number): boolean {
+  const vx = p[v] as number, vy = p[v + 1] as number;
+  const qx = x - vx, qy = y - vy;
+  if (qx * qx + qy * qy > (half * MITER_LIMIT + tol) ** 2) return false;
+  let ix = vx - (p[a] as number), iy = vy - (p[a + 1] as number); // into the corner
+  let ox = (p[b] as number) - vx, oy = (p[b + 1] as number) - vy; // out of it
+  const li = Math.hypot(ix, iy), lo = Math.hypot(ox, oy);
+  if (!li || !lo) return false;
+  ix /= li;
+  iy /= li;
+  ox /= lo;
+  oy /= lo;
+  // The outer bisector, and sin of half the angle between the two lines.
+  let mx = ix - ox, my = iy - oy;
+  const ml = Math.hypot(mx, my);
+  if (ml < 1e-9) return false; // straight on: no corner
+  mx /= ml;
+  my /= ml;
+  const sinHalf = Math.hypot(ix + ox, iy + oy) / 2;
+  if (1 / sinHalf > MITER_LIMIT) return false; // drawn bevelled: the round reach already covers it
+  const tip = half / sinHalf;
+  // The miter is the kite between the corner, the two outer edge offsets and the tip.
+  const side = (nx: number, ny: number) => (nx * mx + ny * my >= 0 ? [nx, ny] : [-nx, -ny]) as [number, number];
+  const [ax, ay] = side(-iy, ix);
+  const [bx, by] = side(-oy, ox);
+  const kite: [number, number][] = [
+    [0, 0],
+    [ax * half, ay * half],
+    [mx * tip, my * tip],
+    [bx * half, by * half],
+  ];
+  return insideConvex(kite, qx, qy) || nearPolygon(kite, qx, qy, tol);
+}
+
+/** Inside the convex polygon `pts` (either winding)? */
+function insideConvex(pts: readonly [number, number][], x: number, y: number): boolean {
+  let sign = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const [ax, ay] = pts[i] as [number, number];
+    const [bx, by] = pts[(i + 1) % pts.length] as [number, number];
+    const cross = (bx - ax) * (y - ay) - (by - ay) * (x - ax);
+    if (cross === 0) continue;
+    const s = Math.sign(cross);
+    if (sign === 0) sign = s;
+    else if (s !== sign) return false;
+  }
+  return true;
+}
+
+/** Within `reach` of an edge of polygon `pts`? */
+function nearPolygon(pts: readonly [number, number][], x: number, y: number, reach: number): boolean {
+  if (reach <= 0) return false;
+  for (let i = 0; i < pts.length; i++) {
+    const [ax, ay] = pts[i] as [number, number];
+    const [bx, by] = pts[(i + 1) % pts.length] as [number, number];
+    const dx = bx - ax, dy = by - ay;
+    const l2 = dx * dx + dy * dy;
+    const t = l2 > 0 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2)) : 0;
+    if ((ax + t * dx - x) ** 2 + (ay + t * dy - y) ** 2 <= reach * reach) return true;
   }
   return false;
 }
