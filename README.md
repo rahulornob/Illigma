@@ -29,6 +29,7 @@ npm test        # unit tests
 | [`@illigma/core`](packages/core) | MPL-2.0 | The document model: nodes, operations, transactions, undo |
 | [`@illigma/layout`](packages/layout) | MPL-2.0 | Layout engine: Figma auto layout and constraints |
 | [`@illigma/renderer`](packages/renderer) | MPL-2.0 | GPU canvas renderer (CanvasKit / Skia WASM on WebGL2) |
+| [`@illigma/export`](packages/export) | MPL-2.0 | PNG, JPG, SVG and PDF export with Figma's export settings and file names |
 | [`apps/bench`](apps/bench) | MPL-2.0 | Renderer benchmark: 10,000 layers, `npm run bench` |
 
 ### Importing an old prototype document

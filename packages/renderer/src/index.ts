@@ -9,23 +9,24 @@
  * Each frame only replays the page picture under the camera transform.
  */
 
-import type { Change, DeepReadonly, Document, ReadonlyNode } from "@illigma/core";
+import type { Change, DeepReadonly, ReadonlyNode } from "@illigma/core";
 import {
   PATH_CLOSE,
   PATH_CUBIC,
   PATH_LINE,
   PATH_MOVE,
+  type Color,
   type Effect,
   type NodeId,
   type Paint as FilePaint,
   type ShadowEffect,
 } from "@illigma/format";
-import type { Canvas, CanvasKit, FontWeight, Image, ImageFilter, Paint, Path, SkPicture, Surface, TypefaceFontProvider } from "canvaskit-wasm";
+import type { Canvas, CanvasKit, FontWeight, Image, ImageFilter, Paint, Paragraph, Path, SkPicture, Surface, TypefaceFontProvider } from "canvaskit-wasm";
 import { shapeGeometry, type ShapeGeometry } from "./geometry.js";
-import { CLIPPING, hitTest } from "./hit-test.js";
+import { CLIPPING, hitTest, type NodeSource } from "./hit-test.js";
 import { PaintKit, sigma, type Box } from "./paint.js";
 
-export { DEFAULT_HIT_TOLERANCE, hitTest, insideShape, toLocal, type HitTestOptions, type NodeSource } from "./hit-test.js";
+export { CLIPPING, DEFAULT_HIT_TOLERANCE, hitTest, insideShape, toLocal, type HitTestOptions, type NodeSource } from "./hit-test.js";
 export { flatten, insideFill, nearStroke, PATH_TYPES, roundedPolygon, shapeGeometry, starPoints, type FillPath, type Flattened, type ShapeGeometry } from "./geometry.js";
 export { GpuCanvas } from "./gpu-canvas.js";
 export { invertTransform } from "./paint.js";
@@ -59,6 +60,26 @@ export interface FontSource {
 export type ImageSource =
   | ReadonlyMap<string, Uint8Array>
   | ((hash: string) => Uint8Array | null | undefined | Promise<Uint8Array | null | undefined>);
+
+/**
+ * The part of `Document` the renderer reads. A `Document` is one; export
+ * passes a read-only view whose `subscribe` never fires.
+ */
+export interface RenderSource extends NodeSource {
+  get(id: NodeId): ReadonlyNode | undefined;
+  subscribe(listener: (change: Change) => void): () => void;
+  /** Image files by `imageHash` (`Document.image`): the default source for IMAGE paints. */
+  image?(hash: string): Uint8Array | undefined;
+}
+
+/** One line of laid-out text, in the TEXT node's own space. */
+export interface TextLine {
+  text: string;
+  /** Left edge of the line. */
+  left: number;
+  /** Baseline, from the top of the node. */
+  baseline: number;
+}
 
 export interface RendererOptions {
   /** Fonts for TEXT nodes. The first family is the fallback. Without fonts, text draws as a placeholder bar. */
@@ -155,12 +176,14 @@ export class PageRenderer {
   private readonly decoding = new Set<Promise<void>>();
   /** The top-level child being recorded, so images that aren't ready yet know whom to re-record. */
   private recordingTop: NodeId | null = null;
+  /** True inside `drawSubtree`: images are decoded on the spot rather than after the recording. */
+  private decodeNow = false;
   private disposed = false;
 
   constructor(
     private readonly ck: CanvasKit,
     private surface: Surface,
-    private readonly doc: Document,
+    private readonly doc: RenderSource,
     private pageId: NodeId,
     private readonly dpr = 1,
     options: RendererOptions = {},
@@ -178,8 +201,7 @@ export class PageRenderer {
       this.fallbackFamily = options.fonts[0]?.family ?? null;
       this.moreFamilies = [...new Set(options.fonts.slice(1).map((f) => f.family))].filter((f) => f !== this.fallbackFamily);
     }
-    const ownImages = (doc as { image?: (hash: string) => Uint8Array | undefined }).image;
-    this.imageSource = options.images ?? (typeof ownImages === "function" ? (hash: string) => ownImages.call(doc, hash) : null);
+    this.imageSource = options.images ?? (typeof doc.image === "function" ? (hash: string) => doc.image?.(hash) : null);
     this.onImageReady = options.onImageReady;
     this.unsubscribe = doc.subscribe((change) => this.invalidate(change));
   }
@@ -243,6 +265,50 @@ export class PageRenderer {
       y1 = Math.max(y1, n.y + n.height);
     }
     return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+  }
+
+  /**
+   * Draw node `id` and its subtree onto `canvas`, uncached, in the node's
+   * parent space: the node's own x, y, rotation and opacity apply, its
+   * ancestors' don't. Used by export. Images the image source has at hand
+   * (a map, or a lookup that answers synchronously, like the document's own)
+   * are decoded on the spot, so they are in the result. Returns how many
+   * nodes were drawn (0 when the node is missing or hidden).
+   */
+  drawSubtree(canvas: Canvas, id: NodeId): number {
+    const n = this.doc.get(id);
+    if (!n) return 0;
+    const count = this.nodeCount;
+    this.nodeCount = 0;
+    this.decodeNow = true;
+    try {
+      this.drawNode(canvas, n);
+    } finally {
+      this.decodeNow = false;
+    }
+    const drawn = this.nodeCount;
+    this.nodeCount = count;
+    return drawn;
+  }
+
+  /**
+   * How TEXT node `id` breaks into lines when drawn: each line's text, its
+   * left edge and its baseline, in the node's own space. `null` without
+   * fonts, for other node types, or for empty text. SVG export uses it, so
+   * exported text wraps where the canvas wraps it.
+   */
+  layoutText(id: NodeId): TextLine[] | null {
+    const n = this.doc.get(id);
+    if (!n || n.type !== "TEXT" || !n.characters || !this.fonts) return null;
+    const text = n.characters;
+    const paragraph = this.paragraph(n, { r: 0, g: 0, b: 0, a: 1 }, null);
+    const lines = paragraph.getLineMetrics().map((m) => ({
+      text: text.slice(m.startIndex, m.endExcludingWhitespaces).replace(/[\r\n\u2028\u2029]+$/, ""),
+      left: m.left,
+      baseline: m.baseline,
+    }));
+    paragraph.delete();
+    return lines;
   }
 
   dispose(): void {
@@ -463,11 +529,21 @@ export class PageRenderer {
   private imageShader(n: ReadonlyNode, paint: DeepReadonly<Extract<FilePaint, { type: "IMAGE" }>>) {
     if (paint.imageHash === null) return null;
     const entry = this.imageEntry(paint.imageHash);
+    // Export draws once and can't wait: decode now if the bytes are at hand.
+    if (entry.state === "loading" && this.decodeNow) {
+      const bytes = this.lookupImage(paint.imageHash);
+      if (bytes instanceof Uint8Array) this.decodeInto(entry, bytes);
+    }
     if (entry.state === "loading") {
       if (this.recordingTop) entry.waiting.add(this.recordingTop);
       return undefined;
     }
     return entry.image ? this.kit.image(paint, entry.image, n.width, n.height) : null;
+  }
+
+  private decodeInto(e: ImageEntry, bytes: Uint8Array | null | undefined): void {
+    e.image = bytes ? this.ck.MakeImageFromEncoded(bytes) : null;
+    e.state = e.image ? "ready" : bytes ? "failed" : "missing";
   }
 
   /** Ask the image source for a file. Throwing sources count as having none. */
@@ -507,8 +583,7 @@ export class PageRenderer {
       // Decoded after the recording that asked, never inside it.
       await Promise.resolve();
       if (this.disposed) return;
-      e.image = bytes ? this.ck.MakeImageFromEncoded(bytes) : null;
-      e.state = e.image ? "ready" : bytes ? "failed" : "missing";
+      if (e.state === "loading") this.decodeInto(e, bytes);
       for (const id of e.waiting) this.stale.add(id);
       e.waiting.clear();
       this.dirty = true;
@@ -860,11 +935,14 @@ export class PageRenderer {
       const plain = fill.type === "SOLID" && (fill.opacity ?? 1) === 1 && (!fill.blendMode || fill.blendMode === "NORMAL" || fill.blendMode === "PASS_THROUGH");
       if (!plain && !this.usePaint(n, fill, false)) continue;
       const color = fill.type === "SOLID" ? fill.color : { r: 0, g: 0, b: 0, a: 1 };
-      this.drawParagraph(canvas, n, color, plain ? null : this.paint);
+      const paragraph = this.paragraph(n, color, plain ? null : this.paint);
+      canvas.drawParagraph(paragraph, 0, 0);
+      paragraph.delete();
     }
   }
 
-  private drawParagraph(canvas: Canvas, n: ReadonlyNode, color: { r: number; g: number; b: number; a: number }, paint: Paint | null): void {
+  /** A TEXT node laid out at its width, in `color`, or with `paint` (gradients, images, opacity, blending). The caller deletes it. */
+  private paragraph(n: ReadonlyNode, color: DeepReadonly<Color>, paint: Paint | null): Paragraph {
     const fonts = this.fonts as TypefaceFontProvider;
     const fontSize = n.fontSize ?? 12;
     const style = (n.fontStyle ?? "Regular").toLowerCase();
@@ -891,17 +969,16 @@ export class PageRenderer {
       const background = new this.ck.Paint();
       background.setColor(this.ck.TRANSPARENT);
       builder.pushPaintStyle(new this.ck.TextStyle(textStyle), paint, background);
-      builder.addText(n.characters as string);
+      builder.addText(n.characters ?? "");
       builder.pop();
       background.delete();
     } else {
-      builder.addText(n.characters as string);
+      builder.addText(n.characters ?? "");
     }
     const paragraph = builder.build();
     paragraph.layout(Math.max(1, n.width));
-    canvas.drawParagraph(paragraph, 0, 0);
-    paragraph.delete();
     builder.delete();
+    return paragraph;
   }
 
   private weight(style: string): FontWeight {
