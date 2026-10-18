@@ -51,6 +51,12 @@ describe("Layers panel", () => {
     expect(html).toContain(`height:${12_002 * 32}px`);
   });
 
+  it("rows have no aria-expanded while they can't collapse (QC round 7)", () => {
+    const { doc, page } = big(3);
+    const html = render(doc, page);
+    expect(html).not.toContain("aria-expanded");
+  });
+
   it("selected rows are aria-selected; one row is in the Tab order", () => {
     const { doc, page, frame } = big(5);
     const html = render(doc, page, [frame]);

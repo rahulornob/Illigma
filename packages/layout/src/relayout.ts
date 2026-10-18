@@ -288,22 +288,34 @@ class Engine {
 
   /** A child following its constraints as its parent goes from `old` to `now` in size. */
   #constrain(k: LayoutNode, old: Size, now: Size): void {
-    if (this.#isFlatGroup(k)) {
-      this.#record(k.id, this.#constrainGroup(k, 0, 0, old, now));
+    // Constraints work from the document's values: a box of its own (`resizeMany`) is where it ends up, not
+    // where it was, so constraining from it would apply the parent's resize twice.
+    const raw = this.#doc.get(k.id) as LayoutNode;
+    const own = this.#overlay.get(k.id);
+    if (this.#isFlatGroup(raw)) {
+      // Its own box wins over the fitted one; its layers keep the places the frame gave them, as when a group
+      // is resized on its own (a group passes no constraints down).
+      this.#record(k.id, { ...this.#constrainGroup(raw, 0, 0, old, now), ...own });
       return;
     }
-    const own = this.#overlay.get(k.id);
     if (own) {
-      // Resized itself in the same pass (`resizeMany`): it follows its constraints from where it
-      // was, then its own box wins on the fields it gives.
-      const raw = this.#doc.get(k.id) as LayoutNode;
-      const at = { ...applyConstraints(old, now, raw), ...own };
-      const [box, fw, fh] = this.#constrained({ ...k, width: at.width, height: at.height }, at, now, now);
+      // Resized itself in the same pass: it follows its constraints from where it was, then its own box
+      // wins on the fields it gives.
+      const [box, fw, fh] = this.#own(k, applyConstraints(old, now, raw), own, now);
       this.#place(k, box, fw, fh);
       return;
     }
     const [box, fw, fh] = this.#constrained(k, k, old, now);
     this.#place(k, box, fw, fh);
+  }
+
+  /**
+   * `k` where constraints put it (`box`), with its own box from `resizeMany` on top: the same result as
+   * resizing its parent first, then `k`. `size`: any size (constraints from a size to itself change nothing).
+   */
+  #own(k: LayoutNode, box: Box, own: Partial<Box>, size: Size): [Box, number | undefined, number | undefined] {
+    const at = { ...box, ...own };
+    return this.#constrained({ ...k, width: at.width, height: at.height }, at, size, size);
   }
 
   /**
@@ -328,6 +340,11 @@ class Engine {
    * Constrain the layers inside group `g` against the frame, then fit the
    * group around them. `ox`, `oy`: where `g`'s parent's origin sits in the
    * frame. Returns the group's new box relative to its parent.
+   *
+   * `g` and its layers are read from the document, not the overlay: with
+   * `resizeMany`, a layer's (or a nested group's) own box replaces where the
+   * frame put it, but the groups fit around where the frame put them, as when
+   * the frame is resized first and the layers after.
    */
   #constrainGroup(g: LayoutNode, ox: number, oy: number, old: Size, now: Size): Box {
     const gx = ox + g.x;
@@ -337,7 +354,7 @@ class Engine {
     let y0 = Infinity;
     let x1 = -Infinity;
     let y1 = -Infinity;
-    for (const k of this.#kids(g.id)) {
+    for (const k of this.#doc.children(g.id)) {
       let entry: (typeof placed)[number];
       if (this.#isFlatGroup(k)) {
         const b = this.#constrainGroup(k, gx, gy, old, now);
@@ -355,8 +372,12 @@ class Engine {
     }
     for (const p of placed) {
       const rel = { ...p.box, x: p.box.x - x0, y: p.box.y - y0 };
-      if (p.group) this.#record(p.node.id, rel);
-      else this.#place(p.node, rel, p.fw, p.fh);
+      const own = this.#overlay.get(p.node.id);
+      if (p.group) this.#record(p.node.id, { ...rel, ...own });
+      else if (own) {
+        const [box, fw, fh] = this.#own(this.#with(p.node), rel, own, now);
+        this.#place(this.#with(p.node), box, fw, fh);
+      } else this.#place(p.node, rel, p.fw, p.fh);
     }
     return { x: x0 - ox, y: y0 - oy, width: x1 - x0, height: y1 - y0 };
   }
@@ -373,21 +394,36 @@ const roundBox = (b: Box, raw: Box): Box => {
  * when the size is unchanged. An axis that was zero long (a straight vertical
  * or horizontal line) has nothing to scale and keeps its coordinates. Corner
  * radii keep their value, as in Figma.
+ *
+ * Coordinates keep 12 significant digits (float noise goes, detail stays): a
+ * fixed number of decimals would flatten a network scaled down a long way, so
+ * scaling it back up would not restore it. Also null when a scaled coordinate
+ * would not be finite (coordinates near the float limit): the node still gets
+ * its new size, and the network stays as it is rather than the resize failing.
  */
 export function scaleVectorNetwork(net: ReadonlyVectorNetwork, from: Size, to: Size): VectorNetwork | null {
   const sx = from.width > 0 && to.width !== from.width ? to.width / from.width : 1;
   const sy = from.height > 0 && to.height !== from.height ? to.height / from.height : 1;
   if (sx === 1 && sy === 1) return null;
-  const x = (v: number) => roundLayout(v * sx);
-  const y = (v: number) => roundLayout(v * sy);
-  return {
-    vertices: net.vertices.map((v) => ({ ...v, x: x(v.x), y: y(v.y) })),
+  if (!Number.isFinite(sx) || !Number.isFinite(sy)) return null;
+  let finite = true;
+  const scale = (v: number, s: number) => {
+    const r = significant(v * s);
+    if (!Number.isFinite(r)) finite = false;
+    return r;
+  };
+  const out: VectorNetwork = {
+    vertices: net.vertices.map((v) => ({ ...v, x: scale(v.x, sx), y: scale(v.y, sy) })),
     segments: net.segments.map((s) => ({
       start: s.start,
       end: s.end,
-      tangentStart: { x: x(s.tangentStart.x), y: y(s.tangentStart.y) },
-      tangentEnd: { x: x(s.tangentEnd.x), y: y(s.tangentEnd.y) },
+      tangentStart: { x: scale(s.tangentStart.x, sx), y: scale(s.tangentStart.y, sy) },
+      tangentEnd: { x: scale(s.tangentEnd.x, sx), y: scale(s.tangentEnd.y, sy) },
     })),
     regions: net.regions.map((r) => ({ windingRule: r.windingRule, loops: r.loops.map((l) => [...l]) })),
   };
+  return finite ? out : null;
 }
+
+/** `v` to 12 significant digits ("+ 0" turns -0 into 0, as JSON would). */
+const significant = (v: number): number => (v === 0 || !Number.isFinite(v) ? v + 0 : Number(v.toPrecision(12)) + 0);

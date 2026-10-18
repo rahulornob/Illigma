@@ -138,10 +138,51 @@ await runE2E("perf", {}, async ({ browser, url, log, check, errors }) => {
   await layerRows(page).nth(8).click({ modifiers: ["Shift"] });
   check(await eventually(async () => (await selected().count()) === 6), `Shift-click selects the 6 rows between, got ${await selected().count()}`);
 
+  // QC round 7: a selection made in the list keeps the row the user is on in view (a range's last row is its
+  // bottom one, which may be far away), and keyboard focus stays in the list.
+  const focused = () => page.locator('.layer-list .layer-row:focus');
+  const focusInTree = () => page.evaluate(() => document.activeElement?.getAttribute("role") === "treeitem");
+  const scrollTop = () => page.locator(".layer-list").evaluate((el) => el.closest(".panel-grow").scrollTop);
+  await page.keyboard.press("Home");
+  for (let i = 0; i < 60; i++) await page.keyboard.press("ArrowDown");
+  for (let i = 0; i < 40; i++) await page.keyboard.press("Shift+ArrowUp");
+  check(await eventually(async () => (await selected().count()) === 41), `Shift+↑ × 40 selects 41 rows, got ${await selected().count()}`);
+  check((await focusInTree()) && (await inView(focused())), "after Shift+↑ × 40 the focused row is on screen and keeps focus");
+
+  // Shift-click upward with the anchor off-screen: the clicked row stays where it is.
+  for (let i = 0; i < 100; i++) await page.keyboard.press("ArrowDown");
+  await toTop();
+  await layerRow(page, "Desktop").click({ modifiers: ["Shift"] });
+  // Only the rows in view (plus a margin) are in the DOM: here all of them are in the range.
+  const allRendered = async () => (await selected().count()) === (await layerRows(page).count());
+  check(await eventually(async () => (await allRendered()) && (await layerRow(page, "Desktop").getAttribute("aria-selected")) === "true"), `Shift-click upward selects the range, got ${await selected().count()} rendered rows selected`);
+  check((await scrollTop()) === 0 && (await inView(layerRow(page, "Desktop"))), "Shift-click upward leaves the clicked row in view");
+  // ⌘-click to deselect a row: the list doesn't jump to another selected row.
+  const before = await selected().count();
+  await layerRows(page).nth(2).click({ modifiers: ["ControlOrMeta"] });
+  check(await eventually(async () => (await selected().count()) === before - 1), "⌘-click deselects the row");
+  check((await scrollTop()) === 0, "⌘-click deselect doesn't scroll the list");
+
+  // Shift+Home from far down: focus stays in the list, so the next ↓ moves in the list instead of nudging the canvas.
+  await page.keyboard.press("Home");
+  for (let i = 0; i < 20; i++) await page.keyboard.press("PageDown");
+  const farIndex = await focused().evaluate((el) => Math.round(parseFloat(el.style.top) / el.offsetHeight));
+  check(farIndex >= 300, `PageDown × 20 should reach row 300 or further, got ${farIndex}`);
+  await page.keyboard.press("Shift+Home");
+  check(await eventually(async () => (await allRendered()) && (await selected().count()) > 20), `Shift+Home selects every row up to the top, got ${await selected().count()} rendered rows selected`);
+  check(await eventually(async () => (await focusInTree()) && (await focused().getAttribute("aria-label")) === "Desktop, frame" && (await inView(focused()))), "after Shift+Home the first row is focused and on screen");
+  await page.keyboard.press("ArrowDown");
+  check(
+    await eventually(async () => (await focusInTree()) && (await selected().count()) === 1 && (await selected().getAttribute("aria-level")) === "2"),
+    `after Shift+Home, ↓ moves in the list (got ${await selected().count()} selected, focus in list: ${await focusInTree()})`,
+  );
+
   // A selection made elsewhere scrolls its row into view: delete the last layer, scroll to the top, undo (which reselects it).
+  // Deleting the focused row moves focus to the row before it (it was the last), not to <body>.
   await page.keyboard.press("End");
   await page.keyboard.press("Delete");
   await poll(async () => (await total()) === 12_288, "Delete should remove the last layer", 10_000);
+  check(await eventually(async () => (await focusInTree()) && (await inView(focused()))), "after Delete, focus moves to the previous row (the deleted one was last)");
   await toTop();
   await page.keyboard.press("ControlOrMeta+z");
   const back = selected();

@@ -438,6 +438,19 @@ await runE2E("canvas", {}, async ({ browser, url, log, check, outDir, errors }) 
   check(await eventually(async () => (await layerRows(page).count()) === before5, 2_000), "one undo should bring both back");
   check(await eventually(async () => (await selectedName()) === "Avatar,Hero", 2_000), `undoing Delete should select the restored layers again, got ${await selectedName()}`);
 
+  log("Delete with a layer row focused moves focus to the next row (QC round 7)");
+  const namesBefore = (await layerRows(page).allInnerTexts()).map((t) => t.trim());
+  const heroRow = namesBefore.indexOf("Hero");
+  const heir = namesBefore[heroRow + 1] ?? namesBefore[heroRow - 1];
+  await layerRow(page, "Hero").click();
+  check(await page.evaluate(() => document.activeElement?.getAttribute("role") === "treeitem"), "clicking a layer row focuses it");
+  await page.keyboard.press("Delete");
+  check((await layerRows(page).count()) === before5 - 1, "Delete from the Layers panel should remove Hero");
+  const focusedLabel = () => page.evaluate(() => (document.activeElement?.getAttribute("role") === "treeitem" ? document.activeElement.getAttribute("aria-label") : document.activeElement?.tagName));
+  check(await eventually(async () => (await focusedLabel())?.startsWith(`${heir},`), 2_000), `focus should move to the next row (${heir}), not <body>; got ${await focusedLabel()}`);
+  await undo();
+  check(await eventually(async () => (await layerRows(page).count()) === before5, 2_000), "undo should bring Hero back");
+
   log("⌘D duplicates in place, above the original");
   await clickWorld(400, 320);
   await page.keyboard.press("ControlOrMeta+d");
