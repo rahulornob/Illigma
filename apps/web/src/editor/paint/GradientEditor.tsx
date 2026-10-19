@@ -1,14 +1,17 @@
-import { useRef, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import type { ColorStop, GradientPaint } from "@illigma/format";
 import { toHex } from "./color";
 import type { Phase } from "./edits";
 import { InlineField, pct } from "./fields";
 import { PaintIcon } from "./icons";
-import { addStop, cssStops, flipStops, gradientAngle, MIN_STOPS, moveStop, removeStop, rotateGradient, sortStops } from "./paints";
+import { addStop, cssStops, flipStops, gradientAngle, MIN_STOPS, moveStop, removeStop, rotateGradient, sortStops, stopKeys } from "./paints";
 import { fractionIn } from "./drag";
 
 /** What a gradient edit changed, for the undo label. */
 export type GradientWhat = "gradient stop" | "gradient";
+
+/** How far (CSS px) a pressed stop must move before it is dragged; less is a click, which only selects it. */
+const STOP_DRAG_START = 3;
 
 /**
  * The gradient's stop bar and settings (Figma's gradient row in the colour
@@ -37,29 +40,53 @@ export function GradientEditor({
 }) {
   const bar = useRef<HTMLDivElement>(null);
   const stops = paint.gradientStops as ColorStop[];
-  const drag = useRef<{ pointer: number; stops: ColorStop[]; index: number } | null>(null);
+  /**
+   * A press on a stop: where it started, the pointer's offset from the stop's
+   * centre (so the stop doesn't jump to the pointer), and whether it has moved
+   * far enough to be a drag. A press that never moves only selects.
+   */
+  const drag = useRef<{ pointer: number; stops: ColorStop[]; keys: number[]; index: number; x0: number; offset: number; moving: boolean; last: number } | null>(null);
   const order = sortStops(stops);
   const selected = stops[stop];
 
-  const withStops = (next: ColorStop[]): GradientPaint => ({ ...paint, gradientStops: next });
+  // ---- stable keys: a stop keeps its handle (focus, pointer capture) while moves re-sort the list ----
+  const serial = useRef(0);
+  const keyed = useRef<{ json: string; keys: number[] }>({ json: "", keys: [] });
+  const pending = useRef<{ json: string; keys: number[] } | null>(null);
+  const json = JSON.stringify(stops);
+  if (keyed.current.json !== json) {
+    const p = pending.current;
+    if (p && p.json === json) keyed.current = { json, keys: p.keys };
+    else if (keyed.current.keys.length === stops.length) keyed.current = { json, keys: keyed.current.keys };
+    else keyed.current = { json, keys: stops.map(() => serial.current++) };
+    pending.current = null;
+  }
+  const keys = keyed.current.keys;
 
-  const move = (index: number, position: number, phase: Phase, from = stops) => {
+  const withStops = (next: ColorStop[]): GradientPaint => ({ ...paint, gradientStops: next });
+  /** Write `next`, with the keys that follow its stops. */
+  const write = (next: ColorStop[], nextKeys: number[], phase: Phase, what: GradientWhat = "gradient stop") => {
+    pending.current = { json: JSON.stringify(next), keys: nextKeys };
+    onPaint(withStops(next), phase, what);
+  };
+
+  const move = (index: number, position: number, phase: Phase, from = stops, fromKeys = keys) => {
     const r = moveStop(from, index, position);
-    onPaint(withStops(r.stops), phase, "gradient stop");
+    write(r.stops, stopKeys.move(fromKeys, index, r.index), phase);
     onStop(r.index);
   };
 
   const remove = (index: number) => {
     const r = removeStop(stops, index);
     if (!r || readOnly) return;
-    onPaint(withStops(r.stops), "once", "gradient stop");
+    write(r.stops, stopKeys.remove(keys, index), "once");
     onStop(r.index);
   };
 
   const add = (position: number) => {
     if (readOnly) return;
     const r = addStop(stops, position);
-    onPaint(withStops(r.stops), "once", "gradient stop");
+    write(r.stops, stopKeys.insert(keys, r.index, serial.current++), "once");
     onStop(r.index);
   };
 
@@ -76,6 +103,8 @@ export function GradientEditor({
     add(fractionIn(bar.current, e.clientX, e.clientY).x);
   };
 
+  /** The stop position under the pointer, keeping the offset it was grabbed at. */
+  const positionAt = (clientX: number, offset: number) => (bar.current ? fractionIn(bar.current, clientX - offset, 0).x : 0);
   const stopDown = (index: number) => (e: ReactPointerEvent<HTMLButtonElement>) => {
     if (e.button !== 0) return;
     onStop(index);
@@ -83,20 +112,39 @@ export function GradientEditor({
     e.preventDefault();
     e.currentTarget.focus();
     e.currentTarget.setPointerCapture(e.pointerId);
-    drag.current = { pointer: e.pointerId, stops: [...stops], index };
-    onPaint(withStops(stops), "start", "gradient stop");
+    const r = e.currentTarget.getBoundingClientRect();
+    const s = stops[index];
+    drag.current = { pointer: e.pointerId, stops: [...stops], keys: [...keys], index, x0: e.clientX, offset: e.clientX - (r.left + r.width / 2), moving: false, last: s?.position ?? 0 };
   };
   const stopMove = (e: ReactPointerEvent<HTMLButtonElement>) => {
     const d = drag.current;
     if (!d || d.pointer !== e.pointerId || !bar.current) return;
-    move(d.index, fractionIn(bar.current, e.clientX, e.clientY).x, "move", d.stops);
+    if (!d.moving) {
+      // A click is not a drag: nothing changes (and no undo step) until the pointer has moved a few pixels.
+      if (Math.abs(e.clientX - d.x0) < STOP_DRAG_START) return;
+      d.moving = true;
+      write(d.stops, d.keys, "start");
+    }
+    d.last = positionAt(e.clientX, d.offset);
+    move(d.index, d.last, "move", d.stops, d.keys);
   };
+  /** Release: the drag is one undo step; a press that never moved only selected the stop. */
   const stopUp = (e: ReactPointerEvent<HTMLButtonElement>) => {
     const d = drag.current;
-    if (!d || d.pointer !== e.pointerId || !bar.current) return;
+    if (!d || d.pointer !== e.pointerId) return;
     drag.current = null;
-    move(d.index, fractionIn(bar.current, e.clientX, e.clientY).x, "end", d.stops);
+    if (d.moving) move(d.index, bar.current ? positionAt(e.clientX, d.offset) : d.last, "end", d.stops, d.keys);
   };
+  /** Cancelled, capture lost or unmounted mid-drag: keep the drag where it last was, as one step. */
+  const stopAbandon = (e: ReactPointerEvent<HTMLButtonElement> | null) => {
+    const d = drag.current;
+    if (!d || (e && d.pointer !== e.pointerId)) return;
+    drag.current = null;
+    if (d.moving) move(d.index, d.last, "end", d.stops, d.keys);
+  };
+  const abandon = useRef(stopAbandon);
+  abandon.current = stopAbandon;
+  useEffect(() => () => abandon.current(null), []);
 
   const stopKey = (index: number) => (e: KeyboardEvent<HTMLButtonElement>) => {
     const s = stops[index];
@@ -123,11 +171,15 @@ export function GradientEditor({
     <div className="gradient-editor">
       <div className="stop-bar-wrap">
         <div ref={bar} className="stop-bar" style={{ ["--stops" as string]: `linear-gradient(90deg, ${cssStops(stops)})` }} onPointerDown={onBarDown} title="Click to add a stop">
-          {stops.map((s, i) => {
+          {/* In key order, not position order: a moved stop stays the same element in the same place in the page, so it keeps focus and pointer capture. */}
+          {stops
+            .map((s, i) => ({ s, i, key: keys[i] ?? -1 - i }))
+            .sort((a, b) => a.key - b.key)
+            .map(({ s, i, key }) => {
             const rank = order.indexOf(s) + 1;
             return (
               <button
-                key={i}
+                key={key}
                 type="button"
                 className="stop-handle"
                 role="slider"
@@ -143,7 +195,8 @@ export function GradientEditor({
                 onPointerDown={stopDown(i)}
                 onPointerMove={stopMove}
                 onPointerUp={stopUp}
-                onPointerCancel={stopUp}
+                onPointerCancel={stopAbandon}
+                onLostPointerCapture={stopAbandon}
                 onKeyDown={stopKey(i)}
               />
             );
@@ -193,7 +246,7 @@ export function GradientEditor({
           disabled={readOnly}
           onClick={() => {
             const flipped = flipStops(stops);
-            onPaint(withStops(flipped), "once", "gradient");
+            write(flipped, [...keys].reverse(), "once", "gradient");
             const s = stops[stop];
             if (s) onStop(Math.max(0, flipped.findIndex((f) => Math.abs(f.position - (1 - s.position)) < 1e-6 && f.color === s.color)));
           }}

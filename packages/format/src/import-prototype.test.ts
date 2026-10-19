@@ -308,9 +308,10 @@ describe("importPrototypeJson: every prototype feature", () => {
   });
 
   it("maps colours with alpha, clamps corner radius and reads weights", () => {
-    expect(byName(file, "bottom").fills[0]!.color).toEqual({ r: 0, g: 1, b: 0, a: 128 / 255 });
+    // A colour's alpha becomes the paint's opacity; the colour is stored opaque (as the editor keeps solids).
+    expect(byName(file, "bottom").fills[0]).toEqual({ type: "SOLID", visible: true, color: { r: 0, g: 1, b: 0, a: 1 }, opacity: 128 / 255 });
     expect(byName(file, "bottom").cornerRadius).toBe(25);
-    expect(byName(file, "between").fills[0]!.color).toEqual({ r: 0, g: 0, b: 1, a: 0.5 });
+    expect(byName(file, "between").fills[0]).toEqual({ type: "SOLID", visible: true, color: { r: 0, g: 0, b: 1, a: 1 }, opacity: 0.5 });
     expect(byName(file, "b2").fills).toEqual([]);
     expect(byName(file, "bold")).toMatchObject({ fontStyle: "Bold", lineHeight: 30 });
     expect(byName(file, "stretched").fontStyle).toBe("Semi Bold");

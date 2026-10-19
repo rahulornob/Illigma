@@ -57,6 +57,12 @@ export function parseHex(text: string): Color | null {
   return { r: n(0), g: n(2), b: n(4), a: t.length === 8 ? n(6) : 1 };
 }
 
+/** True when typed hex carries its own alpha: four digits (#rgba) or eight (#rrggbbaa). */
+export function hexHasAlpha(text: string): boolean {
+  const t = text.trim().replace(/^#/, "");
+  return /^[0-9a-f]+$/i.test(t) && (t.length === 4 || t.length === 8);
+}
+
 /** RGB channels 0–255, rounded. */
 export function toRgb255(c: Pick<Color, "r" | "g" | "b">): [number, number, number] {
   return [byte(c.r), byte(c.g), byte(c.b)];

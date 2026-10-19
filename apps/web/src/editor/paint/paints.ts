@@ -171,19 +171,55 @@ function base(p: Paint): Pick<Paint, "visible" | "opacity" | "blendMode"> {
  */
 export function convertPaint(p: Paint, type: PaintType): Paint {
   if (p.type === type) return p;
-  if (type === "SOLID") return { type: "SOLID", ...base(p), color: { ...(paintColor(p) ?? DEFAULT_FILL) } };
+  if (type === "SOLID") {
+    // A solid's alpha is its opacity (the colour stays opaque), so the picker and the row show and edit all of it.
+    const c = paintColor(p) ?? DEFAULT_FILL;
+    return withPaintOpacity({ type: "SOLID", ...base(p), color: { r: c.r, g: c.g, b: c.b, a: 1 } }, (p.opacity ?? 1) * c.a);
+  }
   if (type === "IMAGE") return { type: "IMAGE", ...base(p), imageHash: null, scaleMode: "FILL" } satisfies ImagePaint;
   if (isGradient(p)) return { ...p, type };
   const c = paintColor(p) ?? DEFAULT_FILL;
-  return {
-    type,
-    ...base(p),
-    gradientStops: [
-      { position: 0, color: { ...c, a: 1 } },
-      { position: 1, color: { ...c, a: 0 } },
-    ],
-    gradientTransform: type === "GRADIENT_LINEAR" ? LINEAR_DEFAULT : IDENTITY,
-  };
+  // A solid that carries alpha in its colour (older or imported files) keeps how it looks: that alpha moves into the opacity.
+  return withPaintOpacity(
+    {
+      type,
+      ...base(p),
+      gradientStops: [
+        { position: 0, color: { r: c.r, g: c.g, b: c.b, a: 1 } },
+        { position: 1, color: { r: c.r, g: c.g, b: c.b, a: 0 } },
+      ],
+      gradientTransform: type === "GRADIENT_LINEAR" ? LINEAR_DEFAULT : IDENTITY,
+    },
+    (p.opacity ?? 1) * (p.type === "SOLID" ? c.a : 1),
+  );
+}
+
+/** `p` with `opacity` set to `alpha` (0–1); full opacity is stored as no field, its default. */
+export function withPaintOpacity<P extends Paint>(p: P, alpha: number): P {
+  const next = { ...p };
+  if (!(alpha < 1)) delete next.opacity;
+  else next.opacity = Math.max(0, alpha);
+  return next;
+}
+
+type SolidPaint = Extract<Paint, { type: "SOLID" }>;
+
+/**
+ * A solid's alpha as the picker and the row show it: its opacity times its
+ * colour's own alpha. Solids made in Illigma keep the colour opaque, but older
+ * or imported files can carry alpha in the colour too.
+ */
+export function solidAlpha(p: SolidPaint): number {
+  return p.color.a * (p.opacity ?? 1);
+}
+
+/**
+ * A solid with colour `rgb` at alpha `alpha` (what the picker or the row
+ * shows): the colour opaque and the alpha in `opacity`. Editing a solid that
+ * carried alpha in its colour folds that alpha into the opacity, in the same step.
+ */
+export function setSolid(p: SolidPaint, rgb: Pick<Color, "r" | "g" | "b">, alpha: number): SolidPaint {
+  return withPaintOpacity({ ...p, color: { r: rgb.r, g: rgb.g, b: rgb.b, a: 1 } }, alpha);
 }
 
 /** A short text for a paint row: hex for solids, the type for gradients and images. */
@@ -194,7 +230,7 @@ export function paintLabel(p: Paint): string {
 
 /** The paint's alpha as the row shows it: opacity × (a solid's alpha). */
 export function paintAlpha(p: Paint): number {
-  return p.opacity ?? 1;
+  return p.type === "SOLID" ? solidAlpha(p) : (p.opacity ?? 1);
 }
 
 // ---- gradient stops ----
@@ -240,6 +276,25 @@ export function moveStop(stops: readonly ColorStop[], index: number, position: n
 export function recolorStop(stops: readonly ColorStop[], index: number, color: Color): ColorStop[] {
   return stops.map((s, i) => (i === index ? { position: s.position, color: { ...color } } : s));
 }
+
+/**
+ * Keys that stay with each stop while stops move, so a stop's handle (its
+ * focus, its pointer capture) is the same element before and after a move
+ * re-sorts the list. `keys[i]` belongs to `stops[i]`.
+ */
+export const stopKeys = {
+  /** After `moveStop(…, from, …)` put that stop at `to`. */
+  move: (keys: readonly number[], from: number, to: number): number[] => {
+    const next = [...keys];
+    const [k] = next.splice(from, 1);
+    if (k !== undefined) next.splice(to, 0, k);
+    return next;
+  },
+  /** After `addStop` put a new stop at `at`. */
+  insert: (keys: readonly number[], at: number, key: number): number[] => [...keys.slice(0, at), key, ...keys.slice(at)],
+  /** After `removeStop(…, at)`. */
+  remove: (keys: readonly number[], at: number): number[] => keys.filter((_, i) => i !== at),
+};
 
 /** A gradient keeps at least two stops. */
 export const MIN_STOPS = 2;
