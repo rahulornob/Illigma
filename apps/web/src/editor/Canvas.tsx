@@ -1,11 +1,11 @@
 import { useEffect, useImperativeHandle, useRef, useState, type PointerEvent as ReactPointerEvent, type Ref } from "react";
-import CanvasKitInit, { type CanvasKit } from "canvaskit-wasm";
-import interUrl from "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url";
-import interExtUrl from "@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2?url";
-import wasmUrl from "canvaskit-wasm/bin/canvaskit.wasm?url";
-import type { Document, LiveEdit } from "@illigma/core";
+import type { CanvasKit } from "canvaskit-wasm";
+import { newId, type Document, type LiveEdit } from "@illigma/core";
 import type { NodeId, NodeType } from "@illigma/format";
-import { GpuCanvas, PageRenderer, type Camera, type FontSource } from "@illigma/renderer";
+import { GpuCanvas, PageRenderer, type Camera, type TextEngine } from "@illigma/renderer";
+import { loadCanvasKit, loadTextEngine } from "./text/engine";
+import { newTextFields, textPlacement } from "./text/create";
+import { TextEditor } from "./text/TextEditor";
 import {
   freeLayers,
   movable,
@@ -41,7 +41,7 @@ import {
   type Rect,
 } from "./geometry";
 
-export type Tool = "move" | "frame" | "rectangle" | "ellipse";
+export type Tool = "move" | "frame" | "rectangle" | "ellipse" | "text";
 
 /**
  * Canvas hit-testing: given a point in page (world) coordinates on the
@@ -59,6 +59,8 @@ export interface CanvasHandle {
   toWorld(clientX: number, clientY: number): { x: number; y: number };
   /** The part of the page the canvas shows, in world coordinates. */
   viewport(): { x: number; y: number; width: number; height: number };
+  /** Edit text layer `id` on the canvas, all its text selected (Enter on a selected text layer). */
+  editText(id: NodeId): void;
 }
 
 interface CanvasProps {
@@ -80,14 +82,11 @@ const MAX_ZOOM = 256;
 const FIT_PADDING = 64;
 const DRAG_THRESHOLD = 3;
 
-const DRAW: Record<Exclude<Tool, "move">, { type: NodeType; label: string; fill: [number, number, number] }> = {
+const DRAW: Record<Exclude<Tool, "move" | "text">, { type: NodeType; label: string; fill: [number, number, number] }> = {
   frame: { type: "FRAME", label: "Frame", fill: [1, 1, 1] },
   rectangle: { type: "RECTANGLE", label: "Rectangle", fill: [0.85, 0.85, 0.85] },
   ellipse: { type: "ELLIPSE", label: "Ellipse", fill: [0.85, 0.85, 0.85] },
 };
-
-let canvasKit: Promise<CanvasKit> | undefined;
-const loadCanvasKit = () => (canvasKit ??= CanvasKitInit({ locateFile: () => wasmUrl }));
 
 const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
 
@@ -151,7 +150,13 @@ type Gesture =
    */
   | { kind: "reorder"; wx: number; wy: number; parent: NodeId; ids: NodeId[]; edit: LiveEdit; last: Pointer; dx: number; dy: number; slot: ReorderSlot | null }
   | { kind: "marquee"; wx: number; wy: number; scope: NodeId; additive: boolean; base: NodeId[]; rect: Rect | null }
-  | { kind: "draw"; tool: Exclude<Tool, "move">; wx: number; wy: number; sx: number; sy: number };
+  | { kind: "draw"; tool: Exclude<Tool, "move">; wx: number; wy: number; sx: number; sy: number }
+  /** Placing the caret or selecting in the text being edited. */
+  | { kind: "text" };
+
+/** Presses this close in time and space count as one double or triple click. */
+const MULTI_CLICK_MS = 500;
+const MULTI_CLICK_PX = 4;
 
 export function Canvas(props: CanvasProps) {
   const { doc, pageId, selection, tool, handle } = props;
@@ -169,6 +174,8 @@ export function Canvas(props: CanvasProps) {
   const [panning, setPanning] = useState(false);
   /** A resize cursor while the pointer is over a handle or a resize is running. */
   const [resizeCursor, setResizeCursor] = useState<string | null>(null);
+  /** An I-beam over the text being edited. */
+  const [textCursor, setTextCursor] = useState(false);
 
   // Mutable state the event handlers and render loop share.
   const live = useRef({
@@ -186,6 +193,13 @@ export function Canvas(props: CanvasProps) {
     /** The layer a click would select, outlined on hover. */
     hoverId: null as NodeId | null,
     fitted: false,
+    /** Editing a text layer: caret, selection and the hidden input (created on mount). */
+    text: null as TextEditor | null,
+    engine: null as TextEngine | null,
+    /** The last press, for double and triple clicks. */
+    lastPress: { t: 0, sx: 0, sy: 0, count: 0 },
+    /** The press went to the text being edited: keep focus in its input (no mousedown focus change). */
+    keepFocus: false,
   });
   live.current.props = props;
 
@@ -263,7 +277,7 @@ export function Canvas(props: CanvasProps) {
     if (sel && label) {
       if (frame) {
         place(sel, frame);
-        sel.dataset.handles = resizable && gesture?.kind !== "move" && gesture?.kind !== "reorder" ? "on" : "off";
+        sel.dataset.handles = resizable && gesture?.kind !== "move" && gesture?.kind !== "reorder" && !live.current.text?.editing ? "on" : "off";
         const z = live.current.camera.zoom;
         // On a tiny selection the edge handles would cover the corners: show the corners only.
         sel.dataset.small = frame.width * z < SMALL_SELECTION || frame.height * z < SMALL_SELECTION ? "on" : "off";
@@ -326,6 +340,7 @@ export function Canvas(props: CanvasProps) {
     l.frame = 0;
     l.renderer?.render(l.camera);
     updateOverlay();
+    l.text?.render();
   };
 
   const requestDraw = () => {
@@ -380,6 +395,9 @@ export function Canvas(props: CanvasProps) {
       const { camera } = live.current;
       return { x: camera.x, y: camera.y, width: w / camera.zoom, height: h / camera.zoom };
     },
+    editText: (id: NodeId) => {
+      if (!live.current.props.readOnly) live.current.text?.start(id, "all");
+    },
   }));
 
   // CanvasKit, the GPU surface and the page renderer. Rebuilt when the canvas resizes.
@@ -389,7 +407,7 @@ export function Canvas(props: CanvasProps) {
     let disposed = false;
     let ck: CanvasKit | null = null;
     let gpu: GpuCanvas | null = null;
-    let fonts: FontSource[] = [];
+    let engine: TextEngine | null = null;
     let dpr = window.devicePixelRatio || 1;
     let contextLost = false;
 
@@ -432,7 +450,8 @@ export function Canvas(props: CanvasProps) {
       teardown();
       gpu = GpuCanvas.create(ck, canvasEl, dpr);
       // An image decodes after the recording that first needs it: draw again once it is ready, with no interaction needed.
-      live.current.renderer = new PageRenderer(ck, gpu.surface, live.current.props.doc, live.current.props.pageId, dpr, { fonts, onImageReady: requestDraw });
+      // The app's text engine: layout measures text with it, so the canvas draws text exactly as it was measured.
+      live.current.renderer = new PageRenderer(ck, gpu.surface, live.current.props.doc, live.current.props.pageId, dpr, { ...(engine && { textEngine: engine }), onImageReady: requestDraw });
       if (!live.current.fitted) {
         live.current.fitted = true;
         fit(1);
@@ -483,19 +502,17 @@ export function Canvas(props: CanvasProps) {
     };
     watchDpr();
 
-    // The bundled Inter (no font CDN), Latin and Latin Extended. Without it, text layers fall back to placeholder bars.
-    const font = (url: string, family: string) =>
-      fetch(url)
-        .then((r) => r.arrayBuffer())
-        .then((data): FontSource[] => [{ family, data }])
-        .catch((): FontSource[] => []);
-    const loadInter = Promise.all([font(interUrl, "Inter"), font(interExtUrl, "Inter Latin Extended")]).then((sets) => sets.flat());
-
-    Promise.all([loadCanvasKit(), loadInter])
-      .then(([loaded, loadedFonts]) => {
+    // CanvasKit and the bundled Inter (no font CDN), shared with layout and text editing (text/engine.ts).
+    // Without fonts, text layers fall back to placeholder bars.
+    let unsubscribeFonts = () => {};
+    Promise.all([loadCanvasKit(), loadTextEngine()])
+      .then(([loaded, loadedEngine]) => {
         if (disposed) return;
         ck = loaded;
-        fonts = loadedFonts;
+        engine = loadedEngine.hasFonts ? loadedEngine : null;
+        live.current.engine = engine;
+        // Fonts added later (fonts on this computer): draw again.
+        unsubscribeFonts = loadedEngine.subscribe(requestDraw);
         build();
         setStatus("ready");
         observer.observe(canvasEl);
@@ -517,6 +534,7 @@ export function Canvas(props: CanvasProps) {
       cancelAnimationFrame(live.current.frame);
       live.current.frame = 0;
       unsubscribe();
+      unsubscribeFonts();
       teardown();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -524,6 +542,7 @@ export function Canvas(props: CanvasProps) {
 
   // Page switches: show the new page, fitted.
   useEffect(() => {
+    live.current.text?.stop(false, true);
     const r = live.current.renderer;
     if (!r) return;
     r.setPage(pageId);
@@ -533,6 +552,41 @@ export function Canvas(props: CanvasProps) {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(requestDraw, [selection, tool, props.readOnly]);
+
+  // Text editing (text/TextEditor.ts): its caret, selection and hidden input live in the canvas host.
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const l = live.current;
+    const editor = new TextEditor(
+      {
+        doc: () => live.current.props.doc,
+        engine: () => live.current.engine,
+        camera: () => live.current.camera,
+        requestDraw,
+        started: (id) => select([id]),
+        ended: (id, exists) => {
+          select(exists ? [id] : []);
+          canvasRef.current?.focus({ preventScroll: true });
+        },
+      },
+      host,
+    );
+    l.text = editor;
+    return () => {
+      editor.dispose();
+      l.text = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc]);
+
+  // Editing ends when the selection moves elsewhere (the Layers panel), another tool is picked, or editing is locked.
+  useEffect(() => {
+    const t = live.current.text;
+    const id = t?.editing;
+    if (!t || !id) return;
+    if (tool !== "move" || props.readOnly || selection.length !== 1 || selection[0] !== id) t.stop(false, true);
+  }, [selection, tool, props.readOnly]);
 
   // Wheel zoom (needs a non-passive listener to stop the browser zooming the page).
   useEffect(() => {
@@ -618,7 +672,7 @@ export function Canvas(props: CanvasProps) {
   const applyDrag = (p: Pointer) => {
     const l = live.current;
     const g = l.gesture;
-    if (!g) return;
+    if (!g || g.kind === "text") return;
     const w = toWorld(p.sx, p.sy);
     let dx = w.x - (g.kind === "pan" ? 0 : g.wx);
     let dy = w.y - (g.kind === "pan" ? 0 : g.wy);
@@ -835,13 +889,67 @@ export function Canvas(props: CanvasProps) {
     l.gesture = inside ? { ...base, then: "move", ids: editable(current), click: [] } : { ...base, then: "marquee", ids: [], click: [] };
   };
 
+  /** How many presses in a row this one makes (1, 2 for a double click, 3 for a triple click). */
+  const countClicks = (sx: number, sy: number): number => {
+    const p = live.current.lastPress;
+    const now = performance.now();
+    const count = now - p.t < MULTI_CLICK_MS && Math.hypot(sx - p.sx, sy - p.sy) <= MULTI_CLICK_PX ? p.count + 1 : 1;
+    live.current.lastPress = { t: now, sx, sy, count };
+    return count;
+  };
+
+  /**
+   * A press while a text layer is being edited: on that text it places the
+   * caret or selects; on another text layer (Move tool) editing moves there,
+   * as in Figma. Anywhere else editing ends and the press does what it
+   * normally does. Returns true if the press was used here.
+   */
+  const pressText = (e: ReactPointerEvent<HTMLCanvasElement>, sx: number, sy: number, clicks: number): boolean => {
+    const l = live.current;
+    const t = l.text;
+    if (!t?.editing) return false;
+    const w = toWorld(sx, sy);
+    if (t.contains(w.x, w.y, 2 / l.camera.zoom)) {
+      t.pointerDown(w.x, w.y, clicks, e.shiftKey);
+      return true;
+    }
+    const hit = l.props.tool === "move" ? l.props.hitTest?.(w.x, w.y, { deep: true }) : null;
+    const node = hit ? l.props.doc.get(hit) : undefined;
+    if (hit && node?.type === "TEXT" && !node.locked) {
+      startEditingAt(hit, w.x, w.y);
+      return true;
+    }
+    t.stop(false);
+    return false;
+  };
+
+  /** Edit text layer `id` with the caret nearest to the world point (wx, wy). */
+  const startEditingAt = (id: NodeId, wx: number, wy: number) => {
+    const { props: p, text } = live.current;
+    if (!text || p.readOnly) return;
+    const local = toSpace(placementOf(p.doc, id), wx, wy);
+    text.start(id, local);
+  };
+
   const onPointerDown = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     if (status !== "ready") return;
     const l = live.current;
     if (l.gesture) return; // a second button, finger or pen during a drag: the first pointer keeps it
+    const { sx, sy } = local(e);
+    l.keepFocus = false;
+    if (e.button === 0 && !l.space) {
+      const clicks = countClicks(sx, sy);
+      if (pressText(e, sx, sy, clicks)) {
+        // The text input keeps focus; the drag selects text.
+        l.keepFocus = true;
+        e.currentTarget.setPointerCapture(e.pointerId);
+        l.pointerId = e.pointerId;
+        l.gesture = { kind: "text" };
+        return;
+      }
+    }
     e.currentTarget.focus({ preventScroll: true });
     e.currentTarget.setPointerCapture(e.pointerId);
-    const { sx, sy } = local(e);
     l.pointerId = e.pointerId;
     l.hoverId = null;
     if (e.button === 1 || l.space) {
@@ -863,6 +971,11 @@ export function Canvas(props: CanvasProps) {
   const hover = (e: ReactPointerEvent, sx: number, sy: number) => {
     const l = live.current;
     const p = l.props;
+    if (l.text?.editing) {
+      // Over the text being edited: an I-beam.
+      const w = toWorld(sx, sy);
+      setTextCursor(l.text.contains(w.x, w.y));
+    } else setTextCursor(false);
     if (l.space || (p.tool !== "move" && !p.readOnly)) {
       if (l.hoverId) {
         l.hoverId = null;
@@ -906,6 +1019,11 @@ export function Canvas(props: CanvasProps) {
       startDrag(g);
     }
     const cur = l.gesture;
+    if (cur?.kind === "text") {
+      const w = toWorld(sx, sy);
+      l.text?.pointerMove(w.x, w.y);
+      return;
+    }
     if (cur?.kind === "pan") {
       const { camera } = l;
       setCamera({ ...camera, x: camera.x - (sx - cur.lastX) / camera.zoom, y: camera.y - (sy - cur.lastY) / camera.zoom });
@@ -945,6 +1063,10 @@ export function Canvas(props: CanvasProps) {
     setPanning(false);
     setResizeCursor(null);
     if (!g) return;
+    if (g.kind === "text") {
+      l.text?.pointerUp();
+      return;
+    }
     if (g.kind === "press") {
       // A click: no drag happened.
       if (g.click && e) select(g.click);
@@ -979,6 +1101,13 @@ export function Canvas(props: CanvasProps) {
     }
     const { sx, sy } = local(e);
     const clicked = Math.hypot(sx - g.sx, sy - g.sy) <= DRAG_THRESHOLD;
+    if (g.tool === "text") {
+      const draft = l.draft;
+      l.draft = null;
+      createText(g.wx, g.wy, clicked ? null : draft);
+      requestDraw();
+      return;
+    }
     const rect = clicked || !l.draft ? { x: g.wx - 50, y: g.wy - 50, width: 100, height: 100 } : l.draft;
     l.draft = null;
     const spec = DRAW[g.tool];
@@ -1001,6 +1130,31 @@ export function Canvas(props: CanvasProps) {
     requestDraw();
   };
 
+  /**
+   * The Text tool: a click makes an auto width text layer at the point (or,
+   * on a text layer, edits it); a drag makes a fixed-size text box. Editing
+   * starts at once; the layer and what is typed first are one undo step.
+   */
+  const createText = (wx: number, wy: number, box: Rect | null) => {
+    const { doc: d, pageId: page, text } = live.current.props.readOnly ? { ...live.current.props, text: null } : { ...live.current.props, text: live.current.text };
+    if (!text) return;
+    if (!box) {
+      const hit = live.current.props.hitTest?.(wx, wy, { deep: true });
+      const node = hit ? d.get(hit) : undefined;
+      if (hit && node?.type === "TEXT" && !node.locked) {
+        startEditingAt(hit, wx, wy);
+        live.current.props.onCreated(hit);
+        return;
+      }
+    }
+    const parent = frameAt(d, page, wx, wy) ?? page;
+    const origin = parent === page ? { x: 0, y: 0 } : (absoluteRect(d, parent) ?? { x: 0, y: 0 });
+    const id = newId();
+    const at = textPlacement(wx - origin.x, wy - origin.y, box && { ...box, x: box.x - origin.x, y: box.y - origin.y });
+    text.create(id, { parent, fields: newTextFields(at, box !== null) });
+    live.current.props.onCreated(id);
+  };
+
   /** Stop whatever the pointer is doing and put back what a drag changed. */
   const abortGesture = () => {
     const l = live.current;
@@ -1019,7 +1173,11 @@ export function Canvas(props: CanvasProps) {
   };
 
   const cursor =
-    spaceHeld || panning ? (panning ? "grabbing" : "grab") : (resizeCursor ?? (tool === "move" || props.readOnly ? "default" : "crosshair"));
+    spaceHeld || panning
+      ? panning
+        ? "grabbing"
+        : "grab"
+      : (resizeCursor ?? (textCursor || (tool === "text" && !props.readOnly) ? "text" : tool === "move" || props.readOnly ? "default" : "crosshair"));
 
   return (
     <div className="canvas-host" ref={hostRef}>
@@ -1043,6 +1201,18 @@ export function Canvas(props: CanvasProps) {
           }
         }}
         onPointerCancel={onPointerCancel}
+        // A press on the text being edited keeps focus in its input (mousedown would move it to the canvas).
+        onMouseDown={(e) => live.current.keepFocus && e.preventDefault()}
+        onDoubleClick={(e) => {
+          // Double-click on a text layer edits it, the caret where it was clicked (interactions.md §6).
+          const l = live.current;
+          if (l.text?.editing || l.props.tool !== "move" || l.props.readOnly || l.space) return;
+          const { sx, sy } = local(e);
+          const w = toWorld(sx, sy);
+          const hit = l.props.hitTest?.(w.x, w.y, { deep: true });
+          const node = hit ? l.props.doc.get(hit) : undefined;
+          if (hit && node?.type === "TEXT" && !node.locked) startEditingAt(hit, w.x, w.y);
+        }}
         onLostPointerCapture={(e) => live.current.gesture && live.current.gesture.kind !== "pan" && onPointerCancel(e)}
         // Right-click never opens the browser's menu over the canvas (and can't leave a drag open behind it).
         onContextMenu={(e) => e.preventDefault()}

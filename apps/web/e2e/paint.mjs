@@ -72,7 +72,7 @@ await runE2E("paint", {}, async ({ browser, url, log, check, outDir, errors }) =
   const saved = async (fileId, name, test, why) => {
     let last;
     const ok = await eventually(async () => {
-      last = (await disk(fileId)).nodes.find((n) => n.name === name);
+      last = (await disk(fileId)).nodes.find((n) => n.name === name || (n.type === "TEXT" && n.characters === name));
       return last && test(last);
     }, 10_000);
     check(ok, `${why}: ${name} on disk is ${JSON.stringify(last)}`);
@@ -315,6 +315,50 @@ await runE2E("paint", {}, async ({ browser, url, log, check, outDir, errors }) =
   check(/too big \(20,000 × 100 pixels/.test(await banner.innerText()), `the banner gives the reason, got "${await banner.innerText()}"`);
   check((await page.locator(".layer-list .layer-row").count()) === layersBefore, "nothing is added");
   await banner.getByRole("button", { name: "OK" }).click();
+
+  log("text: fills and strokes from the cards draw through the text engine");
+  // World (wx, wy) on screen, from Hero's box (Hero is at 120, 160 in Desktop, which is at 0, 0).
+  const toScreen = (wx, wy) => ({ x: box.x + (wx - 120) * zoom, y: box.y + (wy - 160) * zoom });
+  await page.locator(".canvas").focus();
+  await page.keyboard.press("t");
+  const textAt = toScreen(760, 40);
+  await page.mouse.click(textAt.x, textAt.y);
+  await page.keyboard.type("MMMM");
+  await page.keyboard.press("Escape");
+  check(await eventually(async () => (await layerRow(page, "MMMM").count()) === 1), "a text layer");
+  await setField(page, "Font size", 96);
+  await setField(page, "Fill 1 hex", "00C000");
+  await saved(fileId, "MMMM", (n) => n.fills[0]?.color?.g > 0.7 && n.fontSize === 96, "the text is green and 96 px");
+  let text;
+  await eventually(async () => {
+    text = await page.locator(".selection-box").boundingBox();
+    return text && text.height > 30;
+  });
+  /** How many of the text box's pixels are mostly `channel` (0 red, 1 green, 2 blue). */
+  const inkIn = async (r, channel) => {
+    const shot = (await page.screenshot({ clip: { x: r.x + 2, y: r.y + 2, width: r.width - 4, height: r.height - 4 } })).toString("base64");
+    return page.evaluate(
+      async ({ b64, channel }) => {
+        const bmp = await createImageBitmap(await (await fetch(`data:image/png;base64,${b64}`)).blob());
+        const c = new OffscreenCanvas(bmp.width, bmp.height);
+        const g = c.getContext("2d");
+        g.drawImage(bmp, 0, 0);
+        const d = g.getImageData(0, 0, bmp.width, bmp.height).data;
+        let n = 0;
+        for (let i = 0; i < d.length; i += 4) if (d[i + channel] > 120 && d[i + channel] - Math.max(...[0, 1, 2].filter((k) => k !== channel).map((k) => d[i + k])) > 80) n++;
+        return n;
+      },
+      { b64: shot, channel },
+    );
+  };
+  await unselected("MMMM", async () => check(await eventually(async () => (await inkIn(text, 1)) > 200), `the green text fill should be drawn, got ${await inkIn(text, 1)} green pixels`));
+  await props.getByRole("button", { name: "Add stroke" }).click();
+  await setField(page, "Stroke 1 hex", "0000FF");
+  await setField(page, "Stroke weight", 6);
+  await saved(fileId, "MMMM", (n) => n.strokes[0]?.color?.b === 1 && n.strokeWeight === 6, "the text has a blue 6 px stroke");
+  await unselected("MMMM", async () => check(await eventually(async () => (await inkIn(text, 2)) > 200), `the blue text stroke should be drawn, got ${await inkIn(text, 2)} blue pixels`));
+  await page.screenshot({ path: `${outDir}/paint-text.png` });
+  await saved(fileId, "MMMM", (n) => n.strokes.length === 1, "the text is saved");
 
   log("reload: every change is still there, images too");
   // Reload only once the last edits are on disk (otherwise they come back as recovered edits, not in the file).

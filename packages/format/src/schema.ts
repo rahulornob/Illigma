@@ -261,12 +261,64 @@ export interface NodeBase {
   cornerRadius: number;
 }
 
+/**
+ * How a text layer's box follows its text (Figma's `textAutoResize`):
+ * "WIDTH_AND_HEIGHT" grows on one line ("Auto width"), "HEIGHT" wraps at its
+ * width and grows down ("Auto height"), "NONE" keeps its box ("Fixed size"),
+ * "TRUNCATE" keeps its box and ends the last line that fits with "…".
+ */
+export type TextAutoResize = "NONE" | "WIDTH_AND_HEIGHT" | "HEIGHT" | "TRUNCATE";
+export type TextAlignHorizontal = "LEFT" | "CENTER" | "RIGHT" | "JUSTIFIED";
+export type TextAlignVertical = "TOP" | "CENTER" | "BOTTOM";
+/** Space added between letters: pixels, or a percentage of the font size (Figma's `LetterSpacing`). */
+export interface LetterSpacing {
+  value: number;
+  unit: "PIXELS" | "PERCENT";
+}
+/** Line height: pixels, a percentage of the font size, or the font's own ("AUTO"), as Figma's `LineHeight`. */
+export type LineHeight = { value: number; unit: "PIXELS" | "PERCENT" } | { unit: "AUTO" };
+
+export const TEXT_AUTO_RESIZES: readonly TextAutoResize[] = ["NONE", "WIDTH_AND_HEIGHT", "HEIGHT", "TRUNCATE"];
+export const TEXT_ALIGN_HORIZONTALS: readonly TextAlignHorizontal[] = ["LEFT", "CENTER", "RIGHT", "JUSTIFIED"];
+export const TEXT_ALIGN_VERTICALS: readonly TextAlignVertical[] = ["TOP", "CENTER", "BOTTOM"];
+/** Largest font size, line height and letter spacing (in pixels or percent) a file may hold. */
+export const MAX_TEXT_METRIC = 10_000;
+
+/**
+ * Text fields. `textAutoResize`, `textAlignHorizontal`, `textAlignVertical`
+ * and `letterSpacing` are optional (Figma Plugin API names); absent means
+ * how format 0 drew text: a fixed box ("NONE", as format 0 wrapped text at
+ * its width), left and top aligned, no letter spacing. The editor sets
+ * `textAutoResize` on the text layers it creates.
+ */
 export interface TextFields {
   characters?: string;
   fontFamily?: string;
   fontStyle?: string;
   fontSize?: number;
-  lineHeight?: number;
+  /** A number is pixels (format 0); absent means "AUTO". */
+  lineHeight?: number | LineHeight;
+  letterSpacing?: LetterSpacing;
+  textAutoResize?: TextAutoResize;
+  textAlignHorizontal?: TextAlignHorizontal;
+  textAlignVertical?: TextAlignVertical;
+}
+
+/** A text layer's line height in pixels, or null for the font's own ("AUTO"). */
+export function lineHeightPx(n: Pick<TextFields, "lineHeight" | "fontSize">): number | null {
+  const lh = n.lineHeight;
+  if (lh === undefined) return null;
+  if (typeof lh === "number") return lh > 0 ? lh : null;
+  if (lh.unit === "AUTO") return null;
+  const px = lh.unit === "PIXELS" ? lh.value : ((n.fontSize ?? 12) * lh.value) / 100;
+  return px > 0 ? px : null;
+}
+
+/** A text layer's letter spacing in pixels (0 when absent). */
+export function letterSpacingPx(n: Pick<TextFields, "letterSpacing" | "fontSize">): number {
+  const ls = n.letterSpacing;
+  if (!ls) return 0;
+  return ls.unit === "PIXELS" ? ls.value : ((n.fontSize ?? 12) * ls.value) / 100;
 }
 
 /** Auto layout direction. "NONE" is a plain frame whose children keep their own positions. */
