@@ -169,6 +169,13 @@ ul {
 .banner-text strong {
   font-weight: 600;
 }
+/* A short list under a banner's first line (e.g. what couldn't be opened). */
+.banner-list {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
 .banner-error {
   background: var(--state-danger-tint);
   border-color: transparent;

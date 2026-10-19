@@ -20,6 +20,15 @@
 //   E2E_TIMEOUT_SCALE=n     Multiply wait timeouts. Default: the E2E_SLOW
 //                           rate, and x2 when CI is set. Waits poll observable
 //                           state, so a longer timeout never slows a passing run.
+//   E2E_STEP_TIMEOUT=ms     Fail a script whose current step (the last log())
+//                           runs longer than this (default 120 s, scaled by T()).
+//                           Playwright's page.evaluate() has no timeout of its
+//                           own: a promise in the page that never settles (an
+//                           animation frame in a page that stopped drawing, an
+//                           OPFS call that never returns) would otherwise wait
+//                           forever. The script then says which step stalled,
+//                           saves a screenshot and exits; Playwright closes the
+//                           browser on exit.
 //
 // Rule for checks: never assert right after a fixed sleep. Wait for the state
 // you expect (waitFor, waitForSelector, poll, eventually, stableShot). A fixed
@@ -84,7 +93,22 @@ export async function serve(port, buildOutDir) {
     logLevel: "error",
     ...(buildOutDir ? { build: { outDir: buildOutDir } } : {}),
   });
-  return { server, url: `http://localhost:${port}/`, close: () => new Promise((r) => server.httpServer.close(r)) };
+  // Closing waits for open connections: drop them (a browser that didn't shut down cleanly may keep some).
+  const close = () =>
+    within(
+      new Promise((r) => {
+        server.httpServer.close(r);
+        server.httpServer.closeAllConnections?.();
+      }),
+      10_000,
+    );
+  return { server, url: `http://localhost:${port}/`, close };
+}
+
+/** `promise`, or undefined once `ms` have passed: cleanup that must never hang a run. */
+export function within(promise, ms) {
+  let timer;
+  return Promise.race([promise, new Promise((r) => (timer = setTimeout(r, ms)))]).finally(() => clearTimeout(timer));
 }
 
 /**
@@ -305,12 +329,28 @@ export async function drag(page, x1, y1, x2, y2, steps = 8) {
 export async function runE2E(name, { build: doBuild = true, serve: doServe = true } = {}, body) {
   const started = Date.now();
   let step = "start";
+  let stepStarted = Date.now();
   let checks = 0;
   const known = [];
   const log = (s) => {
     step = s;
+    stepStarted = Date.now();
     console.log(`· ${s}`);
   };
+  // A step that stalls fails the script, with the step's name, instead of hanging the whole run.
+  const stepTimeout = T(Number(process.env.E2E_STEP_TIMEOUT) || 120_000);
+  const watchdog = setInterval(() => {
+    const secs = (Date.now() - stepStarted) / 1000;
+    if (secs * 1000 < stepTimeout) return;
+    clearInterval(watchdog);
+    console.error(`✗ ${name} stalled at "${step}": no progress for ${secs.toFixed(0)} s (E2E_STEP_TIMEOUT ${stepTimeout / 1000} s)`);
+    const shots = (browser?.contexts() ?? []).map((ctx) => ctx.pages().at(-1)?.screenshot({ path: `${outDir}/${name}-stalled.png`, timeout: 5_000 }).catch(() => undefined));
+    void within(Promise.all(shots), 8_000).finally(() => {
+      console.log(`E2E_RESULT ${JSON.stringify({ name, ok: false, checks, known, stalled: step })}`);
+      process.exit(1); // Playwright closes the browsers it launched as this process exits
+    });
+  }, 1_000);
+  watchdog.unref();
   const check = (cond, message) => {
     checks++;
     if (!cond) throw new Error(message);
@@ -351,11 +391,14 @@ export async function runE2E(name, { build: doBuild = true, serve: doServe = tru
     if (errors.length) console.error(`page errors:\n${errors.join("\n")}`);
     for (const ctx of browser?.contexts() ?? []) {
       const page = ctx.pages().at(-1);
-      await page?.screenshot({ path: `${outDir}/${name}-failure.png` }).catch(() => undefined);
+      await page?.screenshot({ path: `${outDir}/${name}-failure.png`, timeout: 10_000 }).catch(() => undefined);
     }
   } finally {
-    await browser?.close().catch(() => undefined);
+    step = "clean up";
+    stepStarted = Date.now();
+    await within(browser?.close().catch(() => undefined), 20_000);
     await server?.close();
+    clearInterval(watchdog);
   }
   console.log(`E2E_RESULT ${JSON.stringify({ name, ok: code === 0, checks, known })}`);
   process.exit(code);

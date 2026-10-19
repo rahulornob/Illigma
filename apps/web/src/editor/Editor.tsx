@@ -23,6 +23,7 @@ import { autoLayoutSelection, removeAutoLayout } from "./layout-model";
 import { useDocVersion, useSaveDisplay } from "./hooks";
 import { LayersPanel } from "./LayersPanel";
 import { PropertiesPanel } from "./PropertiesPanel";
+import { openWarnings } from "./open-warnings";
 import { TOOLS, ToolDock } from "./ToolDock";
 
 interface EditorProps {
@@ -71,6 +72,8 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
   const [leaving, setLeaving] = useState<{ journalOk: boolean } | null>(null);
   const [recovery, setRecovery] = useState<Recovery>({ busy: null, error: null });
   const [notice, setNotice] = useState<string | null>(session.notice ?? null);
+  /** What couldn't be read when the file opened: shown until dismissed. */
+  const [opened, setOpened] = useState(() => openWarnings(session.warnings));
   /** An edit the document refused (it changed nothing): said once, until dismissed or the next one. */
   const [editError, setEditError] = useState<string | null>(null);
   const reportEditError = useCallback((e: unknown) => setEditError(`Couldn't make that change: ${messageOf(e)} Nothing was changed.`), []);
@@ -603,6 +606,23 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
                 <Icon name="triangle-alert" />
                 <span className="banner-text">{editError}</span>
                 <button type="button" className="btn btn-secondary" onClick={() => setEditError(null)}>
+                  OK
+                </button>
+              </div>
+            )}
+            {opened && (
+              <div className="banner banner-warning open-warnings" role="status">
+                <Icon name="triangle-alert" />
+                <div className="banner-text">
+                  <strong>{opened.title}</strong>
+                  <ul className="banner-list">
+                    {opened.items.map((item, i) => (
+                      <li key={i}>{item}</li>
+                    ))}
+                    {opened.more > 0 && <li>…and {opened.more.toLocaleString("en-US")} more.</li>}
+                  </ul>
+                </div>
+                <button type="button" className="btn btn-secondary" onClick={() => setOpened(null)}>
                   OK
                 </button>
               </div>

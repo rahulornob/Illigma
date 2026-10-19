@@ -12,7 +12,8 @@
 // Delete reselects, Shift-click ranges in the Layers panel.
 // QC round 6: on macOS only ⌘ skips constraints (Ctrl doesn't); dragging an
 // auto layout child far outside its frame shows no line and drops nothing.
-// QC round 7: an image fill written into the file appears once it decodes, with no interaction.
+// QC round 7: an image fill written into the file appears once it decodes, with no interaction; images
+// that couldn't be opened are listed in a dismissable banner.
 //
 // Screen ↔ world mapping comes from the selection overlay: selecting the
 // "Desktop" frame (a known world rect) shows where world points land.
@@ -819,6 +820,53 @@ await runE2E("canvas", {}, async ({ browser, url, log, check, outDir, errors }) 
     check(await eventually(async () => (await magenta()) > 500, 5_000), `the image fill should appear by itself once decoded, got ${await magenta()} magenta pixels`);
     await viewer.screenshot({ path: `${outDir}/canvas-image.png` });
     await viewer.close();
+  }
+
+  log("QC round 7: images that couldn't be opened are listed in a banner, which OK dismisses");
+  {
+    const fileId = await createFile(page, url);
+    await waitSaved(page);
+    await page.goto(url);
+    // Hero uses a damaged PNG (its bytes don't match its name), Avatar an image that isn't there, plus a stray file.
+    await page.evaluate(async (id) => {
+      const c = new OffscreenCanvas(8, 8);
+      c.getContext("2d").fillRect(0, 0, 8, 8);
+      const bytes = new Uint8Array(await (await c.convertToBlob({ type: "image/png" })).arrayBuffer());
+      const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((b) => b.toString(16).padStart(2, "0")).join("");
+      bytes[bytes.length - 20] ^= 0xff;
+      const root = await navigator.storage.getDirectory();
+      const dir = await (await root.getDirectoryHandle("files")).getDirectoryHandle(id);
+      const write = async (d, name, data) => {
+        const w = await (await d.getFileHandle(name, { create: true })).createWritable();
+        await w.write(data);
+        await w.close();
+      };
+      const images = await dir.getDirectoryHandle("images", { create: true });
+      await write(images, `${hash}.png`, bytes);
+      await write(images, "notes.txt", "not an image");
+      const manifest = JSON.parse(await (await (await dir.getFileHandle("manifest.json")).getFile()).text());
+      const pages = await dir.getDirectoryHandle("pages");
+      const name = `${manifest.pages[0].id}.json`;
+      const nodes = JSON.parse(await (await (await pages.getFileHandle(name)).getFile()).text());
+      const image = (h) => [{ type: "IMAGE", visible: true, imageHash: h, scaleMode: "FILL" }];
+      for (const n of nodes) {
+        if (n.name === "Hero") n.fills = image(hash);
+        if (n.name === "Avatar") n.fills = image("cd".repeat(32));
+      }
+      await write(pages, name, JSON.stringify(nodes));
+    }, fileId);
+    await page.goto(`${url}#/file/${fileId}`);
+    await canvasReady(page);
+    const banner = page.locator(".open-warnings");
+    await banner.waitFor({ timeout: 10_000 });
+    const text = await banner.innerText();
+    check(text.includes("Some images couldn't be opened"), `the banner should say images couldn't be opened, got "${text}"`);
+    check(/is damaged/.test(text) && /is missing/.test(text) && /…and 1 more/.test(text), `the banner should list the first 3 of 4 problems (damaged, stray, missing) and count the rest, got "${text}"`);
+    check(/notes\.txt/.test(text), `the banner should list the stray file, got "${text}"`);
+    check((await banner.locator("li").count()) <= 4, "the list is capped");
+    await page.screenshot({ path: `${outDir}/canvas-open-warnings.png` });
+    await banner.getByRole("button", { name: "OK" }).click();
+    check(await eventually(async () => (await banner.count()) === 0, 2_000), "OK dismisses the banner");
   }
   await context.close();
 });

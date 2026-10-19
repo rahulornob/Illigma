@@ -34,6 +34,8 @@ export interface Session {
   lock: FileLock | null;
   /** Shown once in the editor, e.g. how many recovered edits were skipped. */
   notice?: string | undefined;
+  /** What couldn't be read when the file opened (damaged or missing images, stray files), one line each; the rest opened. */
+  warnings?: string[] | undefined;
   /** Recovered edits Keep couldn't apply. They stay in the recovery journal; the notice offers to export them. */
   skipped?: Operation[][] | undefined;
   /** A read-only snapshot of the disk version opened by Compare…, not the person's file. */
@@ -123,6 +125,8 @@ interface OpenedPackage {
   unused: Map<string, Uint8Array>;
   /** Their paths in the package (`ReadReport.unusedImages`). */
   unusedPaths: string[];
+  /** `ReadReport.warnings`: what was left out, shown in the editor. */
+  warnings: string[];
 }
 
 /** Read a package for editing. Images are hashed natively (`crypto.subtle`), not in JavaScript on the main thread. */
@@ -139,7 +143,7 @@ async function openPackage(tree: FileTree): Promise<OpenedPackage> {
   const file: IlligmaFile = { ...report.file };
   if (images.size) file.images = images;
   else delete file.images;
-  return { file, unused, unusedPaths: report.unusedImages };
+  return { file, unused, unusedPaths: report.unusedImages, warnings: report.warnings };
 }
 
 /**
@@ -175,7 +179,7 @@ async function startSession(doc: Document, backend: Backend, lock: FileLock | nu
   } else if (lock && journalRead && opened?.unusedPaths.length) {
     await backend.collectImages?.(opened.unusedPaths).catch(() => []);
   }
-  return { doc, backend, journal, recovered, lock };
+  return { doc, backend, journal, recovered, lock, ...(opened?.warnings.length ? { warnings: opened.warnings } : {}) };
 }
 
 /** Run `open` holding `lock`; release it if opening fails. */

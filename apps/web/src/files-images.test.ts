@@ -110,3 +110,36 @@ describe("images across crashes (QC round 7)", () => {
     await closeSession(s);
   });
 });
+
+describe("what couldn't be opened is reported (QC round 7, tester)", () => {
+  it("a damaged image, a missing one and a stray file reach the session's warnings; the rest opens", async () => {
+    const { doc, frame } = base();
+    const hash = doc.addImage(PNG);
+    const missing = "ab".repeat(32);
+    doc.transact("Photos", (tx) => {
+      tx.create("RECTANGLE", frame, { name: "Photo", fills: [{ type: "IMAGE", visible: true, imageHash: hash, scaleMode: "FILL" }] });
+      tx.create("RECTANGLE", frame, { name: "Gone", fills: [{ type: "IMAGE", visible: true, imageHash: missing, scaleMode: "FILL" }] });
+    });
+    await opfsBackend(doc.fileId, "T").write(writePackage(doc.toFile()));
+    const damaged = Uint8Array.from(PNG);
+    damaged[damaged.length - 20] = (damaged[damaged.length - 20] ?? 0) ^ 0xff;
+    fs.writeBytes(imagePath(doc.fileId, hash), damaged);
+    fs.writeText(`files/${doc.fileId}/images/notes.txt`, "hi");
+
+    const s = await openStoredFile(doc.fileId, "T");
+    expect(s.doc.get(frame)).toBeTruthy();
+    const text = (s.warnings ?? []).join("\n");
+    expect(text).toMatch(new RegExp(`images/${hash}\\.png is damaged`));
+    expect(text).toMatch(/Image (ab){6}… is missing/);
+    expect(text).toMatch(/images\/notes\.txt is not an image file/);
+    await closeSession(s);
+
+    // A sound file opens with nothing to report.
+    const clean = new Document("Clean");
+    clean.transact("p", (tx) => tx.addPage("P1"));
+    await opfsBackend(clean.fileId, "Clean").write(writePackage(clean.toFile()));
+    const ok = await openStoredFile(clean.fileId, "Clean");
+    expect(ok.warnings).toBeUndefined();
+    await closeSession(ok);
+  });
+});
