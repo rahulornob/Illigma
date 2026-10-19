@@ -5,6 +5,7 @@ import { MenuButton, type MenuEntry } from "../ui/Menu";
 import { fmt, LIMITS, NumberField } from "../ui/NumberField";
 import { AutoLayoutCard } from "./AutoLayoutCard";
 import { ConstraintsCard } from "./ConstraintsCard";
+import { ExportCard } from "./export/ExportCard";
 import { effectiveSizing, hasConstraints, isAutoLayoutNode, setSizing, sizingOptions, type Axis } from "./layout-model";
 import { guard, setBoxFields, setLayoutProps, type BoxField, type OnEditError } from "./layout-props";
 import { PaintCards } from "./paint/PaintCards";
@@ -168,6 +169,8 @@ export function PropertiesPanel({
             <p className="muted">Select a layer to see its position and size.</p>
           </section>
         )}
+        {/* Export (export.md): the selection's settings, or the page's when nothing is selected. */}
+        <ExportCard key={`export-${ids.join(",") || pageId}`} doc={doc} targets={ids.length ? ids : [pageId]} readOnly={readOnly} onError={onError} />
       </div>
     </aside>
   );
