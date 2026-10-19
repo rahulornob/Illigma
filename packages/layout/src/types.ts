@@ -26,11 +26,11 @@ export interface ReadonlyVectorNetwork {
 
 /**
  * The node fields layout reads. A `@illigma/core` document's frozen nodes fit
- * this type. Paints and effects are left out: layout never reads them, and
+ * this type. Paints, effects and export settings are left out: layout never reads them, and
  * core freezes them deeply. A vector's network is read (deeply read-only) only
  * to scale it with the node when layout changes the node's size.
  */
-export type LayoutNode = Readonly<Omit<Node, "fills" | "strokes" | "constraints" | "vectorNetwork" | "effects">> & {
+export type LayoutNode = Readonly<Omit<Node, "fills" | "strokes" | "constraints" | "vectorNetwork" | "effects" | "exportSettings">> & {
   readonly constraints?: Readonly<Constraints>;
   readonly vectorNetwork?: ReadonlyVectorNetwork;
 };

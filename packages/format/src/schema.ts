@@ -508,7 +508,73 @@ export interface EffectFields {
   strokeAlign?: StrokeAlign;
 }
 
-export type Node = NodeBase & TextFields & LayoutFields & ShapeFields & EffectFields;
+/** Export file formats (Figma's `ExportSettings.format`). */
+export type ExportFormat = "PNG" | "JPG" | "SVG" | "PDF";
+export const EXPORT_FORMATS: readonly ExportFormat[] = ["PNG", "JPG", "SVG", "PDF"];
+
+/** How a PNG or JPG export is sized: a multiplier (`2x`), or a fixed width (`512w`) or height (`512h`) in pixels. */
+export interface ExportSettingsConstraints {
+  type: "SCALE" | "WIDTH" | "HEIGHT";
+  value: number;
+}
+export const EXPORT_CONSTRAINT_TYPES: readonly ExportSettingsConstraints["type"][] = ["SCALE", "WIDTH", "HEIGHT"];
+
+interface ExportSettingsCommon {
+  /** Added to the file name before the extension, e.g. "@2x". Default "". */
+  suffix?: string;
+  /** true (default): only the layer and its children. false: everything on the page inside its bounds. */
+  contentsOnly?: boolean;
+  /** false (default): the bounds of what the layer draws. true: the layer's own box. */
+  useAbsoluteBounds?: boolean;
+}
+
+export interface ExportSettingsImage extends ExportSettingsCommon {
+  format: "PNG" | "JPG";
+  /** Default { type: "SCALE", value: 1 }. */
+  constraint?: ExportSettingsConstraints;
+  /** JPG only (Illigma's addition): 0 (smallest) to 100 (best). Default 90. */
+  quality?: number;
+}
+
+export interface ExportSettingsSVG extends ExportSettingsCommon {
+  format: "SVG";
+  /** Text as outlines. Default false. */
+  svgOutlineText?: boolean;
+  /** Layer names as `id` attributes. Default false. */
+  svgIdAttribute?: boolean;
+  /** Default true. */
+  svgSimplifyStroke?: boolean;
+}
+
+export interface ExportSettingsPDF extends ExportSettingsCommon {
+  format: "PDF";
+}
+
+/** One file a layer exports to (Figma's `ExportSettings`). */
+export type ExportSettings = ExportSettingsImage | ExportSettingsSVG | ExportSettingsPDF;
+
+/** Limits on export settings, so a file can't ask for absurd work. Exports past the pixel limits fail with a reason. */
+export const EXPORT_LIMITS = {
+  /** Settings on one node. */
+  maxSettings: 100,
+  /** Characters in a suffix. */
+  maxSuffix: 200,
+  /** Largest scale (`100x`). */
+  maxScale: 100,
+  /** Largest fixed width or height, in pixels. */
+  maxPixels: 100_000,
+} as const;
+
+/**
+ * Export settings, named after Figma's Plugin API. Optional: absent means
+ * none, so files without them save exactly as before.
+ */
+export interface ExportFields {
+  /** The files this layer (or page) exports to, in order. Default none. */
+  exportSettings?: ExportSettings[];
+}
+
+export type Node = NodeBase & TextFields & LayoutFields & ShapeFields & EffectFields & ExportFields;
 
 /** The node fields an operation may change. `id` and `type` never change. */
 export type NodeKey = Exclude<keyof Node, "id" | "type">;

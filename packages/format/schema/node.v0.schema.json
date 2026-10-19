@@ -87,9 +87,54 @@
     "strokeJoin": { "enum": ["MITER", "BEVEL", "ROUND"], "description": "Corners of strokes. Default MITER" },
     "effects": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/effect" }, "description": "Shadows and blurs, bottom first. Default none" },
     "blendMode": { "$ref": "#/$defs/blendMode", "description": "How the layer mixes with what is under it. Default PASS_THROUGH" },
-    "strokeAlign": { "enum": ["CENTER", "INSIDE", "OUTSIDE"], "description": "Where strokes sit on the outline. Absent means CENTER (format 0 drew every stroke centred); lines and open paths are always centred" }
+    "strokeAlign": { "enum": ["CENTER", "INSIDE", "OUTSIDE"], "description": "Where strokes sit on the outline. Absent means CENTER (format 0 drew every stroke centred); lines and open paths are always centred" },
+    "exportSettings": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/exportSettings" }, "description": "The files this layer or page exports to (Figma's ExportSettings), in order. Default none" }
   },
   "$defs": {
+    "exportSettings": {
+      "type": "object",
+      "required": ["format"],
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "format": { "enum": ["PNG", "JPG"] },
+            "suffix": { "type": "string", "maxLength": 200, "description": "Added before the extension, e.g. @2x. Default empty" },
+            "contentsOnly": { "type": "boolean", "description": "Default true" },
+            "useAbsoluteBounds": { "type": "boolean", "description": "Default false" },
+            "constraint": {
+              "type": "object",
+              "required": ["type", "value"],
+              "additionalProperties": false,
+              "properties": { "type": { "enum": ["SCALE", "WIDTH", "HEIGHT"] }, "value": { "type": "number", "exclusiveMinimum": 0, "maximum": 100000, "description": "SCALE at most 100; WIDTH and HEIGHT in pixels" } },
+              "description": "Default SCALE 1"
+            },
+            "quality": { "type": "number", "minimum": 0, "maximum": 100, "description": "JPG only. Default 90" }
+          }
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "format": { "const": "SVG" },
+            "suffix": { "type": "string", "maxLength": 200 },
+            "contentsOnly": { "type": "boolean" },
+            "useAbsoluteBounds": { "type": "boolean" },
+            "svgOutlineText": { "type": "boolean", "description": "Default false" },
+            "svgIdAttribute": { "type": "boolean", "description": "Default false" },
+            "svgSimplifyStroke": { "type": "boolean", "description": "Default true" }
+          }
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "format": { "const": "PDF" },
+            "suffix": { "type": "string", "maxLength": 200 },
+            "contentsOnly": { "type": "boolean" },
+            "useAbsoluteBounds": { "type": "boolean" }
+          }
+        }
+      ]
+    },
     "layoutSizing": { "enum": ["FIXED", "HUG", "FILL"], "description": "Default: HUG on an auto layout frame's AUTO axes, else FIXED" },
     "constraintType": { "enum": ["MIN", "CENTER", "MAX", "STRETCH", "SCALE"] },
     "unit": { "type": "number", "minimum": 0, "maximum": 1 },

@@ -24,6 +24,8 @@ import { useDocVersion, useSaveDisplay } from "./hooks";
 import { LayersPanel } from "./LayersPanel";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { openWarnings } from "./open-warnings";
+import { openExportDialog } from "./export/dialog-state";
+import { ExportHost } from "./export/ExportHost";
 import { TOOLS, ToolDock } from "./ToolDock";
 
 interface EditorProps {
@@ -385,6 +387,12 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
       if (mod && k === "s") {
         e.preventDefault();
         void keys.current.autosaver?.flushNow();
+        return;
+      }
+      // ⇧⌘E: the Export dialog (export.md). Exporting changes nothing, so it works read-only too.
+      if (mod && e.shiftKey && (k === "e" || e.code === "KeyE")) {
+        e.preventDefault();
+        openExportDialog();
         return;
       }
       if (mod && (e.key === "=" || e.key === "+")) {
@@ -755,6 +763,7 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
 
         <PropertiesPanel doc={doc} pageId={pageId} selection={selection} readOnly={locked} onSelect={setSelection} onError={reportEditError} />
       </div>
+      <ExportHost doc={doc} pageId={pageId} />
     </div>
   );
 }

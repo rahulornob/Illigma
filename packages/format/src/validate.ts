@@ -15,6 +15,8 @@ import {
   PAINT_LIMITS,
   STROKE_ALIGNS,
   CONSTRAINT_TYPES,
+  EXPORT_CONSTRAINT_TYPES,
+  EXPORT_LIMITS,
   COUNTER_AXIS_ALIGN_CONTENTS,
   COUNTER_AXIS_ALIGNS,
   FORMAT_NAME,
@@ -203,6 +205,40 @@ const lineHeight: Rule = (v) => {
   if (isObject(v) && Object.keys(v).length === 2 && !metricUnit(v.unit) && isFinite(v.value) && v.value >= 0 && v.value <= MAX_TEXT_METRIC) return null;
   return `must be a number of pixels, { unit: "AUTO" }, or { value, unit } with a value from 0 to ${MAX_METRIC} and a unit "PIXELS" or "PERCENT"`;
 };
+// ---- export settings ----
+
+const suffix: Rule = (v) =>
+  typeof v === "string" && v.length <= EXPORT_LIMITS.maxSuffix ? null : `must be text of at most ${EXPORT_LIMITS.maxSuffix} characters`;
+const exportConstraint: Rule = (v) => {
+  if (!isObject(v) || Object.keys(v).length !== 2 || !("type" in v) || !("value" in v)) return "must be { type, value }";
+  const t = oneOf(EXPORT_CONSTRAINT_TYPES)(v.type);
+  if (t) return `type ${t}`;
+  const max = v.type === "SCALE" ? EXPORT_LIMITS.maxScale : EXPORT_LIMITS.maxPixels;
+  return isFinite(v.value) && v.value > 0 && v.value <= max ? null : `value must be a number above 0 and at most ${max.toLocaleString("en-US")}`;
+};
+const quality: Rule = (v) => (isFinite(v) && v >= 0 && v <= 100 ? null : "must be a number from 0 to 100");
+const EXPORT_BASE: Shape = { format: [() => null, true], suffix: [suffix, false], contentsOnly: [boolean, false], useAbsoluteBounds: [boolean, false] };
+const EXPORT_IMAGE_SHAPE: Shape = { ...EXPORT_BASE, constraint: [exportConstraint, false], quality: [quality, false] };
+const EXPORT_SHAPES: Record<string, Shape> = {
+  PNG: EXPORT_IMAGE_SHAPE,
+  JPG: EXPORT_IMAGE_SHAPE,
+  SVG: { ...EXPORT_BASE, svgOutlineText: [boolean, false], svgIdAttribute: [boolean, false], svgSimplifyStroke: [boolean, false] },
+  PDF: EXPORT_BASE,
+};
+const exportSettings: Rule = (v) => {
+  if (!Array.isArray(v)) return "must be a list of export settings";
+  if (v.length > EXPORT_LIMITS.maxSettings) return `must have at most ${EXPORT_LIMITS.maxSettings} export settings`;
+  for (let i = 0; i < v.length; i++) {
+    const e = v[i] as unknown;
+    if (!isObject(e)) return `setting ${i} is not an object`;
+    const f = e.format;
+    const shape = typeof f === "string" && Object.prototype.hasOwnProperty.call(EXPORT_SHAPES, f) ? EXPORT_SHAPES[f] : undefined;
+    if (!shape) return `setting ${i} has an unknown format${typeof f === "string" ? ` "${f.slice(0, 40)}"` : ""}: use PNG, JPG, SVG or PDF`;
+    const problem = shapeProblem(e, shape);
+    if (problem) return `setting ${i} (${f}) ${problem}`;
+  }
+  return null;
+};
 
 const pointCount: Rule = (v) =>
   typeof v === "number" && Number.isInteger(v) && v >= 3 && v <= MAX_POINT_COUNT ? null : `must be a whole number from 3 to ${MAX_POINT_COUNT.toLocaleString("en-US")}`;
@@ -266,6 +302,7 @@ const RULES: { [K in keyof Node]-?: Rule } = {
   effects: optional(effects),
   blendMode: optional(blendMode),
   strokeAlign: optional(oneOf(STROKE_ALIGNS)),
+  exportSettings: optional(exportSettings),
 };
 
 /** Every node field name, required and optional. */

@@ -1142,6 +1142,498 @@ ul {
   cursor: progress;
 }
 
+/* ---- Export: Properties card, options popover, dialog (⇧⌘E), toast (docs/design/export.md) ---- */
+
+.export-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.export-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 64px 24px 24px;
+  align-items: center;
+  gap: 4px;
+}
+.export-row .field-input {
+  padding-left: 8px;
+}
+.export-row .field-input:disabled {
+  color: var(--text-disabled);
+}
+.export-row-button.icon-button {
+  width: 24px;
+  height: 24px;
+}
+.export-row-button[aria-expanded="true"] {
+  background: var(--bg-field-hover);
+  color: var(--text-primary);
+}
+.export-format {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  height: var(--size-field);
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: var(--bg-field);
+  color: var(--text-primary);
+  font: var(--type-ui-value);
+  cursor: pointer;
+}
+.export-format:hover:not(:disabled),
+.export-format[aria-expanded="true"] {
+  background: var(--bg-field-hover);
+}
+.export-format:disabled {
+  color: var(--text-disabled);
+  cursor: default;
+}
+.export-format .icon {
+  color: var(--text-secondary);
+}
+.export-mixed,
+.export-where {
+  margin: 0;
+}
+.export-button {
+  justify-content: center;
+  width: 100%;
+  height: 32px;
+}
+.export-button-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.export-preview-head {
+  display: flex;
+}
+.export-preview-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+.export-preview-toggle .icon {
+  transition: transform 120ms ease;
+}
+.export-preview-toggle[aria-expanded="true"] .icon {
+  transform: rotate(90deg);
+}
+.export-preview {
+  display: grid;
+  place-items: center;
+  min-height: 72px;
+  max-height: 160px;
+  padding: 12px;
+  border-radius: var(--radius-field);
+  background: var(--bg-recessed);
+  overflow: hidden;
+}
+.export-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 136px;
+  object-fit: contain;
+}
+.export-preview-note {
+  margin: 0;
+  color: var(--text-tertiary);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.export-preview[data-state="error"] .export-preview-note {
+  color: var(--text-secondary);
+}
+
+.export-popover {
+  position: fixed;
+  z-index: 20;
+  width: 248px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-card);
+  background: var(--bg-panel);
+  box-shadow: var(--elevation-2-popover);
+}
+.export-popover-title {
+  margin-bottom: 4px;
+  font: var(--type-ui-heading);
+  color: var(--text-primary);
+}
+.export-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 24px;
+  padding: 4px 0;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.export-option input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent-fill);
+}
+.export-option:has(input:disabled) {
+  color: var(--text-disabled);
+  cursor: default;
+}
+.export-option-note {
+  display: block;
+  margin: 0;
+  color: var(--text-tertiary);
+}
+.export-quality {
+  display: grid;
+  grid-template-columns: 1fr 88px;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.export-quality .field-input {
+  padding-left: 8px;
+}
+
+/* The Export dialog: a modal over the editor. */
+.export-dialog {
+  width: min(640px, calc(100vw - 32px));
+  max-height: min(800px, calc(100vh - 32px));
+  padding: 24px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-panel);
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  box-shadow: var(--elevation-2-popover);
+  font: var(--type-ui-body);
+}
+.export-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.export-dialog::backdrop {
+  background: color-mix(in srgb, var(--bg-shell) 60%, transparent);
+}
+.export-dialog-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.export-dialog-title {
+  margin: 0;
+  font: var(--type-ui-title);
+}
+.export-dialog-spacer {
+  flex: 1;
+}
+.export-chip {
+  padding: 0 4px;
+  border-radius: var(--radius-xs);
+  background: var(--bg-field);
+  color: var(--text-secondary);
+}
+.export-scope .segment {
+  width: auto;
+  padding: 0 12px;
+  border-radius: var(--radius-button);
+  font: var(--type-ui-button);
+}
+.export-dialog-banner {
+  box-shadow: none;
+  align-items: flex-start;
+}
+.export-failures strong {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.export-empty {
+  margin: 0;
+  padding: 24px 12px;
+  border-radius: var(--radius-card);
+  background: var(--bg-card);
+  text-align: center;
+}
+.export-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 4px 12px;
+  border-radius: var(--radius-card);
+  background: var(--bg-card);
+}
+.export-list-head,
+.export-list-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+}
+.export-list-head {
+  border-bottom: 1px solid var(--border-default);
+  cursor: pointer;
+}
+.export-list input[type="checkbox"] {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent-fill);
+}
+.export-list-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  max-height: 360px;
+}
+.export-list-row {
+  padding: 4px 0;
+}
+.export-list-row + .export-list-row {
+  border-top: 1px solid var(--border-default);
+}
+.export-list-row:not([data-checked]) .export-list-name {
+  color: var(--text-tertiary);
+}
+.export-type-tile {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-button);
+  background: var(--bg-field);
+  color: var(--text-secondary);
+}
+.export-list-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.export-list-meta {
+  flex: none;
+  color: var(--text-secondary);
+}
+.export-status {
+  flex: none;
+  min-width: 64px;
+  text-align: right;
+}
+.export-status.tone-quiet {
+  color: var(--text-tertiary);
+}
+.export-status.tone-busy {
+  color: var(--text-primary);
+}
+.export-status.tone-success {
+  color: var(--state-success);
+}
+.export-status.tone-danger {
+  color: var(--state-danger);
+}
+.export-files {
+  margin: 0 0 4px 68px;
+  padding: 0;
+  list-style: none;
+}
+.export-file {
+  display: flex;
+  gap: 12px;
+  min-height: 20px;
+  align-items: baseline;
+}
+.export-file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+.export-file-size {
+  flex: none;
+  max-width: 60%;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.export-file[data-problem] .export-file-size {
+  flex: 1;
+  color: var(--state-danger);
+  white-space: normal;
+}
+.export-folder {
+  display: flex;
+  gap: 8px;
+}
+.export-folder-field {
+  flex: 1;
+  height: 32px;
+  padding-right: 8px;
+}
+.export-folder-label {
+  width: auto;
+  padding: 0 8px;
+  color: var(--text-tertiary);
+  cursor: default;
+}
+.export-folder-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--type-ui-value);
+}
+.export-folder .btn {
+  height: 32px;
+}
+.export-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 24px;
+  cursor: pointer;
+}
+.switch {
+  appearance: none;
+  flex: none;
+  position: relative;
+  width: 36px;
+  height: 20px;
+  margin: 0;
+  border-radius: var(--radius-full);
+  background: var(--bg-field-hover);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.switch::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-full);
+  background: var(--accent-on);
+  transition: transform 120ms ease;
+}
+.switch:checked {
+  background: var(--accent-fill);
+}
+.switch:checked::before {
+  transform: translateX(16px);
+}
+.switch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.export-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.export-progress progress {
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--bg-field);
+  overflow: hidden;
+}
+.export-progress progress::-webkit-progress-bar {
+  background: var(--bg-field);
+}
+.export-progress progress::-webkit-progress-value {
+  background: var(--accent-default);
+}
+.export-progress progress::-moz-progress-bar {
+  background: var(--accent-default);
+}
+.export-dialog-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.export-dialog-foot .export-note {
+  flex: 1;
+}
+.export-dialog-foot .btn {
+  height: 32px;
+}
+.export-note {
+  margin: 0;
+}
+.export-note-error {
+  color: var(--state-danger);
+}
+
+/* The toast: above the tool dock, centred. Success uses the inverse surface, as designed. */
+.export-toast-area {
+  position: fixed;
+  left: 50%;
+  bottom: 72px;
+  z-index: 15;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(640px, calc(100vw - 32px));
+}
+.export-toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 8px 8px 16px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-card);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  box-shadow: var(--elevation-1-island);
+}
+.export-toast-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.export-toast-success {
+  background: var(--bg-inverse);
+  border-color: transparent;
+  color: var(--text-on-inverse);
+}
+.export-toast-success > .icon {
+  color: var(--state-success-on-inverse);
+}
+.export-toast-success .icon-button {
+  color: var(--text-on-inverse);
+}
+.export-toast-success .icon-button:hover {
+  background: color-mix(in srgb, var(--text-on-inverse) 8%, transparent);
+  color: var(--text-on-inverse);
+}
+.export-toast-error {
+  background: var(--state-danger-tint);
+  border-color: transparent;
+}
+.export-toast-error > .icon {
+  flex: none;
+  color: var(--state-danger);
+}
+
 /* ---- Text: on-canvas editing, Typography card, font picker ---- */
 
 /* The caret (2 px, accent/default) and selection (accent/default at 32%) over the text being edited (interactions.md). */
