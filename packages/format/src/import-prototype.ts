@@ -24,6 +24,7 @@ import {
   defaultNode,
   FORMAT_NAME,
   FORMAT_VERSION,
+  MAX_TEXT_METRIC,
   PAINT_LIMITS,
   type Color,
   type ConstraintType,
@@ -813,7 +814,8 @@ function textFields(raw: Obj, l: LayerIn, notes: Notes): Partial<Node> {
     if (Math.abs(sy - 1) > 1e-6) fontSize *= sy;
     if (Math.abs(sx - sy) > 0.01 * Math.max(sx, sy)) notes.add("stretchedText");
   }
-  fontSize = round(Math.min(fontSize, MAX_SIZE));
+  // Within what the format takes (1 to MAX_TEXT_METRIC): a huge size can't be laid out.
+  fontSize = round(Math.min(Math.max(fontSize, 1), MAX_TEXT_METRIC));
   const family = get(raw, "fontFamily");
   const fontFamily = typeof family === "string" && family.trim() && family.length <= 100 ? family.trim() : "Inter";
   if (family !== undefined && fontFamily !== family) notes.add("reset");
@@ -829,7 +831,7 @@ function textFields(raw: Obj, l: LayerIn, notes: Notes): Partial<Node> {
   const lineHeight = numberOr(get(raw, "lineHeight"), DEFAULT_LINE_HEIGHT, (n) => n > 0, notes);
   const letterSpacing = get(raw, "letterSpacing");
   if (letterSpacing !== undefined && letterSpacing !== 0) notes.add("letterSpacing");
-  return { characters: chars, fontFamily, fontStyle, fontSize, lineHeight: round(Math.min(fontSize * lineHeight, MAX_SIZE)) };
+  return { characters: chars, fontFamily, fontStyle, fontSize, lineHeight: round(Math.min(fontSize * lineHeight, MAX_TEXT_METRIC)) };
 }
 
 // ---- auto layout and constraints ----

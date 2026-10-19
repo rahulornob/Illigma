@@ -184,11 +184,20 @@ export async function startExport(o: StartOptions): Promise<void> {
     let downloaded = false;
     if (files.length) {
       if (dir) {
-        const res = await writeExportFiles(dir, files, { replace, onProgress: (done, total) => patch(id, { done, total }) });
+        const res = await writeExportFiles(dir, files, { replace, signal, onProgress: (done, total) => patch(id, { done, total }) });
         written = res.written;
         for (const f of res.failures) {
           const file = out.files.find((x) => x.filename === f.filename);
           if (file) failures.push({ request: { nodeId: file.nodeId, settings: file.settings }, filename: f.filename, message: f.message });
+        }
+        if (res.cancelled) {
+          // Cancel while writing: what was written stays (and is listed); the rest can be retried.
+          const rest: FileFailure[] = res.cancelled.flatMap((name) => {
+            const file = out.files.find((x) => x.filename === name);
+            return file ? [{ request: { nodeId: file.nodeId, settings: file.settings }, filename: name, message: "cancelled" }] : [];
+          });
+          patch(id, { phase: "done", cancelled: true, written, failures: [...failures, ...rest], where: dir.name, error: cancelledText(written, written.length + failures.length + rest.length) });
+          return;
         }
       } else {
         const d = downloadExportFiles(files, o.zipBase);
@@ -207,6 +216,15 @@ export async function startExport(o: StartOptions): Promise<void> {
   } finally {
     controller = null;
   }
+}
+
+/** "Export cancelled after 2 of 5 files. Written: Hero.png and Hero@2x.png. The others weren't written." */
+export function cancelledText(written: readonly WrittenFile[], total: number): string {
+  if (!written.length) return "Export cancelled. Nothing was written.";
+  const names = written.map((w) => w.path);
+  const shown = names.length > 3 ? `${names.slice(0, 3).join(", ")} and ${names.length - 3} more` : names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0];
+  const rest = total - written.length;
+  return `Export cancelled after ${written.length} of ${total} files. Written: ${shown}.${rest > 0 ? ` The other ${rest === 1 ? "file wasn't" : `${rest} weren't`} written.` : ""}`;
 }
 
 /** Run the failed files of the last job again (Retry N files). */

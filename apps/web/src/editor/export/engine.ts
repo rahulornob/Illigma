@@ -37,9 +37,21 @@ export interface BatchOutput {
   failures: ExportFailure[];
 }
 
+/** The loaded deps with `extra` fonts after the bundled ones (Inter stays first: the fallback). */
+export async function depsWith(extra: readonly FontSource[] = []): Promise<ExportDeps> {
+  const d = await loadExportDeps();
+  return extra.length ? { ...d, fonts: [...(d.fonts ?? []), ...extra] } : d;
+}
+
 /** A batch in one go (in the worker, where nothing else waits on the thread). */
-export async function exportBatch(source: ExportSource, requests: readonly ExportRequest[], taken: readonly string[], onProgress: (done: number, total: number) => void): Promise<BatchOutput> {
-  return exportNodes(source, requests, await loadExportDeps(), { taken, onProgress });
+export async function exportBatch(
+  source: ExportSource,
+  requests: readonly ExportRequest[],
+  taken: readonly string[],
+  onProgress: (done: number, total: number) => void,
+  fonts: readonly FontSource[] = [],
+): Promise<BatchOutput> {
+  return exportNodes(source, requests, await depsWith(fonts), { taken, onProgress });
 }
 
 /**
@@ -53,8 +65,9 @@ export async function exportBatchChunked(
   filenames: readonly string[],
   onProgress: (done: number, total: number) => void,
   cancelled: () => boolean,
+  fonts: readonly FontSource[] = [],
 ): Promise<BatchOutput> {
-  const d = await loadExportDeps();
+  const d = await depsWith(fonts);
   const files: ExportedFile[] = [];
   const failures: ExportFailure[] = [];
   for (let i = 0; i < requests.length; i++) {

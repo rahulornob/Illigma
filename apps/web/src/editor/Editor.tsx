@@ -28,6 +28,8 @@ import { useImageImport } from "./paint/useImageImport";
 import { openExportDialog } from "./export/dialog-state";
 import { ExportHost } from "./export/ExportHost";
 import { TOOLS, ToolDock } from "./ToolDock";
+import { settleTextForSave } from "./text/session";
+import { inLayer, onControl } from "./focus";
 
 interface EditorProps {
   session: Session;
@@ -119,6 +121,8 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
    * otherwise silently leave it out, or fail on it.
    */
   const settleDrag = useCallback(() => {
+    // A new text layer with no text is removed, never kept: an empty layer must not reach the file.
+    settleTextForSave(doc);
     const drag = doc.live;
     if (drag?.open) drag.commit();
   }, [doc]);
@@ -406,9 +410,17 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
         canvas.current?.zoomOut();
         return;
       }
-      // ⌘D is the browser's bookmark shortcut: never let it through, even from a field (where it duplicates nothing).
-      if (mod && k === "d") e.preventDefault();
+      if (mod && e.key === "0") {
+        e.preventDefault();
+        canvas.current?.zoomTo(1);
+        return;
+      }
+      // ⌘D is the browser's bookmark shortcut and ⌘P prints the page: never let them through, even from a
+      // field or while editing text (where they do nothing).
+      if (mod && (k === "d" || k === "p")) e.preventDefault();
       if (isTyping(e.target)) return;
+      // Enter and Space on a focused button press the button; keys inside a dialog, popover or menu are theirs.
+      if (!mod && (inLayer(e.target) || ((e.key === "Enter" || e.key === " ") && onControl(e.target)))) return;
       // A drag on the canvas is running: it owns the document until it ends (Escape cancels it there).
       if (doc.live) {
         if (mod || e.key === "Delete" || e.key === "Backspace" || e.key.startsWith("Arrow")) e.preventDefault();
@@ -437,11 +449,6 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
       if (mod && k === "y") {
         e.preventDefault();
         if (!noEdits) step("redo");
-        return;
-      }
-      if (mod && e.key === "0") {
-        e.preventDefault();
-        canvas.current?.zoomTo(1);
         return;
       }
       // Shift+A: add auto layout, or wrap the selection in an auto layout frame. ⌥⇧A removes it. By the

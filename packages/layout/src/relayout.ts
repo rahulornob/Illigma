@@ -29,7 +29,9 @@ import type { Box, LayoutChange, LayoutNode, LayoutReader, ReadonlyVectorNetwork
 /**
  * The size a TEXT node's text needs: wrapped at `width`, or with no width on
  * one line per line break (auto width). Null when it can't be measured now
- * (no fonts yet): the node keeps its stored size.
+ * (no fonts yet, or the node's font isn't loaded: measuring it in another
+ * font would store the wrong size, so it keeps its stored size, as Figma
+ * keeps text in a missing font as it is).
  */
 export type TextMeasure = (node: LayoutNode, width: number | undefined) => Size | null;
 
@@ -266,7 +268,8 @@ class Engine {
       size = this.#measureText(n, at);
       this.#texts.set(key, size);
     }
-    if (!size) return stored;
+    // Not measurable (no fonts, a font that isn't loaded) or not a finite size: the stored box stays.
+    if (!size || !Number.isFinite(size.width) || !Number.isFinite(size.height)) return stored;
     return { width: at ?? size.width, height: height ?? size.height };
   }
 

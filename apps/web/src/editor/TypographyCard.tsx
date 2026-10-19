@@ -21,6 +21,7 @@ import {
   resizeModeOf,
   resizePatch,
   setTextProps,
+  whenIdle,
   typedLineHeight,
   type MetricUnit,
   type TextPatch,
@@ -164,8 +165,24 @@ export function TypographyCard({ doc, nodes, readOnly, onError }: { doc: Documen
         return { fontFamily: next, fontStyle: keep };
       }, `Font: ${next}`);
     // A font on this computer is read first, so layout measures the text in it.
-    if (engine && !engine.hasFamily(next)) void ensureLocalFamily(engine, next).then(apply);
+    if (engine && !engine.hasFamily(next)) void ensureLocalFamily(engine, next).then(() => applyWhenIdle(next, apply));
     else apply();
+  };
+
+  /**
+   * The font loaded after a moment: an edit may have started meanwhile (typing, a drag), and the
+   * document takes no other edit until it ends. Apply the font then, never drop it silently.
+   */
+  const applyWhenIdle = (next: string, apply: () => boolean | undefined) => {
+    if (apply() !== false) return;
+    whenIdle(
+      doc,
+      () => {
+        if (!ids.some((id) => doc.has(id))) onError?.(new Error(`The text layer was deleted before ${next} finished loading.`));
+        else apply();
+      },
+      () => onError?.(new Error(`${next} loaded while another edit kept going, so it wasn't applied. Pick it again.`)),
+    );
   };
 
   return (

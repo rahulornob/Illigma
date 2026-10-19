@@ -11,9 +11,9 @@
  */
 
 import { imagePath, imageProblem, isBinaryPackagePath, parseImagePath, referencedImageHashes, sha256Hex, sha256HexAsync, sniffImageFormat } from "./images.js";
-import { FORMAT_NAME, FORMAT_VERSION, type IlligmaFile, type Manifest, type Node, type NodeId } from "./schema.js";
+import { FORMAT_NAME, FORMAT_VERSION, MAX_TEXT_METRIC, type IlligmaFile, type Manifest, type Node, type NodeId } from "./schema.js";
 import { isSafePageId, validateFile } from "./validate.js";
-import { migrate } from "./migrations.js";
+import { clampTextMetrics, migrate } from "./migrations.js";
 
 /** One file's contents: text, or bytes for binary paths (`isBinaryPackagePath`: images). */
 export type FileData = string | Uint8Array;
@@ -218,11 +218,17 @@ export function readPackageWithReport(tree: FileTree, opts: ReadPackageOptions =
   }
 
   const file = migrate({ manifest: rawManifest, nodes: rawNodes }, version) as IlligmaFile;
+  const clamped = clampTextMetrics(file.nodes as unknown[]);
   const problems = validateFile(file);
   if (problems.length) throw new FormatError("The file is damaged and can't be opened safely.", problems);
 
   const listed = new Set(pages.map((p) => `pages/${(p as { id: string }).id}.json`));
   const warnings: string[] = [];
+  if (clamped) {
+    warnings.push(
+      `${clamped === 1 ? "1 text layer had" : `${clamped.toLocaleString("en-US")} text layers had`} a font size or line height out of range (font sizes go from 1 to ${MAX_TEXT_METRIC.toLocaleString("en-US")}), so ${clamped === 1 ? "it was" : "they were"} brought within it.`,
+    );
+  }
   for (const path of [...tree.keys()].sort()) {
     if (path.startsWith("pages/") && !listed.has(path)) warnings.push(`${path} is not listed in manifest.json, so it was not opened.`);
   }

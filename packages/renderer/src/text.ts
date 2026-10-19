@@ -13,7 +13,7 @@
  */
 
 import type { DeepReadonly, ReadonlyNode } from "@illigma/core";
-import { letterSpacingPx, lineHeightPx, type Color } from "@illigma/format";
+import { letterSpacingPx, lineHeightPx, MAX_TEXT_METRIC, type Color } from "@illigma/format";
 import type { CanvasKit, FontWeight, Paint, Paragraph, TypefaceFontProvider } from "canvaskit-wasm";
 
 export interface FontSource {
@@ -342,20 +342,27 @@ export class TextEngine {
   /**
    * The size `n`'s text needs: at `width` (wrapping there) or, without a
    * width, on one line per line break (auto width). Empty text is one line
-   * high. Null without fonts.
+   * high. Null without fonts, and for text in a family that isn't registered
+   * (not installed, or not loaded yet): it is drawn in the fallback, but
+   * measuring it so would store the fallback's size (Figma keeps text in a
+   * missing font at its size). Null too for a `width` that isn't finite.
    */
   measure(n: TextNode, width?: number): { width: number; height: number } | null {
     if (!this.hasFonts) return null;
+    if (n.fontFamily && !this.registered.has(n.fontFamily)) return null;
+    if (width !== undefined && !Number.isFinite(width)) return null;
     const p = this.build(n, BLACK, null);
     try {
+      // A size that isn't a finite number can't be stored: keep the box as it is (null), never NaN.
+      const finite = (s: { width: number; height: number }) => (Number.isFinite(s.width) && Number.isFinite(s.height) ? s : null);
       if (width !== undefined) {
         p.layout(Math.max(1, width));
-        return { width, height: p.getHeight() };
+        return finite({ width, height: p.getHeight() });
       }
       p.layout(UNBOUNDED);
       // Whole pixels, rounded up: the stored width never wraps the text it was measured from (see WRAP_SLACK).
       const longest = Math.ceil(Math.max(0, p.getLongestLine()) - 1e-3);
-      return { width: Math.max(1, longest), height: p.getHeight() };
+      return finite({ width: Math.max(1, longest), height: p.getHeight() });
     } finally {
       p.delete();
     }
@@ -387,17 +394,22 @@ export class TextEngine {
   /** The paragraph for `n`, not laid out yet. `maxLines` ends the text with "…" after that many lines. */
   private build(n: TextNode, color: DeepReadonly<Color>, paint: Paint | null, maxLines?: number): Paragraph {
     const ck = this.ck;
-    const fontSize = n.fontSize ?? 12;
+    const fontSize = textMetric(n.fontSize ?? 12, 12);
     const style = n.fontStyle ?? "Regular";
     const families = n.fontFamily && this.registered.has(n.fontFamily) && n.fontFamily !== this.fallbacks[0] ? [n.fontFamily] : [];
     families.push(...this.fallbacks.filter((f) => !families.includes(f)));
-    const lineHeight = lineHeightPx(n);
-    const spacing = letterSpacingPx(n);
+    // Within the format's bounds, so a value that slipped past validation never lays out as NaN.
+    const rawLine = lineHeightPx({ ...n, fontSize });
+    const lineHeight = rawLine === null ? null : textMetric(rawLine, null, MAX_TEXT_METRIC * 100);
+    const spacing = textMetric(letterSpacingPx({ ...n, fontSize }), 0, MAX_TEXT_METRIC * 100, true);
     const textStyle = {
       color: ck.Color4f(color.r, color.g, color.b, color.a),
       fontFamilies: families,
       fontSize,
       fontStyle: { weight: this.weight(style), slant: styleItalic(style) ? ck.FontSlant.Italic : ck.FontSlant.Upright },
+      // A variable font (the bundled Inter) is one file for every weight: without its wght axis set, every
+      // style drew the default instance (Regular), made bold synthetically. Fonts without the axis ignore it.
+      fontVariations: [{ axis: "wght", value: styleWeight(style) }],
       // Leading is split above and below each line, as in Figma.
       ...(lineHeight !== null ? { heightMultiplier: lineHeight / fontSize, halfLeading: true } : {}),
       ...(spacing ? { letterSpacing: spacing } : {}),
@@ -432,6 +444,13 @@ export class TextEngine {
 }
 
 const BLACK: Color = { r: 0, g: 0, b: 0, a: 1 };
+
+/** `v` within (0, max] (or [-max, max] when `signed`); `fallback` when it isn't a finite number. */
+function textMetric<T extends number | null>(v: number, fallback: T, max = MAX_TEXT_METRIC, signed = false): number | T {
+  if (!Number.isFinite(v)) return fallback;
+  if (signed) return Math.max(-max, Math.min(max, v));
+  return v > 0 ? Math.min(max, v) : fallback;
+}
 
 /** 0 for start (left, top), 0.5 for centre, 1 for end. */
 function alignFactor(a: string | undefined): number {

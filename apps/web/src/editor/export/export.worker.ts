@@ -32,7 +32,7 @@ async function run({ id, snapshot, requests, taken }: WorkerRequest): Promise<vo
   }
   try {
     const source = new SnapshotSource(snapshot);
-    const out = await exportBatch(source, requests, taken, (done, total) => scope.postMessage({ id, kind: "progress", done, total } satisfies WorkerReply));
+    const out = await exportBatch(source, requests, taken, (done, total) => scope.postMessage({ id, kind: "progress", done, total } satisfies WorkerReply), snapshot.fonts);
     // Hand the bytes over instead of copying them: each buffer once, and only buffers a file owns whole.
     const owned = out.files.filter((f) => f.bytes.byteOffset === 0 && f.bytes.byteLength === f.bytes.buffer.byteLength);
     const transfer = [...new Set(owned.map((f) => f.bytes.buffer as ArrayBuffer))];

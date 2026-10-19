@@ -10,7 +10,7 @@
  */
 
 import { useSyncExternalStore } from "react";
-import type { TextEngine } from "@illigma/renderer";
+import type { FontSource, TextEngine } from "@illigma/renderer";
 
 /** What `queryLocalFonts` returns per font face. */
 interface FontData {
@@ -85,6 +85,11 @@ export async function loadLocalFontsIfGranted(): Promise<void> {
 }
 
 const loaded = new Map<string, Promise<boolean>>();
+/** The font files read for each family from this computer, for exports (which draw with their own engine). */
+const sources = new Map<string, readonly FontSource[]>();
+
+/** The files of `family` read from this computer so far (`ensureLocalFamily`), or undefined. */
+export const localFontSources = (family: string): readonly FontSource[] | undefined => sources.get(family);
 
 /**
  * Register `family`'s faces from this computer in the text engine. Resolves
@@ -107,6 +112,7 @@ export function ensureLocalFamily(engine: TextEngine, family: string): Promise<b
       }),
     ).then((fonts) => {
       const ok = fonts.filter((f): f is NonNullable<typeof f> => f !== null);
+      if (ok.length) sources.set(family, ok);
       engine.addFonts(ok);
       return ok.length > 0;
     });

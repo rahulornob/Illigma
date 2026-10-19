@@ -39,6 +39,8 @@ export interface WriteFailure {
 export interface WriteResult {
   written: WrittenFile[];
   failures: WriteFailure[];
+  /** Set when the write was cancelled (`WriteOptions.signal`): the planned names of the files not written, in order. */
+  cancelled?: string[];
 }
 
 // ---- remembered folders ----
@@ -204,18 +206,40 @@ function takenSet(paths: Iterable<string>): Set<string> {
   return taken;
 }
 
+/** True if `dir` has a file named `name` (a folder or nothing there: false). */
+async function hasFile(dir: FileSystemDirectoryHandle, name: string): Promise<boolean> {
+  try {
+    await dir.getFileHandle(name);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Write one file. A file this write created is removed again if the write
+ * fails (an empty file must not be left behind); a file that was there
+ * before keeps its old content (`createWritable` writes to a copy, and
+ * `abort` drops it).
+ */
 async function writeOne(dir: FileSystemDirectoryHandle, path: string, bytes: Uint8Array): Promise<void> {
   const parts = path.split("/");
   const name = parts.pop() as string;
   let cur = dir;
   for (const p of parts) cur = await cur.getDirectoryHandle(p, { create: true });
-  const handle = await cur.getFileHandle(name, { create: true });
-  const stream = await handle.createWritable();
+  const existed = await hasFile(cur, name);
   try {
-    await stream.write(bytes as Uint8Array<ArrayBuffer>);
-    await stream.close();
+    const handle = await cur.getFileHandle(name, { create: true });
+    const stream = await handle.createWritable();
+    try {
+      await stream.write(bytes as Uint8Array<ArrayBuffer>);
+      await stream.close();
+    } catch (e) {
+      await stream.abort().catch(() => {});
+      throw e;
+    }
   } catch (e) {
-    await stream.abort().catch(() => {});
+    if (!existed) await cur.removeEntry(name).catch(() => {});
     throw e;
   }
 }
@@ -225,6 +249,8 @@ export interface WriteOptions {
   replace?: boolean;
   /** After each file, written or failed. */
   onProgress?(done: number, total: number): void;
+  /** Stops between files: the files not written yet are listed in `cancelled`. A file being written finishes. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -248,6 +274,7 @@ export async function writeExportFiles(dir: FileSystemDirectoryHandle, files: re
   }
   for (let i = 0; i < files.length; i++) {
     const f = files[i] as OutputFile;
+    if (options.signal?.aborted) return { written, failures, cancelled: files.slice(i).map((x) => x.filename) };
     try {
       const path = taken ? uniqueFilename(f.filename, taken) : f.filename;
       await writeOne(dir, path, f.bytes);
@@ -257,6 +284,7 @@ export async function writeExportFiles(dir: FileSystemDirectoryHandle, files: re
     }
     options.onProgress?.(i + 1, files.length);
   }
+  // Cancelled during the last file: it was finished, so nothing is left out.
   return { written, failures };
 }
 

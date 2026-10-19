@@ -16,7 +16,8 @@ import {
   updateExportSettings,
   withFormat,
 } from "./model";
-import { SnapshotSource, snapshotFor } from "./snapshot";
+import { changeTouches, SnapshotSource, snapshotFor } from "./snapshot";
+import { cancelledText } from "./jobs";
 
 function setup() {
   const doc = new Document("Test");
@@ -154,5 +155,36 @@ describe("export settings in the document", () => {
     }
     // Drawing what overlaps (contentsOnly false) needs the whole page.
     expect(snapshotFor(doc, [{ nodeId: a, settings: { format: "SVG", contentsOnly: false } }]).nodes).toHaveLength(4);
+  });
+});
+
+describe("QC round 8: the preview redraws only for edits that reach it; cancelled writes say what was written", () => {
+  it("changeTouches: the layer, its subtree and ancestors count; other layers only with contentsOnly: false", () => {
+    const { doc, frame, a, b } = setup();
+    const changes: import("@illigma/core").Change[] = [];
+    doc.subscribe((c) => changes.push(c));
+    const last = () => changes[changes.length - 1]!.ops;
+    doc.transact("Move dot", (tx) => tx.set(b, "x", 700));
+    expect(changeTouches(doc, last(), a, false)).toBe(false);
+    expect(changeTouches(doc, last(), a, true)).toBe(true);
+    doc.transact("Recolour arrow", (tx) => tx.set(a, "opacity", 0.5));
+    expect(changeTouches(doc, last(), a, false)).toBe(true);
+    expect(changeTouches(doc, last(), frame, false)).toBe(true);
+    expect(changeTouches(doc, last(), b, false)).toBe(false);
+    doc.transact("Move frame", (tx) => tx.set(frame, "x", 120));
+    expect(changeTouches(doc, last(), a, false)).toBe(true);
+    const c = doc.transact("Add", (tx) => tx.create("RECTANGLE", frame, { name: "New" }));
+    expect(changeTouches(doc, last(), frame, false)).toBe(true);
+    expect(changeTouches(doc, last(), b, false)).toBe(false);
+    doc.transact("Delete", (tx) => tx.delete(c));
+    expect(changeTouches(doc, last(), frame, false)).toBe(true);
+  });
+
+  it("cancelledText lists what was written", () => {
+    expect(cancelledText([], 3)).toBe("Export cancelled. Nothing was written.");
+    expect(cancelledText([{ filename: "A.png", path: "A.png" }], 3)).toBe("Export cancelled after 1 of 3 files. Written: A.png. The other 2 weren't written.");
+    expect(cancelledText([{ filename: "A.png", path: "A.png" }, { filename: "B.png", path: "B-1.png" }], 3)).toBe(
+      "Export cancelled after 2 of 3 files. Written: A.png and B-1.png. The other file wasn't written.",
+    );
   });
 });

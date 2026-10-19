@@ -56,3 +56,30 @@ describe("text fields in export", () => {
     img.delete();
   });
 });
+
+describe("fonts that aren't loaded (QC round 8)", () => {
+  it("PNG and PDF say which font wasn't available and that Inter was used; SVG leaves it to the viewer", async () => {
+    const ck = await canvasKit();
+    const { doc, ids } = build((add, p) => ({
+      f: add("FRAME", p, { width: 200, height: 80 }),
+    }));
+    const { doc: d2, ids: i2 } = build((add, p) => {
+      const f = add("FRAME", p, { width: 200, height: 80 });
+      add("TEXT", f, { width: 100, height: 20, characters: "Brand", fontFamily: "Brand Sans", fills: solid(RED) });
+      add("TEXT", f, { y: 30, width: 100, height: 20, characters: "Plain", fontFamily: "Inter", fills: solid(RED) });
+      return { f };
+    });
+    const deps = { canvasKit: ck, fonts: interFonts() };
+    const png = await exportNode(d2, i2.f, { format: "PNG" }, deps);
+    expect(png.warnings).toContain("Font “Brand Sans” isn't available to export, so Inter was used.");
+    const pdf = await exportNode(d2, i2.f, { format: "PDF" }, deps);
+    expect(pdf.warnings).toContain("Font “Brand Sans” isn't available to export, so Inter was used.");
+    const svg = await exportNode(d2, i2.f, { format: "SVG" }, deps);
+    expect(svg.warnings.some((w) => w.includes("Brand Sans"))).toBe(false);
+    // With the font given (as the app sends fonts on this computer), no warning.
+    const withBrand = await exportNode(d2, i2.f, { format: "PNG" }, { canvasKit: ck, fonts: [...interFonts(), { family: "Brand Sans", data: interFonts()[0]!.data }] });
+    expect(withBrand.warnings.some((w) => w.includes("Brand Sans"))).toBe(false);
+    const empty = await exportNode(doc, ids.f, { format: "PNG" }, deps);
+    expect(empty.warnings).toEqual([]);
+  });
+});

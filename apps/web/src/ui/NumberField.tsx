@@ -21,6 +21,89 @@ export function clampTo(v: number, min: number | undefined, max: number | undefi
   return Math.min(max ?? Infinity, Math.max(min ?? -Infinity, v));
 }
 
+/**
+ * What was typed into a number field, as Figma reads it: a number or simple
+ * maths (`12+4`, `3*4`, `100/3`, `(2+3)*4`; × ÷ and "x" between numbers
+ * work too; "," as the decimal mark; a trailing "px" or "%" is ignored).
+ * Starting with + * × / or ÷ makes it relative to each layer's own value
+ * (`+2` adds 2 to each, `*2` doubles each), so it works on Mixed values.
+ * A leading − is a negative number, as in Figma. Null for anything else.
+ */
+export type TypedValue = { kind: "set"; value: number } | { kind: "relative"; op: "+" | "*" | "/"; value: number };
+
+export function parseTyped(typed: string): TypedValue | null {
+  let t = typed.trim().replace(/\s+/g, "").replace(/(px|%)$/i, "").replace(/×/g, "*").replace(/÷/g, "/");
+  // "x" is a times sign only between numbers (2x3); a "2x" scale isn't a number field's.
+  t = t.replace(/(?<=[\d.)])x(?=[\d.(])/gi, "*");
+  // A decimal comma (1,5), never a thousands separator inside maths.
+  t = t.replace(/(\d),(\d)/g, "$1.$2");
+  if (!t) return null;
+  let op: "+" | "*" | "/" | null = null;
+  if (t[0] === "+" || t[0] === "*" || t[0] === "/") {
+    op = t[0] as "+" | "*" | "/";
+    t = t.slice(1);
+  }
+  const value = evaluate(t);
+  if (value === null || !Number.isFinite(value)) return null;
+  return op ? { kind: "relative", op, value } : { kind: "set", value };
+}
+
+/** `+ - * /` and parentheses over decimal numbers, or null if it isn't that. */
+function evaluate(src: string): number | null {
+  let i = 0;
+  const peek = () => src[i];
+  const number = (): number | null => {
+    const m = /^(\d+\.?\d*|\.\d+)(e[+-]?\d+)?/i.exec(src.slice(i));
+    if (!m) return null;
+    i += m[0].length;
+    return Number(m[0]);
+  };
+  const factor = (depth: number): number | null => {
+    if (depth > 32) return null;
+    if (peek() === "-" || peek() === "+") {
+      const sign = src[i++] === "-" ? -1 : 1;
+      const v = factor(depth + 1);
+      return v === null ? null : sign * v;
+    }
+    if (peek() === "(") {
+      i++;
+      const v = sum(depth + 1);
+      if (v === null || peek() !== ")") return null;
+      i++;
+      return v;
+    }
+    return number();
+  };
+  const product = (depth: number): number | null => {
+    let v = factor(depth);
+    while (v !== null && (peek() === "*" || peek() === "/")) {
+      const o = src[i++];
+      const r = factor(depth);
+      if (r === null) return null;
+      v = o === "*" ? v * r : v / r;
+    }
+    return v;
+  };
+  const sum = (depth: number): number | null => {
+    let v = product(depth);
+    while (v !== null && (peek() === "+" || peek() === "-")) {
+      const o = src[i++];
+      const r = product(depth);
+      if (r === null) return null;
+      v = o === "+" ? v + r : v - r;
+    }
+    return v;
+  };
+  const v = sum(0);
+  return v !== null && i === src.length ? v : null;
+}
+
+/** Apply a typed value to a layer's `current` value. */
+export function typedResult(t: TypedValue, current: number): number {
+  if (t.kind === "set") return t.value;
+  return t.op === "+" ? current + t.value : t.op === "*" ? current * t.value : current / t.value;
+}
+
 /** The words shown when a value can't be applied: the reason, kept short. */
 const problemOf = (e: unknown) => {
   const text = e instanceof Error && e.message ? e.message : String(e);
@@ -110,10 +193,14 @@ export function NumberField({
     let handled = false;
     if (onText) attempt(() => (handled = onText(typed)));
     if (handled) return;
-    const parsed = Number.parseFloat(typed.replace(",", "."));
-    // Not a number (or past the largest one): the field goes back to the document's value.
-    if (!Number.isFinite(parsed)) return;
-    apply(() => parsed);
+    if (!typed) return;
+    const parsed = parseTyped(typed);
+    // Not a number or a sum: say so (the field shows the document's value again), never take a part of it.
+    if (!parsed) {
+      setError(`“${typed.length > 24 ? `${typed.slice(0, 23)}…` : typed}” isn't a number. Type a number or simple maths, like 12+4 or *2.`);
+      return;
+    }
+    apply((c) => typedResult(parsed, c));
   };
 
   const inputId = error ? `${id}-error` : undefined;

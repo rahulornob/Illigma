@@ -53,6 +53,34 @@ describe("writing exports into a folder", () => {
     expect(fs.exists("B.png") ? fs.readText("B.png") : "").toBe("");
   });
 
+  it("a failed write removes the file it created, and keeps one that was there before (QC round 8)", async () => {
+    const fs = new FakeFileSystem("export");
+    fs.writeText("Old.png", "old");
+    fs.failWhen = (op) => (op.kind === "close" ? new DOMException("full", "QuotaExceededError") : false);
+    const res = await writeExportFiles(fs.root, [file("New.png"), file("Sub/Deep.png"), file("Old.png", "new")], { replace: true });
+    expect(res.failures.map((f) => f.filename)).toEqual(["New.png", "Sub/Deep.png", "Old.png"]);
+    expect(fs.exists("New.png")).toBe(false);
+    expect(fs.exists("Sub/Deep.png")).toBe(false);
+    expect(fs.readText("Old.png")).toBe("old");
+  });
+
+  it("stops between files when cancelled, listing the files not written (QC round 8)", async () => {
+    const fs = new FakeFileSystem("export");
+    const abort = new AbortController();
+    const res = await writeExportFiles(fs.root, [file("A.png"), file("B.png"), file("C.png")], {
+      signal: abort.signal,
+      onProgress: (done) => done === 1 && abort.abort(),
+    });
+    expect(res.written.map((w) => w.path)).toEqual(["A.png"]);
+    expect(res.cancelled).toEqual(["B.png", "C.png"]);
+    expect(fs.paths()).toEqual(["A.png"]);
+    // Cancelled while the last file was written: it finishes, nothing is left out.
+    const last = new AbortController();
+    const all = await writeExportFiles(new FakeFileSystem("x").root, [file("A.png")], { signal: last.signal, onProgress: () => last.abort() });
+    expect(all.cancelled).toBeUndefined();
+    expect(all.written).toHaveLength(1);
+  });
+
   it("a folder it can't read fails every file with the reason", async () => {
     const fs = new FakeFileSystem("export");
     fs.failWhen = (op) => (op.kind === "list" ? new DOMException("no", "NotAllowedError") : false);

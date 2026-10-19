@@ -1,9 +1,8 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { Document, ReadonlyNode } from "@illigma/core";
 import type { ExportFormat, ExportSettings, ExportSettingsConstraints, NodeId } from "@illigma/format";
 import { Icon } from "../../ui/Icon";
 import { MenuButton } from "../../ui/Menu";
-import { useDocVersion } from "../hooks";
 import { guard, type OnEditError } from "../layout-props";
 import { supportsFolderPicker } from "../../export-files";
 import { openExportDialog } from "./dialog-state";
@@ -12,6 +11,7 @@ import { jobRunning, rememberedFolder, startExport, useExportJob } from "./jobs"
 import { exportRequests, formatSize, FORMATS, nextSetting, parseSize, SIZE_PRESETS, settingsOf, sharedSettings, sizeOf, updateExportSettings, withFormat } from "./model";
 import { OptionsPopover } from "./OptionsPopover";
 import { renderPreview, type Preview } from "./runner";
+import { changeTouches } from "./snapshot";
 
 const SIZE_HELP = "Use a scale (2x), a width (512w) or a height (512h): at most 100x or 100,000 px.";
 
@@ -121,9 +121,27 @@ function SuffixField({ n, value, readOnly, onCommit }: { n: number; value: strin
   );
 }
 
+/**
+ * A counter that goes up only when an edit can change the preview of
+ * `nodeId` (`changeTouches`): typing in another frame doesn't redraw it.
+ */
+function usePreviewVersion(doc: Document, nodeId: NodeId, whole: boolean): number {
+  const version = useRef(0);
+  const subscribe = useCallback(
+    (notify: () => void) =>
+      doc.subscribe((change) => {
+        if (!changeTouches(doc, change.ops, nodeId, whole)) return;
+        version.current++;
+        notify();
+      }),
+    [doc, nodeId, whole],
+  );
+  return useSyncExternalStore(subscribe, () => version.current);
+}
+
 /** The preview of the first layer, as its first setting draws it, at a small size. */
 function ExportPreview({ doc, nodeId, setting }: { doc: Document; nodeId: NodeId; setting: ExportSettings | undefined }) {
-  const version = useDocVersion(doc);
+  const version = usePreviewVersion(doc, nodeId, setting?.contentsOnly === false);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const bounds = JSON.stringify([setting?.contentsOnly, setting?.useAbsoluteBounds]);
@@ -131,9 +149,11 @@ function ExportPreview({ doc, nodeId, setting }: { doc: Document; nodeId: NodeId
 
   useEffect(() => {
     let stale = false;
+    // A preview still waiting when the next one is asked for is dropped (it would only be out of date).
+    const abort = new AbortController();
     // Edits come in bursts (typing, dragging): draw once they settle.
     const t = setTimeout(() => {
-      renderPreview(doc, nodeId, setting, { width: 232, height: 136 }).then(
+      renderPreview(doc, nodeId, setting, { width: 232, height: 136 }, abort.signal).then(
         (p) => {
           if (stale) return URL.revokeObjectURL(p.url);
           if (last.current) URL.revokeObjectURL(last.current);
@@ -150,6 +170,7 @@ function ExportPreview({ doc, nodeId, setting }: { doc: Document; nodeId: NodeId
     return () => {
       stale = true;
       clearTimeout(t);
+      abort.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `setting` is read through `bounds`
   }, [doc, nodeId, version, bounds]);
