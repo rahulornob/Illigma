@@ -5,6 +5,7 @@ import {
   FORMAT_NAME,
   FORMAT_VERSION,
   keyBetween,
+  NODE_ID_PATTERN,
   NODE_KEYS,
   NODE_TYPES,
   validateFile,
@@ -708,8 +709,10 @@ export class Transaction {
   /**
    * Create a node under `parentId`. `fields` override the defaults; id,
    * type, parentId and index in `fields` are ignored, and unknown keys are refused.
+   * `id` gives the new node a chosen id (one no node has): a live edit that
+   * creates a node on every `update` keeps the same id throughout.
    */
-  create(type: NodeType, parentId: NodeId, fields: CreateFields = {}, position: Position = "last"): NodeId {
+  create(type: NodeType, parentId: NodeId, fields: CreateFields = {}, position: Position = "last", id: NodeId = newId()): NodeId {
     if (type === "PAGE") throw new DocumentError("Use addPage to add a page.");
     if (!NODE_TYPES.includes(type)) throw new DocumentError(`Unknown node type "${String(type)}".`);
     if (!this.#doc.has(parentId)) throw new DocumentError(`Parent ${parentId} does not exist.`);
@@ -718,7 +721,8 @@ export class Transaction {
     if (unknown.length) throw new DocumentError(`Unknown node field${unknown.length > 1 ? "s" : ""}: ${unknown.join(", ")}.`);
     const own = copyIn(fields) as Record<string, unknown>;
     for (const k of FIXED_FIELDS) delete own[k];
-    const id = newId();
+    if (typeof id !== "string" || !NODE_ID_PATTERN.test(id)) throw new DocumentError(`"${String(id).slice(0, 64)}" is not a valid node id.`);
+    if (this.#doc.has(id)) throw new DocumentError(`Node ${id} already exists.`);
     const node = { ...defaultNode(type, id, parentId, "a0"), ...own, id, type, parentId, index: this.indexAt(parentId, position) } as Node;
     this.#record({ op: "create", node: this.#valid(node) });
     return id;

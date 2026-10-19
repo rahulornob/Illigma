@@ -32,7 +32,24 @@
     "fontFamily": { "type": "string" },
     "fontStyle": { "type": "string" },
     "fontSize": { "type": "number" },
-    "lineHeight": { "type": "number" },
+    "lineHeight": {
+      "oneOf": [
+        { "type": "number", "description": "Pixels (format 0)" },
+        { "type": "object", "required": ["unit"], "additionalProperties": false, "properties": { "unit": { "const": "AUTO" } } },
+        { "type": "object", "required": ["value", "unit"], "additionalProperties": false, "properties": { "value": { "type": "number", "minimum": 0, "maximum": 10000 }, "unit": { "enum": ["PIXELS", "PERCENT"] } } }
+      ],
+      "description": "Line height: pixels, a percentage of the font size, or the font's own (AUTO). Default AUTO"
+    },
+    "letterSpacing": {
+      "type": "object",
+      "required": ["value", "unit"],
+      "additionalProperties": false,
+      "properties": { "value": { "type": "number", "minimum": -10000, "maximum": 10000 }, "unit": { "enum": ["PIXELS", "PERCENT"] } },
+      "description": "Space between letters: pixels or a percentage of the font size. Default 0"
+    },
+    "textAutoResize": { "enum": ["NONE", "WIDTH_AND_HEIGHT", "HEIGHT", "TRUNCATE"], "description": "How the box follows the text: auto width, auto height, fixed, or fixed with an ellipsis. Absent means NONE (format 0 wrapped text at its width)" },
+    "textAlignHorizontal": { "enum": ["LEFT", "CENTER", "RIGHT", "JUSTIFIED"], "description": "Default LEFT" },
+    "textAlignVertical": { "enum": ["TOP", "CENTER", "BOTTOM"], "description": "Default TOP" },
     "layoutMode": { "enum": ["NONE", "HORIZONTAL", "VERTICAL"], "description": "Auto layout direction. Default NONE" },
     "itemSpacing": { "type": "number", "description": "Gap between children along the stack; may be negative. Default 0" },
     "counterAxisSpacing": { "type": "number", "minimum": 0, "description": "Gap between wrapped rows or columns. Default: itemSpacing, never negative" },

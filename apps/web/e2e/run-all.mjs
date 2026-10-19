@@ -19,7 +19,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { T, buildApp, skipBuild } from "./lib.mjs";
 
-const SCRIPTS = ["smoke.mjs", "recovery.mjs", "save-errors.mjs", "disk-changes.mjs", "canvas.mjs", "autolayout.mjs", "export.mjs", "offline-update.mjs", "a11y.mjs", "perf.mjs"];
+const SCRIPTS = ["smoke.mjs", "recovery.mjs", "save-errors.mjs", "disk-changes.mjs", "canvas.mjs", "autolayout.mjs", "text.mjs", "export.mjs", "offline-update.mjs", "a11y.mjs", "perf.mjs"];
 const started = Date.now();
 const passthrough = process.argv.slice(2).filter((a) => a === "--headed");
 

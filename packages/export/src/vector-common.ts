@@ -5,6 +5,7 @@
 
 import type { DeepReadonly, ReadonlyNode } from "@illigma/core";
 import {
+  lineHeightPx,
   PATH_CLOSE,
   PATH_CUBIC,
   PATH_LINE,
@@ -494,9 +495,19 @@ const DESCENT = 0.2421875;
 export function fallbackTextLines(n: ReadonlyNode): TextLine[] {
   const size = n.fontSize ?? 12;
   const content = (ASCENT + DESCENT) * size;
-  const lh = n.lineHeight ?? content;
-  const first = (lh - content) / 2 + ASCENT * size;
-  return (n.characters ?? "").split(/\r\n|[\n\r\u2028\u2029]/).map((text, i) => ({ text, left: 0, baseline: first + i * lh }));
+  const lh = lineHeightPx(n) ?? content;
+  const texts = (n.characters ?? "").split(/\r\n|[\n\r\u2028\u2029]/);
+  // Vertical alignment in the box, as the renderer places the paragraph.
+  const align = n.textAlignVertical === "CENTER" ? 0.5 : n.textAlignVertical === "BOTTOM" ? 1 : 0;
+  const first = (lh - content) / 2 + ASCENT * size + (n.height - texts.length * lh) * align;
+  return texts.map((text, i) => ({ text, left: 0, baseline: first + i * lh }));
+}
+
+/** Where `fallbackTextLines` lines are anchored: SVG's `text-anchor` and its x in the layer, for horizontal alignment. */
+export function fallbackTextAnchor(n: ReadonlyNode): { anchor: "start" | "middle" | "end"; x: number } {
+  if (n.textAlignHorizontal === "CENTER") return { anchor: "middle", x: n.width / 2 };
+  if (n.textAlignHorizontal === "RIGHT") return { anchor: "end", x: n.width };
+  return { anchor: "start", x: 0 };
 }
 
 const blends = (mode: BlendMode | null | undefined): boolean => !!mode && mode !== "NORMAL" && mode !== "PASS_THROUGH";

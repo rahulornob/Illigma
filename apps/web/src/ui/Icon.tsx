@@ -201,6 +201,101 @@ const PATHS = {
       <path d="M8 15h8" />
     </>
   ),
+  // ---- Typography card ----
+  "align-left": (
+    <>
+      <path d="M21 6H3" />
+      <path d="M15 12H3" />
+      <path d="M17 18H3" />
+    </>
+  ),
+  "align-center": (
+    <>
+      <path d="M21 6H3" />
+      <path d="M17 12H7" />
+      <path d="M19 18H5" />
+    </>
+  ),
+  "align-right": (
+    <>
+      <path d="M21 6H3" />
+      <path d="M21 12H9" />
+      <path d="M21 18H7" />
+    </>
+  ),
+  "align-justify": (
+    <>
+      <path d="M3 6h18" />
+      <path d="M3 12h18" />
+      <path d="M3 18h18" />
+    </>
+  ),
+  "align-vertical-justify-start": (
+    <>
+      <rect width="14" height="6" x="5" y="16" rx="2" />
+      <rect width="10" height="6" x="7" y="6" rx="2" />
+      <path d="M2 2h20" />
+    </>
+  ),
+  "align-vertical-justify-center": (
+    <>
+      <rect width="14" height="6" x="5" y="16" rx="2" />
+      <rect width="10" height="6" x="7" y="2" rx="2" />
+      <path d="M2 12h20" />
+    </>
+  ),
+  "align-vertical-justify-end": (
+    <>
+      <rect width="14" height="6" x="5" y="12" rx="2" />
+      <rect width="10" height="6" x="7" y="2" rx="2" />
+      <path d="M2 22h20" />
+    </>
+  ),
+  "move-horizontal": (
+    <>
+      <path d="m18 8 4 4-4 4" />
+      <path d="M2 12h20" />
+      <path d="m6 8-4 4 4 4" />
+    </>
+  ),
+  "move-vertical": (
+    <>
+      <path d="M12 2v20" />
+      <path d="m8 18 4 4 4-4" />
+      <path d="m8 6 4-4 4 4" />
+    </>
+  ),
+  "arrow-up-down": (
+    <>
+      <path d="m21 16-4 4-4-4" />
+      <path d="M17 20V4" />
+      <path d="m3 8 4-4 4 4" />
+      <path d="M7 4v16" />
+    </>
+  ),
+  "letter-text": (
+    <>
+      <path d="M15 12h6" />
+      <path d="M15 6h6" />
+      <path d="m3 13 3.553-7.724a.5.5 0 0 1 .894 0L11 13" />
+      <path d="M3 18h18" />
+      <path d="M3.92 11h6.16" />
+    </>
+  ),
+  search: (
+    <>
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.3-4.3" />
+    </>
+  ),
+  "a-large-small": (
+    <>
+      <path d="M21 14h-5" />
+      <path d="M16 16v-3.5a2.5 2.5 0 0 1 5 0V16" />
+      <path d="M4.5 13h6" />
+      <path d="m3 16 4.5-9 4.5 9" />
+    </>
+  ),
 } as const;
 
 export type IconName = keyof typeof PATHS;

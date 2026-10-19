@@ -32,13 +32,14 @@
  */
 
 import type { ReadonlyNode } from "@illigma/core";
-import { PATH_CLOSE, PATH_CUBIC, PATH_LINE, PATH_MOVE } from "@illigma/format";
+import { letterSpacingPx, PATH_CLOSE, PATH_CUBIC, PATH_LINE, PATH_MOVE } from "@illigma/format";
 import { CLIPPING, type TextLine } from "@illigma/renderer";
 import { draws, hasVisibleStroke, IDENTITY, localMatrix, multiply, subtreeBounds, translation, type ExportScene, type ExportSource, type Matrix, type TextBounds } from "./scene.js";
 import {
   base64,
   blendsInside,
   cssBlendMode,
+  fallbackTextAnchor,
   fallbackTextLines,
   fmt,
   fmtFine,
@@ -375,16 +376,22 @@ class SvgWriter {
     const paints = this.paints(n, false);
     if (!paints.length) return [];
     const style = textStyle(n);
-    const lines = this.options.textLayout?.(n) ?? fallbackTextLines(n);
+    // The text engine's lines sit where the canvas draws them (alignment included); without it, lines are anchored by alignment.
+    const laid = this.options.textLayout?.(n) ?? null;
+    const lines = laid ?? fallbackTextLines(n);
+    const anchor = laid ? null : fallbackTextAnchor(n);
     const inner = lines
       .filter((l) => l.text.length > 0)
-      .map((l) => `<tspan x="${fmt(l.left)}" y="${fmt(l.baseline)}">${escapeText(l.text)}</tspan>`)
+      .map((l) => `<tspan x="${fmt(anchor ? anchor.x : l.left)}" y="${fmt(l.baseline)}">${escapeText(l.text)}</tspan>`)
       .join("");
     if (!inner) return [];
+    const spacing = letterSpacingPx(n);
     return paints.map((paint) => {
       const attrs: Attr[] = [...this.paintAttrs(paint, "fill", n), ["xml:space", "preserve"], ["style", "white-space: pre"], ["font-family", escapeAttr(fontFamily(style.family))], ["font-size", fmt(style.size)]];
       if (style.weight !== 400) attrs.push(["font-weight", String(style.weight)]);
       if (style.italic) attrs.push(["font-style", "italic"]);
+      if (spacing) attrs.push(["letter-spacing", fmt(spacing)]);
+      if (anchor && anchor.anchor !== "start") attrs.push(["text-anchor", anchor.anchor]);
       return { tag: "text", attrs, inner };
     });
   }

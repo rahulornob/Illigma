@@ -30,6 +30,10 @@ import {
   PRIMARY_AXIS_ALIGNS,
   STROKE_CAPS,
   STROKE_JOINS,
+  MAX_TEXT_METRIC,
+  TEXT_ALIGN_HORIZONTALS,
+  TEXT_ALIGN_VERTICALS,
+  TEXT_AUTO_RESIZES,
   type IlligmaFile,
   type Node,
 } from "./schema.js";
@@ -184,6 +188,23 @@ const constraints: Rule = (v) => {
   return p && `horizontal and vertical ${p}`;
 };
 
+// ---- text ----
+
+const MAX_METRIC = MAX_TEXT_METRIC.toLocaleString("en-US");
+const metricUnit = oneOf(["PIXELS", "PERCENT"]);
+const letterSpacing: Rule = (v) => {
+  if (!isObject(v) || Object.keys(v).length !== 2 || metricUnit(v.unit) || !isFinite(v.value) || Math.abs(v.value) > MAX_TEXT_METRIC) {
+    return `must be { value, unit } with a value from -${MAX_METRIC} to ${MAX_METRIC} and a unit "PIXELS" or "PERCENT"`;
+  }
+  return null;
+};
+const lineHeight: Rule = (v) => {
+  // Format 0: a number of pixels.
+  if (typeof v === "number") return isFinite(v) ? null : "must be a number (not NaN or Infinity)";
+  if (isObject(v) && Object.keys(v).length === 1 && v.unit === "AUTO") return null;
+  if (isObject(v) && Object.keys(v).length === 2 && !metricUnit(v.unit) && isFinite(v.value) && v.value >= 0 && v.value <= MAX_TEXT_METRIC) return null;
+  return `must be a number of pixels, { unit: "AUTO" }, or { value, unit } with a value from 0 to ${MAX_METRIC} and a unit "PIXELS" or "PERCENT"`;
+};
 // ---- export settings ----
 
 const suffix: Rule = (v) =>
@@ -247,7 +268,11 @@ const RULES: { [K in keyof Node]-?: Rule } = {
   fontFamily: optional(text),
   fontStyle: optional(text),
   fontSize: optional(number),
-  lineHeight: optional(number),
+  lineHeight: optional(lineHeight),
+  letterSpacing: optional(letterSpacing),
+  textAutoResize: optional(oneOf(TEXT_AUTO_RESIZES)),
+  textAlignHorizontal: optional(oneOf(TEXT_ALIGN_HORIZONTALS)),
+  textAlignVertical: optional(oneOf(TEXT_ALIGN_VERTICALS)),
   layoutMode: optional(oneOf(LAYOUT_MODES)),
   itemSpacing: optional(number),
   counterAxisSpacing: optional(notNegative),

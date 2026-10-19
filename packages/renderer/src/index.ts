@@ -25,16 +25,18 @@ import {
   type Paint as FilePaint,
   type ShadowEffect,
 } from "@illigma/format";
-import type { Canvas, CanvasKit, FontWeight, Image, ImageFilter, Paint, Paragraph, Path, SkPicture, Surface, TypefaceFontProvider } from "canvaskit-wasm";
+import type { Canvas, CanvasKit, Image, ImageFilter, Paint, Path, SkPicture, Surface } from "canvaskit-wasm";
 import { shapeGeometry, type ShapeGeometry } from "./geometry.js";
 import { CLIPPING, hitTest, type NodeSource } from "./hit-test.js";
 import { imagePixelScale, PaintKit, sigma, type Box } from "./paint.js";
 import { pixelBlur, pixelShadow, type PixelTarget } from "./spread.js";
+import { TextEngine, type FontSource, type PlacedParagraph } from "./text.js";
 
 export { CLIPPING, DEFAULT_HIT_TOLERANCE, hitTest, insideShape, toLocal, type HitTestOptions, type NodeSource } from "./hit-test.js";
 export { flatten, insideFill, nearStroke, PATH_TYPES, roundedPolygon, shapeGeometry, starPoints, type FillPath, type Flattened, type ShapeGeometry } from "./geometry.js";
 export { GpuCanvas } from "./gpu-canvas.js";
 export { invertTransform } from "./paint.js";
+export { styleItalic, styleWeight, TextEngine, TextLayout, type FontSource, type PlacedParagraph, type TextCaret, type TextLayoutLine, type TextNode, type TextRect } from "./text.js";
 
 /** Screen point = (world point − camera.xy) × camera.zoom, in CSS pixels. */
 export interface Camera {
@@ -52,13 +54,6 @@ export interface FrameStats {
   nodes: number;
   /** Top-level children re-recorded this frame. */
   recorded: number;
-}
-
-export interface FontSource {
-  /** The family name TEXT nodes ask for, e.g. "Inter". */
-  family: string;
-  /** A TrueType, OpenType, WOFF or WOFF2 file. */
-  data: ArrayBuffer;
 }
 
 /** Encoded image files (PNG, JPEG, WebP, GIF) by `imageHash`: a map, or a lookup that may answer later. */
@@ -98,6 +93,12 @@ export interface RendererOptions {
   /** Fonts for TEXT nodes. The first family is the fallback. Without fonts, text draws as a placeholder bar. */
   fonts?: FontSource[];
   /**
+   * A text engine to share (fonts and text layout) instead of `fonts`: the
+   * editor's, so layout measures text exactly as it is drawn and fonts added
+   * later (fonts on this computer) reach both. The renderer doesn't dispose it.
+   */
+  textEngine?: TextEngine;
+  /**
    * Image files for IMAGE paints. Default: the document's own images
    * (`Document.image`). Each image is decoded once, after the recording that
    * first needs it; until then its paints draw nothing, and once it is ready
@@ -119,18 +120,6 @@ const MISSING_IMAGE = [0.5, 0.5, 0.5, 0.25] as const;
  * nothing visible is culled and off-screen screens are still skipped.
  */
 const EVERYWHERE = (ck: CanvasKit) => ck.LTRBRect(-1e9, -1e9, 1e9, 1e9);
-
-/** fontStyle names (Figma's, e.g. "Semi Bold Italic") to CSS weights. */
-const WEIGHTS: [RegExp, number][] = [
-  [/thin|hairline/, 100],
-  [/extra ?light|ultra ?light/, 200],
-  [/light/, 300],
-  [/medium/, 500],
-  [/semi ?bold|demi ?bold/, 600],
-  [/extra ?bold|ultra ?bold/, 800],
-  [/bold/, 700],
-  [/black|heavy/, 900],
-];
 
 /** Node types with no outline of their own: effects that need one (background blur) skip them. */
 const NO_OUTLINE = new Set(["GROUP", "PAGE", "TEXT"]);
@@ -207,10 +196,11 @@ export class PageRenderer {
   /** Never changed: for layers that only need defaults. */
   private readonly plainPaint: Paint;
   private readonly kit: PaintKit;
-  private readonly fonts: TypefaceFontProvider | null = null;
-  private readonly fallbackFamily: string | null = null;
-  /** Every registered family after the first, tried in order for glyphs the others lack (e.g. a Latin Extended subset). */
-  private readonly moreFamilies: string[] = [];
+  /** Fonts and text layout; null without fonts (text draws as a placeholder bar). */
+  private readonly text: TextEngine | null = null;
+  /** The renderer made `text` from `options.fonts`, so it disposes it. */
+  private readonly ownsText: boolean = false;
+  private readonly unsubscribeText: (() => void) | undefined;
   private readonly unsubscribe: () => void;
   private readonly unsubscribeImages: (() => void) | undefined;
   private readonly imageSource: ImageSource | null;
@@ -251,11 +241,16 @@ export class PageRenderer {
     this.effectPaint.setAntiAlias(true);
     this.plainPaint = new ck.Paint();
     this.kit = new PaintKit(ck);
-    if (options.fonts?.length) {
-      this.fonts = ck.TypefaceFontProvider.Make();
-      for (const f of options.fonts) this.fonts.registerFont(f.data, f.family);
-      this.fallbackFamily = options.fonts[0]?.family ?? null;
-      this.moreFamilies = [...new Set(options.fonts.slice(1).map((f) => f.family))].filter((f) => f !== this.fallbackFamily);
+    if (options.textEngine) {
+      this.text = options.textEngine;
+      // Fonts added later: every text layer may draw differently now.
+      this.unsubscribeText = options.textEngine.subscribe(() => {
+        this.all = true;
+        this.dirty = true;
+      });
+    } else if (options.fonts?.length) {
+      this.text = new TextEngine(ck, options.fonts);
+      this.ownsText = true;
     }
     this.imageSource = options.images ?? (typeof doc.image === "function" ? (hash: string) => doc.image?.(hash) : null);
     this.onImageReady = options.onImageReady;
@@ -369,18 +364,18 @@ export class PageRenderer {
    */
   layoutText(id: NodeId): TextLine[] | null {
     const n = this.doc.get(id);
-    if (!n || n.type !== "TEXT" || !n.characters || !this.fonts) return null;
+    if (!n || n.type !== "TEXT" || !n.characters || !this.text?.hasFonts) return null;
     const text = n.characters;
-    const paragraph = this.paragraph(n, { r: 0, g: 0, b: 0, a: 1 }, null);
-    const lines = paragraph.getLineMetrics().map((m) => ({
+    const placed = this.text.place(n) as PlacedParagraph;
+    const lines = placed.paragraph.getLineMetrics().map((m) => ({
       text: text.slice(m.startIndex, m.endExcludingWhitespaces).replace(/[\r\n\u2028\u2029]+$/, ""),
-      left: m.left,
-      baseline: m.baseline,
+      left: placed.x + m.left,
+      baseline: placed.y + m.baseline,
       ascent: m.ascent,
       descent: m.descent,
       width: m.width,
     }));
-    paragraph.delete();
+    placed.paragraph.delete();
     return lines;
   }
 
@@ -393,7 +388,8 @@ export class PageRenderer {
     this.children.clear();
     for (const e of this.images.values()) freeImage(e);
     this.images.clear();
-    this.fonts?.delete();
+    this.unsubscribeText?.();
+    if (this.ownsText) this.text?.dispose();
     this.paint.delete();
     this.layerPaint.delete();
     this.effectPaint.delete();
@@ -649,7 +645,7 @@ export class PageRenderer {
     const content = (canvas: Canvas) => {
       const silhouette = direct && outline ? this.silhouette(n, geometry, outline) : null;
       if (silhouette && fx) this.drawDropShadows(canvas, n, silhouette, fx.drops);
-      if (n.type === "TEXT" && this.fonts) {
+      if (n.type === "TEXT" && this.text?.hasFonts) {
         this.drawText(canvas, n);
       } else if (geometry) {
         this.drawGeometry(canvas, n, geometry, direct && outline && fx ? fx.inners : [], outline);
@@ -1310,22 +1306,27 @@ export class PageRenderer {
   // ---- text ----
 
   /**
-   * Left-aligned text wrapped at the node's width, drawn once per visible
-   * fill, then its strokes.
+   * Text laid out for its box (`TextEngine.place`: wrapping, alignment, auto
+   * width), drawn once per visible fill, then its strokes.
    */
   private drawText(canvas: Canvas, n: ReadonlyNode): void {
-    if (!n.characters || !this.fonts) return;
+    const text = this.text;
+    if (!n.characters || !text) return;
     for (const fill of n.fills) {
       if (!fill.visible) continue;
       // A plain solid colour needs no paint; anything else (gradients, images, opacity, blending) draws with one.
       const plain = fill.type === "SOLID" && (fill.opacity ?? 1) === 1 && (!fill.blendMode || fill.blendMode === "NORMAL" || fill.blendMode === "PASS_THROUGH");
       if (!plain && !this.usePaint(n, fill, false)) continue;
       const color = fill.type === "SOLID" ? fill.color : { r: 0, g: 0, b: 0, a: 1 };
-      const paragraph = this.paragraph(n, color, plain ? null : this.paint);
-      canvas.drawParagraph(paragraph, 0, 0);
-      paragraph.delete();
+      this.drawPlaced(canvas, text.place(n, color, plain ? null : this.paint));
     }
     this.drawTextStrokes(canvas, n);
+  }
+
+  private drawPlaced(canvas: Canvas, placed: PlacedParagraph | null): void {
+    if (!placed) return;
+    canvas.drawParagraph(placed.paragraph, placed.x, placed.y);
+    placed.paragraph.delete();
   }
 
   /**
@@ -1336,7 +1337,8 @@ export class PageRenderer {
    * solid, so they cover exactly their side of the outline.
    */
   private drawTextStrokes(canvas: Canvas, n: ReadonlyNode): void {
-    if (!(n.strokeWeight > 0) || !n.strokes.some((p) => p.visible)) return;
+    const text = this.text;
+    if (!text || !(n.strokeWeight > 0) || !n.strokes.some((p) => p.visible)) return;
     const ck = this.ck;
     const align = n.strokeAlign === "INSIDE" || n.strokeAlign === "OUTSIDE" ? n.strokeAlign : "CENTER";
     const scale = align === "CENTER" ? 1 : 2;
@@ -1345,85 +1347,34 @@ export class PageRenderer {
     for (const stroke of n.strokes) {
       if (align === "CENTER") {
         if (!this.usePaint(n, stroke, true)) continue;
-        const paragraph = this.paragraph(n, black, this.paint);
-        canvas.drawParagraph(paragraph, 0, 0);
-        paragraph.delete();
+        this.drawPlaced(canvas, text.place(n, black, this.paint));
         continue;
       }
       if (!stroke.visible) continue;
       // The glyphs, solid: what the doubled stroke is cut to.
-      const glyphs = this.paragraph(n, black, null);
+      const glyphs = text.place(n, black, null);
+      if (!glyphs) continue;
       if (!bounds) {
         // The text's box and its lines (which may run past it), plus the stroke and its miters.
         const pad = n.strokeWeight * scale * 4 + 1;
-        const w = Math.max(n.width, glyphs.getMaxIntrinsicWidth(), glyphs.getLongestLine());
-        const h = Math.max(n.height, glyphs.getHeight());
-        bounds = ck.LTRBRect(-pad, -pad, w + pad, h + pad);
+        const p = glyphs.paragraph;
+        const w = Math.max(n.width, glyphs.x + Math.max(p.getMaxIntrinsicWidth(), p.getLongestLine()));
+        const h = Math.max(n.height, glyphs.y + p.getHeight());
+        bounds = ck.LTRBRect(Math.min(0, glyphs.x) - pad, Math.min(0, glyphs.y) - pad, w + pad, h + pad);
       }
       // The layer blends with what is below in the stroke's blend mode; inside it, the stroke draws normally.
       this.kit.setBlend(this.layerPaint, stroke.blendMode);
       this.layerPaint.setAlphaf(1);
       canvas.saveLayer(this.layerPaint, bounds);
       this.layerPaint.setBlendMode(ck.BlendMode.SrcOver);
-      if (this.usePaint(n, { ...stroke, blendMode: "NORMAL" }, true, scale)) {
-        const outline = this.paragraph(n, black, this.paint);
-        canvas.drawParagraph(outline, 0, 0);
-        outline.delete();
-      }
+      if (this.usePaint(n, { ...stroke, blendMode: "NORMAL" }, true, scale)) this.drawPlaced(canvas, text.place(n, black, this.paint));
       this.plainPaint.setBlendMode(align === "INSIDE" ? ck.BlendMode.DstIn : ck.BlendMode.DstOut);
       canvas.saveLayer(this.plainPaint, bounds);
       this.plainPaint.setBlendMode(ck.BlendMode.SrcOver);
-      canvas.drawParagraph(glyphs, 0, 0);
+      this.drawPlaced(canvas, glyphs);
       canvas.restore();
       canvas.restore();
-      glyphs.delete();
     }
-  }
-
-  /** A TEXT node laid out at its width, in `color`, or with `paint` (gradients, images, opacity, blending). The caller deletes it. */
-  private paragraph(n: ReadonlyNode, color: DeepReadonly<Color>, paint: Paint | null): Paragraph {
-    const fonts = this.fonts as TypefaceFontProvider;
-    const fontSize = n.fontSize ?? 12;
-    const style = (n.fontStyle ?? "Regular").toLowerCase();
-    const families = n.fontFamily && n.fontFamily !== this.fallbackFamily ? [n.fontFamily] : [];
-    if (this.fallbackFamily) families.push(this.fallbackFamily);
-    families.push(...this.moreFamilies.filter((f) => !families.includes(f)));
-    const textStyle = {
-      color: this.ck.Color4f(color.r, color.g, color.b, color.a),
-      fontFamilies: families,
-      fontSize,
-      fontStyle: {
-        weight: this.weight(style),
-        slant: /italic|oblique/.test(style) ? this.ck.FontSlant.Italic : this.ck.FontSlant.Upright,
-      },
-      // lineHeight is in pixels; leading is split above and below each line, as in Figma.
-      ...(n.lineHeight ? { heightMultiplier: n.lineHeight / fontSize, halfLeading: true } : {}),
-    };
-    const builder = this.ck.ParagraphBuilder.MakeFromFontProvider(
-      new this.ck.ParagraphStyle({ textAlign: this.ck.TextAlign.Left, textStyle }),
-      fonts,
-    );
-    if (paint) {
-      // The paint's shader is in the node's space, which is the paragraph's too (drawn at 0, 0).
-      const background = new this.ck.Paint();
-      background.setColor(this.ck.TRANSPARENT);
-      builder.pushPaintStyle(new this.ck.TextStyle(textStyle), paint, background);
-      builder.addText(n.characters ?? "");
-      builder.pop();
-      background.delete();
-    } else {
-      builder.addText(n.characters ?? "");
-    }
-    const paragraph = builder.build();
-    paragraph.layout(Math.max(1, n.width));
-    builder.delete();
-    return paragraph;
-  }
-
-  private weight(style: string): FontWeight {
-    const w = WEIGHTS.find(([re]) => re.test(style))?.[1] ?? 400;
-    const W = this.ck.FontWeight;
-    return ({ 100: W.Thin, 200: W.ExtraLight, 300: W.Light, 400: W.Normal, 500: W.Medium, 600: W.SemiBold, 700: W.Bold, 800: W.ExtraBold, 900: W.Black } as Record<number, FontWeight>)[w] ?? W.Normal;
   }
 }
 

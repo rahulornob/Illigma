@@ -468,6 +468,12 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
         else setSelection([]);
         return;
       }
+      // Enter on a selected text layer edits it, all its text selected (interactions.md §6).
+      if (e.key === "Enter" && !e.shiftKey && sel.length === 1 && doc.get(sel[0] as NodeId)?.type === "TEXT") {
+        e.preventDefault();
+        if (!noEdits) canvas.current?.editText(sel[0] as NodeId);
+        return;
+      }
       if ((e.key === "Delete" || e.key === "Backspace") && sel.length) {
         e.preventDefault();
         if (noEdits) return;
