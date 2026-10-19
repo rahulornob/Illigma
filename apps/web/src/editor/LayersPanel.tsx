@@ -1,8 +1,12 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FocusEvent, type KeyboardEvent, type MouseEvent, type ReactElement } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FocusEvent, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactElement } from "react";
 import type { Document, Operation } from "@illigma/core";
 import type { Node, NodeId } from "@illigma/format";
 import { Icon, type IconName } from "../ui/Icon";
-import { layerRange } from "./edit";
+import { layerRange, topmost } from "./edit";
+import { canDrop, moveLayers, renameNode, isContainer, type DropPlace } from "./layer-ops";
+import { layoutTransact } from "./layout-props";
+import { PagesPanel, RenameField } from "./PagesPanel";
+import { RENAME_EVENT } from "./useLayerCommands";
 
 interface LayersPanelProps {
   doc: Document;
@@ -11,10 +15,16 @@ interface LayersPanelProps {
   onPage(id: NodeId): void;
   /** The new selection after a click on a layer row. */
   onSelect(ids: NodeId[]): void;
+  /** No edits (view-only tab): rows still select, but don't rename, hide, lock or move. */
+  readOnly?: boolean;
+  onError?(e: unknown): void;
+  /** Open the layer context menu at a point (right-click or Shift+F10 on a row). */
+  onLayerMenu?(x: number, y: number): void;
 }
 
 const TYPE_ICON: Partial<Record<Node["type"], IconName>> = {
   FRAME: "frame",
+  GROUP: "square-dashed",
   SECTION: "frame",
   COMPONENT: "frame",
   INSTANCE: "frame",
@@ -43,18 +53,26 @@ export interface LayerRowData {
   hasChildren: boolean;
   /** Index of its parent's row, or -1 for a top-level layer. */
   parent: number;
+  /** Its parent's id (the page for a top-level layer). */
+  parentId: NodeId;
+  visible: boolean;
+  locked: boolean;
+  /** Its children are hidden in the list. */
+  collapsed: boolean;
 }
 
-/** The rows of `pageId`'s layer tree, front-most first, children under their parent. */
-export function layerRows(doc: Document, pageId: NodeId): LayerRowData[] {
+/** The rows of `pageId`'s layer tree, front-most first, children under their parent (not under collapsed ones). */
+export function layerRows(doc: Document, pageId: NodeId, collapsed: ReadonlySet<NodeId> = new Set()): LayerRowData[] {
   const rows: LayerRowData[] = [];
   const walk = (parentId: NodeId, depth: number, parent: number) => {
     const kids = doc.children(parentId);
     for (let i = kids.length - 1; i >= 0; i--) {
       const n = kids[i]!;
       const at = rows.length;
-      rows.push({ id: n.id, name: n.name, type: n.type, depth, posinset: kids.length - i, setsize: kids.length, hasChildren: doc.children(n.id).length > 0, parent });
-      walk(n.id, depth + 1, at);
+      const hasChildren = doc.children(n.id).length > 0;
+      const closed = hasChildren && collapsed.has(n.id);
+      rows.push({ id: n.id, name: n.name, type: n.type, depth, posinset: kids.length - i, setsize: kids.length, hasChildren, parent, parentId, visible: n.visible, locked: n.locked, collapsed: closed });
+      if (!closed) walk(n.id, depth + 1, at);
     }
   };
   walk(pageId, 0, -1);
@@ -62,12 +80,12 @@ export function layerRows(doc: Document, pageId: NodeId): LayerRowData[] {
 }
 
 /** Node fields the rows show or are built from. Edits to anything else (a drag's x and y) leave the rows as they are. */
-const ROW_KEYS: ReadonlySet<string> = new Set(["name", "parentId", "index"]);
+const ROW_KEYS: ReadonlySet<string> = new Set(["name", "parentId", "index", "visible", "locked"]);
 /** Whether operation `o` can change the layer rows (a create, delete, move, reorder or rename). */
 export const touchesRows = (o: Operation) => o.op !== "set" || ROW_KEYS.has(o.key);
 
 /** The page's layer rows, rebuilt only when an edit changes the tree or a name. */
-function useLayerRows(doc: Document, pageId: NodeId): LayerRowData[] {
+function useLayerRows(doc: Document, pageId: NodeId, collapsed: ReadonlySet<NodeId>): LayerRowData[] {
   const version = useRef(0);
   const subscribe = useCallback(
     (notify: () => void) =>
@@ -84,7 +102,7 @@ function useLayerRows(doc: Document, pageId: NodeId): LayerRowData[] {
   const snapshot = () => version.current;
   const v = useSyncExternalStore(subscribe, snapshot, snapshot);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  return useMemo(() => layerRows(doc, pageId), [doc, pageId, v]);
+  return useMemo(() => layerRows(doc, pageId, collapsed), [doc, pageId, v, collapsed]);
 }
 
 /** Whether two selections hold the same layers (in any order). */
@@ -105,15 +123,30 @@ interface RowProps {
   /** The row that takes Tab focus (roving tabindex). */
   tabbable: boolean;
   height: number;
-  onRowClick(e: MouseEvent, index: number): void;
+  renaming: boolean;
+  /** "into": a drop puts the dragged layers inside this row's layer. */
+  dropInto: boolean;
+  actions: RowActions;
+}
+
+/** Row handlers, one stable object, so memoised rows never see new functions. */
+interface RowActions {
+  click(e: MouseEvent, index: number): void;
+  pointerDown(e: ReactPointerEvent, index: number): void;
+  menu(e: MouseEvent, index: number): void;
+  toggle(id: NodeId): void;
+  visible(id: NodeId): void;
+  locked(id: NodeId): void;
+  rename(id: NodeId | null, name?: string | null): void;
 }
 
 /** One layer row. Memoised: a drag step that moves layers changes none of its props, so no row re-renders. */
-const LayerRow = memo(function LayerRow({ row, index, selected, tabbable, height, onRowClick }: RowProps) {
+const LayerRow = memo(function LayerRow({ row, index, selected, tabbable, height, renaming, dropInto, actions }: RowProps) {
+  const cls = `row layer-row${row.visible ? "" : " is-hidden"}${row.locked ? " is-locked" : ""}${dropInto ? " drop-into" : ""}`;
   return (
     <div
       role="treeitem"
-      className="row layer-row"
+      className={cls}
       id={`layer-row-${row.id}`}
       data-id={row.id}
       tabIndex={tabbable ? 0 : -1}
@@ -121,22 +154,106 @@ const LayerRow = memo(function LayerRow({ row, index, selected, tabbable, height
       aria-level={row.depth + 1}
       aria-setsize={row.setsize}
       aria-posinset={row.posinset}
-      // No aria-expanded: rows can't collapse yet, and an always-"true" state would promise a toggle that isn't there.
-      aria-label={`${row.name}, ${row.type.toLowerCase()}`}
-      style={{ position: "absolute", top: index * height, left: 0, paddingLeft: 8 + row.depth * 16 }}
-      onClick={(e) => onRowClick(e, index)}
+      aria-expanded={row.hasChildren ? !row.collapsed : undefined}
+      aria-label={`${row.name}, ${row.type.toLowerCase()}${row.visible ? "" : ", hidden"}${row.locked ? ", locked" : ""}`}
+      style={{ position: "absolute", top: index * height, left: 0, paddingLeft: row.depth * 16 }}
+      onClick={(e) => actions.click(e, index)}
+      onPointerDown={(e) => actions.pointerDown(e, index)}
+      onDoubleClick={(e) => {
+        if ((e.target as HTMLElement).closest(".row-toggle, .row-chevron")) return;
+        actions.rename(row.id);
+      }}
+      onContextMenu={(e) => actions.menu(e, index)}
     >
+      <span
+        className="row-chevron"
+        aria-hidden="true"
+        onClick={(e) => {
+          if (!row.hasChildren) return;
+          e.stopPropagation();
+          actions.toggle(row.id);
+        }}
+      >
+        {row.hasChildren && <Icon name={row.collapsed ? "chevron-right" : "chevron-down"} size={12} />}
+      </span>
       <span className={`row-icon ${typeClass(row.type)}`}>
         <Icon name={TYPE_ICON[row.type] ?? "square"} />
       </span>
-      <span className="row-label">{row.name}</span>
+      {renaming ? (
+        <RenameField name={row.name} label="Layer name" onDone={(name) => actions.rename(null, name)} />
+      ) : (
+        <span className="row-label">{row.name}</span>
+      )}
+      <button
+        type="button"
+        className={`row-toggle${row.locked ? " is-on" : ""}`}
+        tabIndex={-1}
+        aria-label={`${row.locked ? "Unlock" : "Lock"} ${row.name}`}
+        title={row.locked ? "Unlock  ⇧⌘L" : "Lock  ⇧⌘L"}
+        onClick={(e) => {
+          e.stopPropagation();
+          actions.locked(row.id);
+        }}
+      >
+        <Icon name={row.locked ? "lock" : "lock-open"} />
+      </button>
+      <button
+        type="button"
+        className={`row-toggle${row.visible ? "" : " is-on"}`}
+        tabIndex={-1}
+        aria-label={`${row.visible ? "Hide" : "Show"} ${row.name}`}
+        title={row.visible ? "Hide  ⇧⌘H" : "Show  ⇧⌘H"}
+        onClick={(e) => {
+          e.stopPropagation();
+          actions.visible(row.id);
+        }}
+      >
+        <Icon name={row.visible ? "eye" : "eye-off"} />
+      </button>
     </div>
   );
 });
 
-export function LayersPanel({ doc, pageId, selection, onPage, onSelect }: LayersPanelProps) {
-  const pages = doc.pages();
-  const rows = useLayerRows(doc, pageId);
+/** Where a pointer over the list would drop layers: the place in the document and the line or box to show. */
+interface DropTarget {
+  place: DropPlace;
+  /** Row index the indicator line sits above (rows.length: below the last), or null for "into". */
+  line: number | null;
+  depth: number;
+  into: NodeId | null;
+}
+
+/**
+ * The drop at `y` (list pixels) for a Layers drag: the upper quarter of a row
+ * puts the layers in front of it, the lower quarter behind it (or inside it,
+ * at the front, when it is expanded with children), and the middle of a
+ * container row puts them inside it, at the front. Below the last row: the
+ * back of the page.
+ */
+export function dropTargetAt(rows: readonly LayerRowData[], doc: Document, pageId: NodeId, y: number, rowHeight: number): DropTarget {
+  const i = Math.floor(y / rowHeight);
+  if (i >= rows.length || !rows.length) return { place: { parentId: pageId, position: "first" }, line: rows.length, depth: 0, into: null };
+  if (i < 0) {
+    const first = rows[0]!;
+    return { place: { parentId: first.parentId, position: { after: first.id } }, line: 0, depth: first.depth, into: null };
+  }
+  const row = rows[i]!;
+  const frac = y / rowHeight - i;
+  const container = isContainer(doc.get(row.id));
+  const open = row.hasChildren && !row.collapsed;
+  if (container && frac > 0.25 && frac < 0.75) return { place: { parentId: row.id, position: "last" }, line: null, depth: row.depth + 1, into: row.id };
+  if (frac < 0.5) return { place: { parentId: row.parentId, position: { after: row.id } }, line: i, depth: row.depth, into: null };
+  if (open) return { place: { parentId: row.id, position: "last" }, line: i + 1, depth: row.depth + 1, into: null };
+  return { place: { parentId: row.parentId, position: { before: row.id } }, line: i + 1, depth: row.depth, into: null };
+}
+
+export function LayersPanel({ doc, pageId, selection, onPage, onSelect, readOnly = false, onError = () => {}, onLayerMenu }: LayersPanelProps) {
+  /** Collapsed layers, per page (the list starts expanded). */
+  const [collapsedByPage, setCollapsedByPage] = useState<ReadonlyMap<NodeId, ReadonlySet<NodeId>>>(new Map());
+  const collapsed = useMemo(() => collapsedByPage.get(pageId) ?? new Set<NodeId>(), [collapsedByPage, pageId]);
+  const rows = useLayerRows(doc, pageId, collapsed);
+  const [renaming, setRenaming] = useState<NodeId | null>(null);
+  const [drop, setDrop] = useState<DropTarget | null>(null);
   const selected = useMemo(() => new Set(selection), [selection]);
   /** Where a Shift-click or Shift+arrow range starts: the row last clicked or moved to without Shift. */
   const anchor = useRef<NodeId | null>(null);
@@ -330,12 +447,40 @@ export function LayersPanel({ doc, pageId, selection, onPage, onSelect }: Layers
         to = from - page;
         break;
       case "ArrowLeft":
+        // WAI-ARIA tree: an expanded row collapses; otherwise focus goes to the parent.
+        if (rows[from]?.hasChildren && !rows[from]?.collapsed && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          setCollapsed(rows[from]!.id, true);
+          return;
+        }
         to = rows[from]?.parent ?? -1;
         if (to < 0) to = null;
         break;
       case "ArrowRight":
+        if (rows[from]?.collapsed && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          setCollapsed(rows[from]!.id, false);
+          return;
+        }
         to = rows[from]?.hasChildren ? from + 1 : null;
         break;
+      case "F2":
+        e.preventDefault();
+        e.stopPropagation();
+        if (from >= 0) startRename(rows[from]!.id);
+        return;
+      case "ContextMenu":
+      case "F10": {
+        if (e.key === "F10" && !e.shiftKey) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const el = document.getElementById(`layer-row-${rows[from]?.id}`);
+        const r = el?.getBoundingClientRect();
+        if (r) onLayerMenu?.(r.left + 24, r.bottom);
+        return;
+      }
       case "Enter":
       case " ":
         // Space and Enter select the focused row, as clicking it does (Space still pans over the canvas: it isn't stopped here).
@@ -359,11 +504,174 @@ export function LayersPanel({ doc, pageId, selection, onPage, onSelect }: Layers
     else choose(i, { shift: false, toggle: false });
   };
 
+  function setCollapsed(id: NodeId, closed: boolean) {
+    setCollapsedByPage((m) => {
+      const cur = new Set(m.get(pageId) ?? []);
+      if (closed) cur.add(id);
+      else cur.delete(id);
+      const next = new Map(m);
+      next.set(pageId, cur);
+      return next;
+    });
+  }
+
+  /** Rename `id` inline: its ancestors expand so its row is there, and it scrolls into view. */
+  function startRename(id: NodeId) {
+    if (readOnly || !doc.has(id)) return;
+    const closedAbove: NodeId[] = [];
+    for (let p = doc.get(id)?.parentId; p && p !== pageId; p = doc.get(p)?.parentId) if (collapsed.has(p)) closedAbove.push(p);
+    if (closedAbove.length)
+      setCollapsedByPage((m) => {
+        const cur = new Set(m.get(pageId) ?? []);
+        for (const p of closedAbove) cur.delete(p);
+        return new Map(m).set(pageId, cur);
+      });
+    setRenaming(id);
+  }
+  const startRenameRef = useRef(startRename);
+  startRenameRef.current = startRename;
+
+  useEffect(() => {
+    const on = (e: Event) => startRenameRef.current((e as CustomEvent<NodeId>).detail);
+    window.addEventListener(RENAME_EVENT, on);
+    return () => window.removeEventListener(RENAME_EVENT, on);
+  }, []);
+  useEffect(() => {
+    if (renaming === null) return;
+    const i = indexOf.get(renaming);
+    if (i !== undefined) reveal(i);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [renaming]);
+
+  const edit = (label: string, fn: Parameters<typeof layoutTransact>[2]) => {
+    try {
+      layoutTransact(doc, label, fn);
+    } catch (err) {
+      onError(err);
+    }
+  };
+
+  /** A pointer drag on rows: moves the layers when it passes 4 px. */
+  const drag = useRef<{ ids: NodeId[]; x: number; y: number; started: boolean; pointerId: number } | null>(null);
+  /** The click that ends a drag must not select. */
+  const swallowClick = useRef(false);
+  const dropRef = useRef<DropTarget | null>(null);
+
+  const listY = (clientY: number) => clientY - (tree.current?.getBoundingClientRect().top ?? 0);
+
+  const live = useRef({ doc, pageId, rows, selection, readOnly, onSelect, onLayerMenu, edit, rowHeight, choose });
+  live.current = { doc, pageId, rows, selection, readOnly, onSelect, onLayerMenu, edit, rowHeight, choose };
+
+  const actions = useMemo<RowActions>(
+    () => ({
+      click: (e, index) => {
+        if (swallowClick.current) {
+          swallowClick.current = false;
+          return;
+        }
+        onRowClick(e, index);
+      },
+      pointerDown: (e, index) => {
+        const l = live.current;
+        if (e.button !== 0 || l.readOnly || (e.target as HTMLElement).closest(".row-toggle, .rename-field, .row-chevron")) return;
+        const id = l.rows[index]?.id;
+        if (!id) return;
+        const ids = l.selection.includes(id) ? topmost(l.doc, l.selection) : [id];
+        drag.current = { ids, x: e.clientX, y: e.clientY, started: false, pointerId: e.pointerId };
+        const move = (ev: PointerEvent) => {
+          const d = drag.current;
+          if (!d || ev.pointerId !== d.pointerId) return;
+          if (!d.started && Math.hypot(ev.clientX - d.x, ev.clientY - d.y) < 4) return;
+          d.started = true;
+          const ll = live.current;
+          const t = dropTargetAt(ll.rows, ll.doc, ll.pageId, listY(ev.clientY), ll.rowHeight);
+          const ok = canDrop(ll.doc, d.ids, t.place);
+          dropRef.current = ok ? t : null;
+          setDrop(ok ? t : null);
+        };
+        const up = (ev: PointerEvent) => {
+          const d = drag.current;
+          if (!d || ev.pointerId !== d.pointerId) return;
+          window.removeEventListener("pointermove", move);
+          window.removeEventListener("pointerup", up);
+          window.removeEventListener("pointercancel", up);
+          drag.current = null;
+          const t = dropRef.current;
+          dropRef.current = null;
+          setDrop(null);
+          if (!d.started) return;
+          swallowClick.current = true;
+          setTimeout(() => (swallowClick.current = false), 0);
+          if (ev.type === "pointercancel" || !t) return;
+          const ll = live.current;
+          ll.edit(d.ids.length === 1 ? "Move layer" : `Move ${d.ids.length} layers`, (tx) => moveLayers(tx, ll.doc, d.ids, t.place));
+          ll.onSelect(d.ids.filter((x) => ll.doc.has(x)));
+        };
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", up);
+        window.addEventListener("pointercancel", up);
+      },
+      menu: (e, index) => {
+        e.preventDefault();
+        const l = live.current;
+        const id = l.rows[index]?.id;
+        if (!id) return;
+        if (!l.selection.includes(id)) l.choose(index, { shift: false, toggle: false });
+        l.onLayerMenu?.(e.clientX, e.clientY);
+      },
+      toggle: (id) => {
+        const row = live.current.rows.find((r) => r.id === id);
+        if (row) setCollapsed(id, !row.collapsed);
+      },
+      visible: (id) => {
+        const l = live.current;
+        if (l.readOnly) return;
+        const n = l.doc.get(id);
+        if (n) l.edit(n.visible ? "Hide layer" : "Show layer", (tx) => tx.set(id, "visible", !n.visible));
+      },
+      locked: (id) => {
+        const l = live.current;
+        if (l.readOnly) return;
+        const n = l.doc.get(id);
+        if (n) l.edit(n.locked ? "Unlock layer" : "Lock layer", (tx) => tx.set(id, "locked", !n.locked));
+      },
+      rename: (id, name) => {
+        if (id !== null) {
+          startRenameRef.current(id);
+          return;
+        }
+        setRenaming((cur) => {
+          const l = live.current;
+          if (cur && name != null && name !== l.doc.get(cur)?.name) l.edit("Rename layer", (tx) => void renameNode(tx, cur, name));
+          if (cur) {
+            wantFocus.current = cur;
+            setFocusId(cur);
+          }
+          return null;
+        });
+      },
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [onRowClick],
+  );
+
   const first = Math.max(0, Math.floor(view.top / rowHeight) - OVERSCAN);
   const last = Math.min(rows.length, Math.ceil((view.top + view.height) / rowHeight) + OVERSCAN);
   const item = (i: number) => {
     const row = rows[i]!;
-    return <LayerRow key={row.id} row={row} index={i} selected={selected.has(row.id)} tabbable={row.id === focusRow} height={rowHeight} onRowClick={onRowClick} />;
+    return (
+      <LayerRow
+        key={row.id}
+        row={row}
+        index={i}
+        selected={selected.has(row.id)}
+        tabbable={row.id === focusRow}
+        height={rowHeight}
+        renaming={renaming === row.id}
+        dropInto={drop?.into === row.id}
+        actions={actions}
+      />
+    );
   };
   const visible: ReactElement[] = [];
   // The focus row is always in the DOM, so Tab can reach the list wherever it is scrolled.
@@ -374,23 +682,7 @@ export function LayersPanel({ doc, pageId, selection, onPage, onSelect }: Layers
 
   return (
     <aside className="panel panel-left" aria-label="Layers">
-      <section className="panel-section" aria-labelledby="pages-heading">
-        <h2 id="pages-heading" className="section-heading">
-          Pages
-        </h2>
-        <ul className="row-list">
-          {pages.map((p) => (
-            <li key={p.id}>
-              <button type="button" className="row" aria-current={p.id === pageId ? "page" : undefined} onClick={() => onPage(p.id)}>
-                <span className="row-icon">
-                  <Icon name={p.id === pageId ? "check" : "file"} />
-                </span>
-                <span className="row-label">{p.name}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
+      <PagesPanel doc={doc} pageId={pageId} readOnly={readOnly} onPage={onPage} onError={onError} />
 
       <section ref={scroller} className="panel-section panel-grow" aria-labelledby="layers-heading" style={{ position: "relative" }} onScroll={measure}>
         <h2 id="layers-heading" className="section-heading">
@@ -413,6 +705,7 @@ export function LayersPanel({ doc, pageId, selection, onPage, onSelect }: Layers
             onBlur={onTreeBlur}
           >
             {visible}
+            {drop && drop.line !== null && <div className="layer-drop-line" aria-hidden="true" style={{ top: drop.line * rowHeight - 1, left: 8 + drop.depth * 16 }} />}
           </div>
         )}
       </section>
