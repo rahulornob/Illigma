@@ -6,6 +6,7 @@
  * a node never rewrites its neighbours.
  */
 
+import type { ComponentFields } from "./components.js";
 import type { MaskGridFields } from "./guides-grids.js";
 
 export const FORMAT_NAME = "illigma";
@@ -586,7 +587,7 @@ export interface ExportFields {
   exportSettings?: ExportSettings[];
 }
 
-export type Node = NodeBase & TextFields & LayoutFields & ShapeFields & EffectFields & ExportFields & MaskGridFields;
+export type Node = NodeBase & TextFields & LayoutFields & ShapeFields & EffectFields & ExportFields & ComponentFields & MaskGridFields;
 
 /** The node fields an operation may change. `id` and `type` never change. */
 export type NodeKey = Exclude<keyof Node, "id" | "type">;

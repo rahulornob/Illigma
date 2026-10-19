@@ -21,6 +21,12 @@ After v1.0: a Tauri desktop app in v1.x, then optional multiplayer (CRDT over LA
 
 ## [Unreleased]
 
+### Added (2026-10-19, components, variants and instances)
+
+- Components in one file: ⌥⌘K create component, combine as variants, add variant, instances placed from the new Assets tab (search, drag to canvas, Enter), ⌥⌘B detach, reset overrides, go to main component.
+- Instances are stored expanded (`mainId` on each copied layer) and kept in sync by a document normalizer: edits to a main component reach every instance in the same undo step, overrides stay; variant switches keep overrides.
+- Component properties: boolean (visibility), text and instance swap, plus variant pickers, in the instance's Properties card.
+- Format: `componentId`, `overrides`, `componentProperties`, `componentPropertyDefinitions`, `componentPropertyReferences`, `mainId`. See `docs/dev/phase-2.md`.
 ### Added (2026-10-19, masks, layout grids, rulers and guides)
 
 - Masks: ⌃⌘M "Use as mask" groups the selection with the bottom layer as the mask (`isMask`, `maskType` alpha, vector or luminance); drawn, hit-tested and exported (PNG/JPG through the renderer, SVG `<mask>`/`<clipPath>`, PDF clip); mask icon in Layers and a Mask card.

@@ -90,6 +90,41 @@
     "blendMode": { "$ref": "#/$defs/blendMode", "description": "How the layer mixes with what is under it. Default PASS_THROUGH" },
     "strokeAlign": { "enum": ["CENTER", "INSIDE", "OUTSIDE"], "description": "Where strokes sit on the outline. Absent means CENTER (format 0 drew every stroke centred); lines and open paths are always centred" },
     "exportSettings": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/exportSettings" }, "description": "The files this layer or page exports to (Figma's ExportSettings), in order. Default none" },
+    "componentId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$", "description": "INSTANCE: its main component (a COMPONENT)" },
+    "overrides": {
+      "type": "object",
+      "maxProperties": 10000,
+      "additionalProperties": { "type": "object", "description": "Changed node fields of one layer: field name to value" },
+      "description": "INSTANCE: changed fields, keyed by the mainId of the sublayer (\"\" for the instance itself)"
+    },
+    "componentProperties": {
+      "type": "object",
+      "maxProperties": 200,
+      "additionalProperties": { "type": ["boolean", "string"] },
+      "description": "INSTANCE: component property values by property name. Unset means the default"
+    },
+    "componentPropertyDefinitions": {
+      "type": "object",
+      "maxProperties": 200,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["type", "defaultValue"],
+        "additionalProperties": false,
+        "properties": {
+          "type": { "enum": ["BOOLEAN", "TEXT", "INSTANCE_SWAP", "VARIANT"] },
+          "defaultValue": { "type": ["boolean", "string"] },
+          "variantOptions": { "type": "array", "maxItems": 200, "items": { "type": "string" } }
+        }
+      },
+      "description": "COMPONENT or COMPONENT_SET: the component properties it offers, by name"
+    },
+    "componentPropertyReferences": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "visible": { "type": "string" }, "characters": { "type": "string" }, "mainComponent": { "type": "string" } },
+      "description": "A layer inside a component: which component property drives its visibility, text or nested main component"
+    },
+    "mainId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$", "description": "A sublayer of an instance: the node in the main component it copies" },
     "isMask": { "type": "boolean", "description": "This layer masks the siblings above it in its parent (Figma's isMask). Default false" },
     "maskType": { "enum": ["ALPHA", "VECTOR", "LUMINANCE"], "description": "How the mask clips: its pixels' alpha, its outline or its brightness. Default ALPHA" },
     "layoutGrids": {

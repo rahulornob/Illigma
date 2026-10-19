@@ -1,4 +1,5 @@
 export * from "./schema.js";
+export * from "./components.js";
 export * from "./guides-grids.js";
 export * from "./fractional-index.js";
 export * from "./package.js";

@@ -39,6 +39,7 @@ import {
   type Node,
 } from "./schema.js";
 import { vectorNetworkProblem } from "./vector.js";
+import { COMPONENT_KEYS, COMPONENT_LIMITS, COMPONENT_PROPERTY_TYPES } from "./components.js";
 import { guidesProblem, layoutGridsProblem, MASK_TYPES } from "./guides-grids.js";
 
 const MAX_PROBLEMS = 50;
@@ -248,6 +249,60 @@ const pointCount: Rule = (v) =>
   typeof v === "number" && Number.isInteger(v) && v >= 3 && v <= MAX_POINT_COUNT ? null : `must be a whole number from 3 to ${MAX_POINT_COUNT.toLocaleString("en-US")}`;
 const fraction: Rule = (v) => (unit(v) ? null : "must be a number from 0 to 1");
 
+// ---- components ----
+
+const propName = (k: string): boolean => k.length > 0 && k.length <= COMPONENT_LIMITS.maxNameLength;
+const propDefinitions: Rule = (v) => {
+  if (!isObject(v)) return "must be an object of property definitions";
+  const entries = Object.entries(v);
+  if (entries.length > COMPONENT_LIMITS.maxProperties) return `must have at most ${COMPONENT_LIMITS.maxProperties} properties`;
+  for (const [k, d] of entries) {
+    if (!propName(k)) return `has a property name that is empty or too long`;
+    if (!isObject(d)) return `property "${k.slice(0, 40)}" is not an object`;
+    if (!COMPONENT_PROPERTY_TYPES.includes(d.type as never)) return `property "${k.slice(0, 40)}" has an unknown type: use BOOLEAN, TEXT, INSTANCE_SWAP or VARIANT`;
+    if (d.type === "BOOLEAN" ? typeof d.defaultValue !== "boolean" : typeof d.defaultValue !== "string") return `property "${k.slice(0, 40)}" has a default value of the wrong type`;
+    if (d.variantOptions !== undefined) {
+      const o = d.variantOptions;
+      if (!Array.isArray(o) || o.length > COMPONENT_LIMITS.maxVariantOptions || o.some((x) => typeof x !== "string")) return `property "${k.slice(0, 40)}" has bad variant options`;
+    }
+  }
+  return null;
+};
+const propValues: Rule = (v) => {
+  if (!isObject(v)) return "must be an object of property values";
+  const entries = Object.entries(v);
+  if (entries.length > COMPONENT_LIMITS.maxProperties) return `must have at most ${COMPONENT_LIMITS.maxProperties} properties`;
+  for (const [k, x] of entries) {
+    if (!propName(k)) return "has a property name that is empty or too long";
+    if (typeof x !== "boolean" && typeof x !== "string") return `property "${k.slice(0, 40)}" must be true, false or text`;
+  }
+  return null;
+};
+const propRefs: Rule = (v) => {
+  if (!isObject(v)) return "must be an object";
+  for (const [k, x] of Object.entries(v)) {
+    if (k !== "visible" && k !== "characters" && k !== "mainComponent") return `has an unknown field "${k.slice(0, 40)}"`;
+    if (typeof x !== "string" || !propName(x)) return `"${k}" must be a property name`;
+  }
+  return null;
+};
+const NOT_OVERRIDABLE = new Set<string>(["id", "type", "parentId", "index", ...COMPONENT_KEYS]);
+const overrides: Rule = (v) => {
+  if (!isObject(v)) return "must be an object of overrides by layer";
+  const entries = Object.entries(v);
+  if (entries.length > COMPONENT_LIMITS.maxOverrides) return `must have at most ${COMPONENT_LIMITS.maxOverrides} overridden layers`;
+  for (const [id, fields] of entries) {
+    if (id !== "" && !isId(id)) return `has a bad layer id "${String(id).slice(0, 40)}"`;
+    if (!isObject(fields)) return `for layer "${id}" is not an object`;
+    for (const [k, x] of Object.entries(fields)) {
+      if (NOT_OVERRIDABLE.has(k) || !Object.prototype.hasOwnProperty.call(RULES, k)) return `for layer "${id}" can't change "${k.slice(0, 40)}"`;
+      const p = RULES[k as keyof Node](x);
+      if (p) return `for layer "${id}": "${k}" ${p}`;
+    }
+  }
+  return null;
+};
+
 /** One rule per node field. Typed against `Node`, so a new field can't be forgotten here. */
 const RULES: { [K in keyof Node]-?: Rule } = {
   id: (v) => (isId(v) ? null : v === undefined || v === "" ? "is missing: the node has no id" : 'must be 1–64 letters, digits, "_" or "-"'),
@@ -308,6 +363,12 @@ const RULES: { [K in keyof Node]-?: Rule } = {
   blendMode: optional(blendMode),
   strokeAlign: optional(oneOf(STROKE_ALIGNS)),
   exportSettings: optional(exportSettings),
+  componentId: optional((v) => (isId(v) ? null : "must be a node id")),
+  overrides: optional(overrides),
+  componentProperties: optional(propValues),
+  componentPropertyDefinitions: optional(propDefinitions),
+  componentPropertyReferences: optional(propRefs),
+  mainId: optional((v) => (isId(v) ? null : "must be a node id")),
   isMask: optional(boolean),
   maskType: optional(oneOf(MASK_TYPES)),
   layoutGrids: optional(layoutGridsProblem),

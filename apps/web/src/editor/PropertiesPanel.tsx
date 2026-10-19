@@ -7,6 +7,7 @@ import { AutoLayoutCard } from "./AutoLayoutCard";
 import { ConstraintsCard } from "./ConstraintsCard";
 import { hasGridCard, LayoutGridCard, MaskCard } from "./LayoutGridCard";
 import { TypographyCard } from "./TypographyCard";
+import { ComponentCard } from "./components/ComponentCard";
 import { ExportCard } from "./export/ExportCard";
 import { effectiveSizing, hasConstraints, isAutoLayoutNode, setSizing, sizingOptions, type Axis } from "./layout-model";
 import { guard, setBoxFields, setLayoutProps, type BoxField, type OnEditError } from "./layout-props";
@@ -158,6 +159,7 @@ export function PropertiesPanel({
                 })}
               </div>
             </section>
+            {node && <ComponentCard key={`component-${node.id}`} doc={doc} node={node} readOnly={readOnly} onSelect={onSelect} onError={onError} />}
             <AutoLayoutCard key={ids.join(",")} doc={doc} nodes={nodes} readOnly={readOnly} onSelect={onSelect} onError={onError} />
             {hasGridCard(nodes) && node && <LayoutGridCard key={`grid-${node.id}`} doc={doc} node={node} readOnly={readOnly} onError={onError} />}
             {nodes.every((n) => n.isMask) && <MaskCard doc={doc} nodes={nodes} readOnly={readOnly} onError={onError} />}
