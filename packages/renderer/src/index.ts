@@ -476,7 +476,7 @@ export class PageRenderer {
       // Recording it again finds out again whether it depends on the zoom (only a partial re-record keeps the old answer).
       if (!(!this.all && stale && cached?.chunks)) this.zoomDependent.delete(n.id);
       try {
-        if (!this.all && stale && cached?.chunks && n.visible && n.opacity > 0) {
+        if (!this.all && stale && cached?.chunks && n.visible && n.opacity > 0 && !this.doc.children(n.id).some((k) => k.isMask)) {
           this.rerecordChunks(n, cached, stale);
           continue;
         }
@@ -494,12 +494,11 @@ export class PageRenderer {
     const recorder = new this.ck.PictureRecorder();
     const canvas = recorder.beginRecording(EVERYWHERE(this.ck), true);
     this.nodeCount = 0;
-    for (const n of top) {
+    for (const n of top) this.nodeCount += this.children.get(n.id)?.nodes ?? 0;
+    this.drawMasked(canvas, top, (cv, n) => {
       const c = this.children.get(n.id);
-      if (!c?.picture) continue;
-      canvas.drawPicture(c.picture);
-      this.nodeCount += c.nodes;
-    }
+      if (c?.picture) cv.drawPicture(c.picture);
+    });
     this.picture?.delete();
     this.picture = recorder.finishRecordingAsPicture();
     recorder.delete();
@@ -510,7 +509,8 @@ export class PageRenderer {
   private recordChild(n: ReadonlyNode): ChildPicture {
     if (!n.visible || n.opacity <= 0) return { picture: null, nodes: 0 };
     const kids = this.doc.children(n.id);
-    if (kids.length > CHUNK_THRESHOLD) {
+    // A mask clips the siblings above it, which can span chunks: such nodes record whole.
+    if (kids.length > CHUNK_THRESHOLD && !kids.some((k) => k.isMask)) {
       const size = chunkSize(kids.length);
       const chunks: Chunk[] = [];
       const chunkOf = new Map<NodeId, number>();
@@ -670,7 +670,7 @@ export class PageRenderer {
       }
       if (children) children(canvas);
       // A boolean's children are its operands: only the combined shape draws.
-      else if (n.type !== "BOOLEAN_OPERATION") for (const child of kids) this.drawNode(canvas, child);
+      else if (n.type !== "BOOLEAN_OPERATION") this.drawMasked(canvas, kids, (c, child) => this.drawNode(c, child));
     };
 
     // Opacity, blend mode, layer blur and filtered shadows apply to the node and its children as one group, as in Figma.
@@ -712,6 +712,49 @@ export class PageRenderer {
     }
     outline?.path.delete();
     canvas.restoreToCount(saved);
+  }
+
+  /**
+   * Draw siblings bottom first with `draw`; a visible mask (Figma's isMask)
+   * hides itself and clips every sibling above it: by its outline for
+   * "VECTOR", by its pixels' alpha ("ALPHA", the default) or brightness ("LUMINANCE").
+   */
+  private drawMasked(canvas: Canvas, items: readonly ReadonlyNode[], draw: (canvas: Canvas, n: ReadonlyNode) => void): void {
+    for (let i = 0; i < items.length; i++) {
+      const n = items[i] as ReadonlyNode;
+      if (!n.isMask) {
+        draw(canvas, n);
+        continue;
+      }
+      if (!n.visible || n.opacity <= 0) continue;
+      const rest = items.slice(i + 1);
+      const ck = this.ck;
+      const outline = n.maskType === "VECTOR" ? this.outline(n, shapeGeometry(n, this.doc)) : null;
+      const saved = canvas.save();
+      if (outline) {
+        canvas.translate(n.x, n.y);
+        if (n.rotation) canvas.rotate(n.rotation, 0, 0);
+        canvas.clipPath(outline.path, ck.ClipOp.Intersect, true);
+        if (n.rotation) canvas.rotate(-n.rotation, 0, 0);
+        canvas.translate(-n.x, -n.y);
+        outline.path.delete();
+        this.drawMasked(canvas, rest, draw);
+      } else {
+        canvas.saveLayer();
+        this.drawMasked(canvas, rest, draw);
+        const paint = new ck.Paint();
+        paint.setBlendMode(ck.BlendMode.DstIn);
+        const luma = n.maskType === "LUMINANCE" ? ck.ColorFilter.MakeLuma() : null;
+        if (luma) paint.setColorFilter(luma);
+        canvas.saveLayer(paint);
+        draw(canvas, n);
+        canvas.restore();
+        paint.delete();
+        luma?.delete();
+      }
+      canvas.restoreToCount(saved);
+      return;
+    }
   }
 
   /** True if some visible descendant blends with a mode of its own, so a NORMAL parent must isolate it. */

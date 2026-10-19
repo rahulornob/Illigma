@@ -40,6 +40,7 @@ import {
 } from "./schema.js";
 import { vectorNetworkProblem } from "./vector.js";
 import { COMPONENT_KEYS, COMPONENT_LIMITS, COMPONENT_PROPERTY_TYPES } from "./components.js";
+import { guidesProblem, layoutGridsProblem, MASK_TYPES } from "./guides-grids.js";
 
 const MAX_PROBLEMS = 50;
 const isId = (v: unknown): v is string => typeof v === "string" && NODE_ID_PATTERN.test(v);
@@ -368,6 +369,10 @@ const RULES: { [K in keyof Node]-?: Rule } = {
   componentPropertyDefinitions: optional(propDefinitions),
   componentPropertyReferences: optional(propRefs),
   mainId: optional((v) => (isId(v) ? null : "must be a node id")),
+  isMask: optional(boolean),
+  maskType: optional(oneOf(MASK_TYPES)),
+  layoutGrids: optional(layoutGridsProblem),
+  guides: optional(guidesProblem),
 };
 
 /** Every node field name, required and optional. */

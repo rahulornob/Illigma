@@ -124,7 +124,39 @@
       "properties": { "visible": { "type": "string" }, "characters": { "type": "string" }, "mainComponent": { "type": "string" } },
       "description": "A layer inside a component: which component property drives its visibility, text or nested main component"
     },
-    "mainId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$", "description": "A sublayer of an instance: the node in the main component it copies" }
+    "mainId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$", "description": "A sublayer of an instance: the node in the main component it copies" },
+    "isMask": { "type": "boolean", "description": "This layer masks the siblings above it in its parent (Figma's isMask). Default false" },
+    "maskType": { "enum": ["ALPHA", "VECTOR", "LUMINANCE"], "description": "How the mask clips: its pixels' alpha, its outline or its brightness. Default ALPHA" },
+    "layoutGrids": {
+      "type": "array",
+      "maxItems": 50,
+      "description": "Frame layout grids (Figma's layoutGrids), bottom first. Editor-only: never exported. Default none",
+      "items": {
+        "type": "object",
+        "required": ["pattern"],
+        "properties": {
+          "pattern": { "enum": ["GRID", "COLUMNS", "ROWS"] },
+          "sectionSize": { "type": "number", "minimum": 1, "maximum": 100000 },
+          "alignment": { "enum": ["MIN", "MAX", "STRETCH", "CENTER"] },
+          "gutterSize": { "type": "number", "minimum": 0, "maximum": 100000 },
+          "count": { "type": "integer", "minimum": 0, "maximum": 1000 },
+          "offset": { "type": "number", "minimum": 0, "maximum": 100000 },
+          "visible": { "type": "boolean" },
+          "color": { "$ref": "#/$defs/color" }
+        }
+      }
+    },
+    "guides": {
+      "type": "array",
+      "maxItems": 2000,
+      "description": "PAGE: ruler guides. Default none",
+      "items": {
+        "type": "object",
+        "required": ["axis", "offset"],
+        "additionalProperties": false,
+        "properties": { "axis": { "enum": ["X", "Y"] }, "offset": { "type": "number" } }
+      }
+    }
   },
   "$defs": {
     "exportSettings": {

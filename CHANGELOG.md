@@ -27,6 +27,11 @@ After v1.0: a Tauri desktop app in v1.x, then optional multiplayer (CRDT over LA
 - Instances are stored expanded (`mainId` on each copied layer) and kept in sync by a document normalizer: edits to a main component reach every instance in the same undo step, overrides stay; variant switches keep overrides.
 - Component properties: boolean (visibility), text and instance swap, plus variant pickers, in the instance's Properties card.
 - Format: `componentId`, `overrides`, `componentProperties`, `componentPropertyDefinitions`, `componentPropertyReferences`, `mainId`. See `docs/dev/phase-2.md`.
+### Added (2026-10-19, masks, layout grids, rulers and guides)
+
+- Masks: ⌃⌘M "Use as mask" groups the selection with the bottom layer as the mask (`isMask`, `maskType` alpha, vector or luminance); drawn, hit-tested and exported (PNG/JPG through the renderer, SVG `<mask>`/`<clipPath>`, PDF clip); mask icon in Layers and a Mask card.
+- Layout grids on frames (`layoutGrids`: grid, columns, rows): Properties card, editor-only overlay, ⌃G to show or hide, snapping to column and row edges.
+- Rulers (⇧R) with the selection's extent, and page guides (`PAGE.guides`): drag from a ruler to add, drag to move, drop on a ruler to remove; layers snap to guides.
 
 ### Added (2026-10-19, pages, groups, layer operations and clipboard)
 

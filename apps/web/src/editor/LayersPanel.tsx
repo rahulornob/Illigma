@@ -48,6 +48,8 @@ export interface LayerRowData {
   id: NodeId;
   name: string;
   type: Node["type"];
+  /** Masks (Figma's isMask) show a mask icon. */
+  isMask?: boolean;
   /** 0 for the page's own layers. */
   depth: number;
   /** Its position among its siblings (1-based) and how many siblings there are, for aria-posinset and aria-setsize. */
@@ -74,7 +76,7 @@ export function layerRows(doc: Document, pageId: NodeId, collapsed: ReadonlySet<
       const at = rows.length;
       const hasChildren = doc.children(n.id).length > 0;
       const closed = hasChildren && collapsed.has(n.id);
-      rows.push({ id: n.id, name: n.name, type: n.type, depth, posinset: kids.length - i, setsize: kids.length, hasChildren, parent, parentId, visible: n.visible, locked: n.locked, collapsed: closed });
+      rows.push({ id: n.id, name: n.name, type: n.type, depth, posinset: kids.length - i, setsize: kids.length, hasChildren, parent, parentId, visible: n.visible, locked: n.locked, collapsed: closed, ...(n.isMask && { isMask: true }) });
       if (!closed) walk(n.id, depth + 1, at);
     }
   };
@@ -180,7 +182,7 @@ const LayerRow = memo(function LayerRow({ row, index, selected, tabbable, height
         {row.hasChildren && <Icon name={row.collapsed ? "chevron-right" : "chevron-down"} size={12} />}
       </span>
       <span className={`row-icon ${typeClass(row.type)}`}>
-        <Icon name={TYPE_ICON[row.type] ?? "square"} />
+        <Icon name={row.isMask ? "venetian-mask" : (TYPE_ICON[row.type] ?? "square")} />
       </span>
       {renaming ? (
         <RenameField name={row.name} label="Layer name" onDone={(name) => actions.rename(null, name)} />

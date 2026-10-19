@@ -5,6 +5,7 @@ import { MenuButton, type MenuEntry } from "../ui/Menu";
 import { fmt, LIMITS, NumberField } from "../ui/NumberField";
 import { AutoLayoutCard } from "./AutoLayoutCard";
 import { ConstraintsCard } from "./ConstraintsCard";
+import { hasGridCard, LayoutGridCard, MaskCard } from "./LayoutGridCard";
 import { TypographyCard } from "./TypographyCard";
 import { ComponentCard } from "./components/ComponentCard";
 import { ExportCard } from "./export/ExportCard";
@@ -160,6 +161,8 @@ export function PropertiesPanel({
             </section>
             {node && <ComponentCard key={`component-${node.id}`} doc={doc} node={node} readOnly={readOnly} onSelect={onSelect} onError={onError} />}
             <AutoLayoutCard key={ids.join(",")} doc={doc} nodes={nodes} readOnly={readOnly} onSelect={onSelect} onError={onError} />
+            {hasGridCard(nodes) && node && <LayoutGridCard key={`grid-${node.id}`} doc={doc} node={node} readOnly={readOnly} onError={onError} />}
+            {nodes.every((n) => n.isMask) && <MaskCard doc={doc} nodes={nodes} readOnly={readOnly} onError={onError} />}
             {constrained && <ConstraintsCard doc={doc} nodes={nodes} readOnly={readOnly} onError={onError} />}
             {nodes.every((n) => n.type === "TEXT") && <TypographyCard doc={doc} nodes={nodes} readOnly={readOnly} onError={onError} />}
             <VectorCards doc={doc} nodes={nodes} readOnly={readOnly} onSelect={onSelect} onError={onError} />

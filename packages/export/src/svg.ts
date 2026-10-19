@@ -34,6 +34,7 @@
 import type { ReadonlyNode } from "@illigma/core";
 import { letterSpacingPx, PATH_CLOSE, PATH_CUBIC, PATH_LINE, PATH_MOVE } from "@illigma/format";
 import { CLIPPING, type TextLine } from "@illigma/renderer";
+import { maskOutline } from "./masks.js";
 import { draws, hasVisibleStroke, IDENTITY, localMatrix, multiply, subtreeBounds, translation, type ExportScene, type ExportSource, type Matrix, type TextBounds } from "./scene.js";
 import {
   base64,
@@ -280,10 +281,39 @@ class SvgWriter {
       const box = r.kind === "rect" ? r : { width: n.width, height: n.height, radius: 0 };
       this.defs.push(`<clipPath id="${clip}">`, serialize({ tag: "rect", attrs: rectAttrs(box.width, box.height, box.radius) }), "</clipPath>");
       this.lines.push(`<g clip-path="url(#${clip})">`);
-      for (const k of kids) this.node(k, localMatrix(k));
+      this.masked(kids);
       this.lines.push("</g>");
     } else {
-      for (const k of kids) this.node(k, localMatrix(k));
+      this.masked(kids);
+    }
+  }
+
+  /** Siblings bottom first; a mask hides itself and clips those above it (`<clipPath>` for VECTOR, else `<mask>`). */
+  private masked(kids: readonly ReadonlyNode[]): void {
+    for (let i = 0; i < kids.length; i++) {
+      const k = kids[i] as ReadonlyNode;
+      if (!k.isMask) {
+        this.node(k, localMatrix(k));
+        continue;
+      }
+      const rest = kids.slice(i + 1);
+      if (k.maskType === "VECTOR") {
+        const id = this.generatedId("clip", k);
+        const paths = maskOutline(k, this.source).map((p) => serialize({ tag: "path", attrs: [["d", svgPathData(p.commands)], ...(p.evenOdd ? ([["clip-rule", "evenodd"]] as Attr[]) : [])] }));
+        this.defs.push(`<clipPath id="${id}">`, ...paths, "</clipPath>");
+        this.lines.push(`<g clip-path="url(#${id})">`);
+      } else {
+        const id = this.generatedId("mask", k);
+        const start = this.lines.length;
+        this.node(k, localMatrix(k));
+        const body = this.lines.splice(start);
+        const type = k.maskType === "LUMINANCE" ? "luminance" : "alpha";
+        this.defs.push(`<mask id="${id}" style="mask-type: ${type}" maskUnits="userSpaceOnUse" x="-100000" y="-100000" width="200000" height="200000">`, ...body, "</mask>");
+        this.lines.push(`<g mask="url(#${id})">`);
+      }
+      this.masked(rest);
+      this.lines.push("</g>");
+      return;
     }
   }
 

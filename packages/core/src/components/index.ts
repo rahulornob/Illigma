@@ -366,10 +366,12 @@ function depthInComponents(doc: Document, id: NodeId): number {
  */
 export function withComponents(then?: Normalizer): Normalizer {
   return (doc, tx, ops) => {
+    // `ops` may not be in `tx` (replay runs the normalizer in a fresh transaction).
+    const first = tx.ops.length;
     normalizeComponents(doc, tx, ops, true);
     if (!then) return;
     let start = tx.ops.length;
-    then(doc, tx, tx.ops.slice());
+    then(doc, tx, [...ops, ...tx.ops.slice(first)]);
     const layoutOps = tx.ops.slice(start);
     if (!layoutOps.length) return;
     start = tx.ops.length;

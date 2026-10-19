@@ -63,7 +63,8 @@ describe("Layers panel", () => {
 
   it("selected rows are aria-selected; one row is in the Tab order", () => {
     const { doc, page, frame } = big(5);
-    const html = render(doc, page, [frame]);
+    // The Layers / Assets tabs have their own aria-selected.
+    const html = render(doc, page, [frame]).replace(/<div class="panel-tabbar".*?<\/div>/s, "");
     expect(html.match(/aria-selected="true"/g)).toHaveLength(1);
     expect(html.match(/tabindex="0"/g)).toHaveLength(1);
     expect(html).toMatch(/tabindex="0"[^>]*aria-selected="true"[^>]*aria-label="Desktop, frame"/);

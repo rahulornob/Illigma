@@ -17,28 +17,60 @@ interface Axis {
 }
 
 export interface SnapIndex {
+  /** Layer boxes first, then one zero-size box per snap line (see `objects`). */
   rects: readonly Rect[];
+  /** How many of `rects` are layers; the rest are lines (layout grids, ruler guides), which never take part in equal spacing. Default: all. */
+  objects?: number;
   x: Axis;
   y: Axis;
 }
 
-function axis(rects: readonly Rect[], pos: (r: Rect) => number, size: (r: Rect) => number): Axis {
+/**
+ * A line layers snap to on one axis only: a layout grid's column or row
+ * edge, or a ruler guide. `axis` "x" is a vertical line at x = `at`.
+ */
+export interface SnapLine {
+  axis: "x" | "y";
+  at: number;
+}
+
+function axis(rects: readonly Rect[], pos: (r: Rect) => number, size: (r: Rect) => number, lines: readonly number[] = []): Axis {
   const items: [number, number][] = [];
   rects.forEach((r, i) => {
     const a = pos(r);
     const s = size(r);
     items.push([a, i], [a + s / 2, i], [a + s, i]);
   });
+  lines.forEach((at, i) => items.push([at, rects.length + i]));
   items.sort((p, q) => p[0] - q[0]);
   return { values: Float64Array.from(items, (p) => p[0]), refs: Int32Array.from(items, (p) => p[1]) };
 }
 
-export function buildIndex(rects: readonly Rect[]): SnapIndex {
+export function buildIndex(rects: readonly Rect[], lines: readonly SnapLine[] = []): SnapIndex {
+  if (!lines.length) {
+    return {
+      rects,
+      x: axis(rects, (r) => r.x, (r) => r.width),
+      y: axis(rects, (r) => r.y, (r) => r.height),
+    };
+  }
+  const xs = lines.filter((l) => l.axis === "x");
+  const ys = lines.filter((l) => l.axis === "y");
+  // Line boxes: x lines first, then y lines, so refs past `objects` map back in order.
+  const all = [...rects, ...xs.map((l) => ({ x: l.at, y: NaN, width: 0, height: 0 })), ...ys.map((l) => ({ x: NaN, y: l.at, width: 0, height: 0 }))];
   return {
-    rects,
-    x: axis(rects, (r) => r.x, (r) => r.width),
-    y: axis(rects, (r) => r.y, (r) => r.height),
+    rects: all,
+    objects: rects.length,
+    x: axis(rects, (r) => r.x, (r) => r.width, xs.map((l) => l.at)),
+    y: offsetRefs(axis(rects, (r) => r.y, (r) => r.height, ys.map((l) => l.at)), rects.length, xs.length),
   };
+}
+
+/** Shift refs of y lines past the x lines' boxes. */
+function offsetRefs(ax: Axis, objects: number, by: number): Axis {
+  if (!by) return ax;
+  for (let i = 0; i < ax.refs.length; i++) if ((ax.refs[i] as number) >= objects) ax.refs[i] = (ax.refs[i] as number) + by;
+  return ax;
 }
 
 /** First position in `values` not below `v`. */
@@ -133,6 +165,8 @@ export function guidesFor(index: SnapIndex, box: Rect): Guide[] {
       let from = name === "x" ? box.y : box.x;
       let to = name === "x" ? box.y + box.height : box.x + box.width;
       for (const h of hits) {
+        // A line has no extent of its own: the guide spans the box.
+        if (h >= (index.objects ?? index.rects.length)) continue;
         const r = index.rects[h] as Rect;
         from = Math.min(from, name === "x" ? r.y : r.x);
         to = Math.max(to, name === "x" ? r.y + r.height : r.x + r.width);
@@ -229,8 +263,9 @@ export function snapMove(index: SnapIndex | null, box: Rect, dx: number, dy: num
   const moved = { ...box, x: box.x + dx, y: box.y + dy };
   const ex = bestOffset(index.x, edges(moved.x, moved.width), threshold);
   const ey = bestOffset(index.y, edges(moved.y, moved.height), threshold);
-  const sx = spacing(index.rects, moved, "x", threshold);
-  const sy = spacing(index.rects, moved, "y", threshold);
+  const objects = index.objects === undefined ? index.rects : index.rects.slice(0, index.objects);
+  const sx = spacing(objects, moved, "x", threshold);
+  const sy = spacing(objects, moved, "y", threshold);
   const gaps: Gap[] = [];
   let ox: number;
   if (ex !== null && (!sx || Math.abs(ex) <= Math.abs(sx.off))) ox = ex;

@@ -318,6 +318,22 @@ const PATHS = {
     </>
   ),
   "chevron-right": <path d="m9 18 6-6-6-6" />,
+  "venetian-mask": (
+    <>
+      <path d="M18 11c-1.5 0-2.5.5-3 2" />
+      <path d="M4 6a2 2 0 0 0-2 2v4a5 5 0 0 0 5 5 8 8 0 0 1 5 2 8 8 0 0 1 5-2 5 5 0 0 0 5-5V8a2 2 0 0 0-2-2h-3a8 8 0 0 0-5 2 8 8 0 0 0-5-2z" />
+      <path d="M6 11c1.5 0 2.5.5 3 2" />
+    </>
+  ),
+  "grid-3x3": (
+    <>
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="M3 9h18" />
+      <path d="M3 15h18" />
+      <path d="M9 3v18" />
+      <path d="M15 3v18" />
+    </>
+  ),
 } as const;
 
 export type IconName = keyof typeof PATHS;

@@ -34,6 +34,7 @@ import type { ReadonlyNode } from "@illigma/core";
 import { PATH_CLOSE, PATH_CUBIC, PATH_LINE, PATH_MOVE } from "@illigma/format";
 import { CLIPPING } from "@illigma/renderer";
 import { zlibSync } from "fflate";
+import { hasPixelMask, maskOutline } from "./masks.js";
 import { draws, hasVisibleStroke, IDENTITY, localMatrix, multiply, subtreeBounds, translation, type ExportScene, type ExportSource, type Matrix, type Rect, type TextBounds } from "./scene.js";
 import {
   blendsInside,
@@ -200,13 +201,13 @@ class PageWriter {
     if (fx.backgroundBlur > 0) this.warn("Background blur needs what is behind the layer, which a PDF export doesn't have, so it was left out.");
     // PDF has no shadows or blurs: a layer with them is drawn by the renderer into an image, when it can be.
     // Background blur alone isn't worth an image: it would be left out of it anyway.
-    if (rasterEffects(fx)) {
+    if (rasterEffects(fx) || hasPixelMask(n, this.source)) {
       const done = this.options.rasterNode ? this.rasterized(n, out, blend) : "no-engine";
       if (done === "drawn") {
         out.push("Q");
         return;
       }
-      if (done === "no-engine") this.warn("Shadows and blurs need the drawing engine to go into a PDF, so they were left out.");
+      if (done === "no-engine" && rasterEffects(fx)) this.warn("Shadows and blurs need the drawing engine to go into a PDF, so they were left out.");
     }
     // Rasterized text carries its own opacity; its blend mode applies to the image.
     const raster = n.type === "TEXT" && !!this.options.rasterText;
@@ -318,8 +319,25 @@ class PageWriter {
       const r = outline.kind === "rect" ? outline.radius : 0;
       out.push(r > 0 ? `${pathOps(rectCommands(n.width, n.height, r))} W n` : `0 0 ${fmt(n.width)} ${fmt(n.height)} re W n`);
     }
-    for (const k of kids) this.node(k, localMatrix(k), out, here);
+    this.masked(kids, out, here);
     if (clip) out.push("Q");
+  }
+
+  /** Siblings bottom first; a mask hides itself and clips those above it by its outline. */
+  private masked(kids: readonly ReadonlyNode[], out: string[], here: Matrix): void {
+    for (let i = 0; i < kids.length; i++) {
+      const k = kids[i] as ReadonlyNode;
+      if (!k.isMask) {
+        this.node(k, localMatrix(k), out, here);
+        continue;
+      }
+      if (k.maskType !== "VECTOR") this.warn("Alpha and luminance masks clip by their outline in a PDF made without the drawing engine.");
+      const paths = maskOutline(k, this.source);
+      out.push("q", paths.length ? `${paths.map((p) => pathOps(p.commands)).join(" ")} ${paths.some((p) => p.evenOdd) ? "W*" : "W"} n` : "0 0 0 0 re W n");
+      this.masked(kids.slice(i + 1), out, here);
+      out.push("Q");
+      return;
+    }
   }
 
   /** One fill or stroke of `shape` (path operators; for strokes, with their style first), in a layer of size `box`. */
