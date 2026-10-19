@@ -1,5 +1,8 @@
 import type { CanvasKit, GrDirectContext, Surface } from "canvaskit-wasm";
 
+/** GPU resource cache budget: room for a couple of very large images with their mipmaps. */
+export const GPU_CACHE_BYTES = 768 * 1024 * 1024;
+
 /**
  * One drawing surface per `<canvas>`, resizable without leaking.
  *
@@ -26,7 +29,13 @@ export class GpuCanvas {
     if (handle > 0) {
       const gr = ck.MakeWebGLContext(handle);
       const surface = gr && ck.MakeOnScreenGLSurface(gr, canvas.width, canvas.height, ck.ColorSpace.SRGB);
-      if (gr && surface) return new GpuCanvas(ck, canvas, dpr, handle, gr, surface);
+      if (gr && surface) {
+        // Skia's GPU cache keeps uploaded images, their mipmaps and layer textures between frames. A
+        // budget smaller than one big image (8000 × 8000 with mipmaps is 340 MB) makes every frame
+        // upload or rebuild it again. The cache only grows to what is drawn.
+        if (gr.getResourceCacheLimitBytes() < GPU_CACHE_BYTES) gr.setResourceCacheLimitBytes(GPU_CACHE_BYTES);
+        return new GpuCanvas(ck, canvas, dpr, handle, gr, surface);
+      }
       gr?.delete();
       ck.deleteContext(handle);
       // The canvas is now bound to WebGL and can't give a 2D context for the CPU fallback.

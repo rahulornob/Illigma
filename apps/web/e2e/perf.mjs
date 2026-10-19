@@ -4,10 +4,13 @@
 // edge. Checks the Layers panel only renders the rows in view, and that
 // frame times stay inside a generous budget (scaled by E2E_TIMEOUT_SCALE).
 //
+// Then (QC round 7) a file whose Hero has an 8000 × 8000 image fill: no long
+// task while it opens, and smooth frames while panning over it.
+//
 // Usage (from the repo root):  node apps/web/e2e/perf.mjs [--headed] [--no-build]
 // Prints the measured p50 and p95 frame times.
 
-import { T, createFile, eventually, layerRow, layerRows, newContext, poll, runE2E, watchErrors } from "./lib.mjs";
+import { T, canvasReady, createFile, eventually, layerRow, layerRows, newContext, poll, runE2E, stableShot, waitSaved, watchErrors } from "./lib.mjs";
 
 await runE2E("perf", {}, async ({ browser, url, log, check, errors }) => {
   const context = await newContext(browser);
@@ -190,4 +193,71 @@ await runE2E("perf", {}, async ({ browser, url, log, check, errors }) => {
     await eventually(async () => (await total()) === 12_289 && (await back.count()) === 1 && (await back.getAttribute("aria-label")) === lastLabel && (await inView(back))),
     "undo reselects the layer and the list scrolls to it",
   );
+
+  // QC round 7: one 8000 × 8000 image fill made panning drop to about 10 fps (it was uploaded to the GPU
+  // again on every frame) and blocked the page for 800 ms while it opened (decoded on the main thread).
+  log("an 8000 × 8000 image fill: opening and panning");
+  const imgContext = await newContext(browser);
+  const imgPage = await imgContext.newPage();
+  watchErrors(imgPage, errors);
+  const fileId = await createFile(imgPage, url);
+  await waitSaved(imgPage);
+  await imgPage.goto(url);
+  await imgPage.getByRole("button", { name: "New design file" }).waitFor();
+  // Bars of colour with a fine checkerboard: made in the page, stored in the package, used by Hero.
+  await imgPage.evaluate(async (id) => {
+    const canvas = new OffscreenCanvas(8000, 8000);
+    const g = canvas.getContext("2d");
+    ["#f00", "#0f0", "#ff0", "#00f", "#f0f", "#0ff"].forEach((c, i) => ((g.fillStyle = c), g.fillRect(i * 1334, 0, 1334, 8000)));
+    g.fillStyle = "#000";
+    for (let y = 4000; y < 6000; y += 2) for (let x = 4000; x < 6000; x += 2) g.fillRect(x + (y % 4 ? 1 : 0), y, 1, 1);
+    const bytes = new Uint8Array(await (await canvas.convertToBlob({ type: "image/png" })).arrayBuffer());
+    const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((b) => b.toString(16).padStart(2, "0")).join("");
+    const root = await navigator.storage.getDirectory();
+    const dir = await (await root.getDirectoryHandle("files")).getDirectoryHandle(id);
+    const write = async (folder, name, data) => {
+      const w = await (await folder.getFileHandle(name, { create: true })).createWritable();
+      await w.write(data);
+      await w.close();
+    };
+    await write(await dir.getDirectoryHandle("images", { create: true }), `${hash}.png`, bytes);
+    const manifest = JSON.parse(await (await (await dir.getFileHandle("manifest.json")).getFile()).text());
+    const pages = await dir.getDirectoryHandle("pages");
+    const name = `${manifest.pages[0].id}.json`;
+    const nodes = JSON.parse(await (await (await pages.getFileHandle(name)).getFile()).text());
+    for (const n of nodes) if (n.name === "Hero") n.fills = [{ type: "IMAGE", visible: true, imageHash: hash, scaleMode: "FILL" }];
+    await write(pages, name, JSON.stringify(nodes));
+  }, fileId);
+  await imgPage.evaluate(() => {
+    const w = /** @type {any} */ (window);
+    w.__longTasks = [];
+    new PerformanceObserver((l) => l.getEntries().forEach((e) => w.__longTasks.push(e.duration))).observe({ type: "longtask" });
+  });
+  await imgPage.goto(`${url}#/file/${fileId}`);
+  await canvasReady(imgPage);
+  await stableShot(imgPage.locator("canvas.canvas"), 20_000); // the image is decoded and drawn
+  const longest = await imgPage.evaluate(() => Math.max(0, ...(/** @type {any} */ (window).__longTasks ?? [])));
+  const pan = await imgPage.evaluate(async () => {
+    const canvas = document.querySelector("canvas.canvas");
+    const stamps = [];
+    await new Promise((resolve) => {
+      const tick = (t) => {
+        stamps.push(t);
+        if (stamps.length < 91) requestAnimationFrame(tick);
+        else resolve();
+      };
+      requestAnimationFrame(tick);
+      let n = 0;
+      const timer = setInterval(() => {
+        canvas.dispatchEvent(new WheelEvent("wheel", { deltaX: 0, deltaY: 20, bubbles: true, cancelable: true, clientX: 700, clientY: 400 }));
+        if (++n > 60) clearInterval(timer);
+      }, 16);
+    });
+    const deltas = stamps.slice(1).map((t, i) => t - stamps[i]).sort((a, b) => a - b);
+    return { p50: deltas[Math.floor(deltas.length / 2)], p95: deltas[Math.floor(deltas.length * 0.95)] };
+  });
+  console.log(`  8000 × 8000 image: longest task while opening ${longest.toFixed(0)} ms; pan p50 ${pan.p50.toFixed(1)} ms, p95 ${pan.p95.toFixed(1)} ms`);
+  check(pan.p95 <= T(34), `panning over an 8000 × 8000 image: p95 frame time ${pan.p95.toFixed(1)} ms should be at most ${T(34)} ms`);
+  check(longest <= T(400), `opening a file with an 8000 × 8000 image blocked the page for ${longest.toFixed(0)} ms (at most ${T(400)} ms)`);
+  await imgContext.close();
 });

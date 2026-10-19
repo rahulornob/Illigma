@@ -8,6 +8,27 @@ import type { DeepReadonly } from "@illigma/core";
 import type { BlendMode, GradientPaint, ImagePaint, Transform } from "@illigma/format";
 import type { Blender, CanvasKit, Image, Paint, RuntimeEffect, Shader } from "canvaskit-wasm";
 
+/**
+ * Node units per image pixel for an image paint on a `w` × `h` node (an
+ * `iw` × `ih` image), to choose how detailed a copy of the image to draw.
+ */
+export function imagePixelScale(p: DeepReadonly<ImagePaint>, iw: number, ih: number, w: number, h: number): number {
+  if (!(iw > 0 && ih > 0)) return 0;
+  switch (p.scaleMode) {
+    case "FILL":
+      return Math.max(w / iw, h / ih);
+    case "FIT":
+      return Math.min(w / iw, h / ih);
+    case "TILE":
+      return p.scalingFactor ?? 1;
+    case "CROP": {
+      const inv = invertTransform(p.imageTransform ?? IDENTITY);
+      return inv ? Math.sqrt(Math.abs(inv[0] * inv[4] - inv[1] * inv[3]) * ((w * h) / (iw * ih))) : 0;
+    }
+  }
+  return 0;
+}
+
 /** Figma's blur radius (CSS blur) to a Gaussian sigma. */
 export const sigma = (radius: number): number => radius / 2;
 
@@ -238,7 +259,12 @@ export class PaintKit {
   }
 
   /** An image shader in the node's own space (w × h box), following the paint's scale mode. */
-  image(p: DeepReadonly<ImagePaint>, img: Image, w: number, h: number): Shader | null {
+  /**
+   * `img` is a smaller copy (level) of the paint's image when `factor` > 1:
+   * the image's width over the copy's. `mipmaps` false samples without them
+   * (for textures, where Skia would rebuild them on every draw).
+   */
+  image(p: DeepReadonly<ImagePaint>, img: Image, w: number, h: number, factor = 1, mipmaps = true): Shader | null {
     const ck = this.ck;
     const iw = img.width();
     const ih = img.height();
@@ -254,7 +280,7 @@ export class PaintKit {
         break;
       }
       case "TILE": {
-        const s = p.scalingFactor ?? 1;
+        const s = (p.scalingFactor ?? 1) * factor; // tile size in the full image's pixels
         local = [s, 0, 0, 0, s, 0, 0, 0, 1];
         tile = T.Repeat;
         break;
@@ -264,6 +290,6 @@ export class PaintKit {
         break;
     }
     if (!local) return null;
-    return img.makeShaderOptions(tile, tile, ck.FilterMode.Linear, ck.MipmapMode.Linear, local);
+    return img.makeShaderOptions(tile, tile, ck.FilterMode.Linear, mipmaps ? ck.MipmapMode.Linear : ck.MipmapMode.None, local);
   }
 }

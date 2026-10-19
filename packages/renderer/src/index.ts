@@ -19,6 +19,7 @@ import {
   PATH_LINE,
   PATH_MOVE,
   type Color,
+  imageDimensions,
   type Effect,
   type NodeId,
   type Paint as FilePaint,
@@ -27,7 +28,8 @@ import {
 import type { Canvas, CanvasKit, FontWeight, Image, ImageFilter, Paint, Paragraph, Path, SkPicture, Surface, TypefaceFontProvider } from "canvaskit-wasm";
 import { shapeGeometry, type ShapeGeometry } from "./geometry.js";
 import { CLIPPING, hitTest, type NodeSource } from "./hit-test.js";
-import { PaintKit, sigma, type Box } from "./paint.js";
+import { imagePixelScale, PaintKit, sigma, type Box } from "./paint.js";
+import { pixelBlur, pixelShadow, type PixelTarget } from "./spread.js";
 
 export { CLIPPING, DEFAULT_HIT_TOLERANCE, hitTest, insideShape, toLocal, type HitTestOptions, type NodeSource } from "./hit-test.js";
 export { flatten, insideFill, nearStroke, PATH_TYPES, roundedPolygon, shapeGeometry, starPoints, type FillPath, type Flattened, type ShapeGeometry } from "./geometry.js";
@@ -73,6 +75,8 @@ export interface RenderSource extends NodeSource {
   subscribe(listener: (change: Change) => void): () => void;
   /** Image files by `imageHash` (`Document.image`): the default source for IMAGE paints. */
   image?(hash: string): Uint8Array | undefined;
+  /** Called for each image added from now on (`Document.subscribeImages`), so layers showing it as missing can draw it. */
+  subscribeImages?(listener: (hash: string) => void): () => void;
 }
 
 /** One line of laid-out text, in the TEXT node's own space. */
@@ -82,6 +86,12 @@ export interface TextLine {
   left: number;
   /** Baseline, from the top of the node. */
   baseline: number;
+  /** How far the line reaches above its baseline (positive). */
+  ascent?: number;
+  /** How far the line reaches below its baseline (positive). */
+  descent?: number;
+  /** The line's width: it runs from `left` to `left + width`. */
+  width?: number;
 }
 
 export interface RendererOptions {
@@ -140,6 +150,12 @@ interface ImageEntry {
   /** "failed": the file isn't an image CanvasKit can decode; "missing": the source has no such file. */
   state: "loading" | "ready" | "failed" | "missing";
   image: Image | null;
+  /**
+   * Very large images on the GPU: `image` (a texture, uploaded once) and
+   * copies of half the size each, made when first drawn that small. Image
+   * shaders sample the level nearest the drawn size, without mipmaps.
+   */
+  levels?: Image[];
   /** Top-level children recorded while it was loading: re-recorded once it is ready. */
   waiting: Set<NodeId>;
 }
@@ -196,6 +212,7 @@ export class PageRenderer {
   /** Every registered family after the first, tried in order for glyphs the others lack (e.g. a Latin Extended subset). */
   private readonly moreFamilies: string[] = [];
   private readonly unsubscribe: () => void;
+  private readonly unsubscribeImages: (() => void) | undefined;
   private readonly imageSource: ImageSource | null;
   private readonly onImageReady: (() => void) | undefined;
   private readonly images = new Map<string, ImageEntry>();
@@ -207,6 +224,17 @@ export class PageRenderer {
   /** True inside `drawSubtree`: images are decoded on the spot rather than after the recording. */
   private decodeNow = false;
   private disposed = false;
+  /** The zoom recordings are made for, as a power of two (pixel effects on the CPU and very large images depend on it). */
+  private zoomStep = 1;
+  /** Top-level children whose recording depends on `zoomStep`: re-recorded when it changes. */
+  private readonly zoomDependent = new Set<NodeId>();
+  /**
+   * Device pixels per local unit of what is being drawn, and the device pixels
+   * drawn at most (the surface): set by `drawSubtree` from its canvas, and for
+   * recordings from the pixel density and `zoomStep`.
+   */
+  private drawScale = 1;
+  private drawArea = 0;
 
   constructor(
     private readonly ck: CanvasKit,
@@ -232,6 +260,7 @@ export class PageRenderer {
     this.imageSource = options.images ?? (typeof doc.image === "function" ? (hash: string) => doc.image?.(hash) : null);
     this.onImageReady = options.onImageReady;
     this.unsubscribe = doc.subscribe((change) => this.invalidate(change));
+    this.unsubscribeImages = doc.subscribeImages?.((hash) => this.imageAdded(hash));
   }
 
   setPage(pageId: NodeId): void {
@@ -249,6 +278,15 @@ export class PageRenderer {
   render(camera: Camera): FrameStats {
     let recordMs = 0;
     let recorded = 0;
+    // Some layers are recorded for the zoom: on the CPU, those with pixel effects (see `pixelTarget`);
+    // anywhere, those with very large images (see `imageShader`). Re-record them when it changes by a
+    // factor of two or more.
+    const step = 2 ** Math.round(Math.log2(Math.min(256, Math.max(1 / 256, camera.zoom || 1))));
+    if (step !== this.zoomStep) {
+      this.zoomStep = step;
+      for (const id of this.zoomDependent) this.stale.set(id, null);
+      if (this.zoomDependent.size) this.dirty = true;
+    }
     if (this.dirty || !this.picture) {
       const t = performance.now();
       recorded = this.record();
@@ -309,6 +347,10 @@ export class PageRenderer {
     const count = this.nodeCount;
     this.nodeCount = 0;
     this.decodeNow = true;
+    const m = canvas.getTotalMatrix();
+    this.drawScale = Math.sqrt(Math.abs((m[0] as number) * (m[4] as number) - (m[1] as number) * (m[3] as number))) || 1;
+    const clip = canvas.getDeviceClipBounds();
+    this.drawArea = Math.max(0, (clip[2] as number) - (clip[0] as number)) * Math.max(0, (clip[3] as number) - (clip[1] as number));
     try {
       this.drawNode(canvas, n);
     } finally {
@@ -334,6 +376,9 @@ export class PageRenderer {
       text: text.slice(m.startIndex, m.endExcludingWhitespaces).replace(/[\r\n\u2028\u2029]+$/, ""),
       left: m.left,
       baseline: m.baseline,
+      ascent: m.ascent,
+      descent: m.descent,
+      width: m.width,
     }));
     paragraph.delete();
     return lines;
@@ -342,10 +387,11 @@ export class PageRenderer {
   dispose(): void {
     this.disposed = true;
     this.unsubscribe();
+    this.unsubscribeImages?.();
     this.picture?.delete();
     for (const c of this.children.values()) dropChild(c);
     this.children.clear();
-    for (const e of this.images.values()) e.image?.delete();
+    for (const e of this.images.values()) freeImage(e);
     this.images.clear();
     this.fonts?.delete();
     this.paint.delete();
@@ -409,12 +455,15 @@ export class PageRenderer {
 
   /** Re-record stale top-level children, then the page picture. Returns how many children were recorded. */
   private record(): number {
+    this.drawScale = this.dpr * this.zoomStep;
+    this.drawArea = this.surface.width() * this.surface.height();
     const top = this.doc.children(this.pageId);
     const live = new Set(top.map((n) => n.id));
     for (const [id, c] of this.children) {
       if (live.has(id)) continue;
       dropChild(c);
       this.children.delete(id);
+      this.zoomDependent.delete(id);
     }
     let recorded = 0;
     for (const n of top) {
@@ -424,6 +473,8 @@ export class PageRenderer {
       recorded++;
       // Every picture recorded for `n` (its chunks too) names it, so an image still loading re-records it once ready.
       this.recordingTop = n.id;
+      // Recording it again finds out again whether it depends on the zoom (only a partial re-record keeps the old answer).
+      if (!(!this.all && stale && cached?.chunks)) this.zoomDependent.delete(n.id);
       try {
         if (!this.all && stale && cached?.chunks && n.visible && n.opacity > 0) {
           this.rerecordChunks(n, cached, stale);
@@ -567,7 +618,7 @@ export class PageRenderer {
     }
     for (const [hash, e] of this.images) {
       if (used.has(hash) || e.state === "loading") continue;
-      e.image?.delete();
+      freeImage(e);
       this.images.delete(hash);
     }
   }
@@ -593,45 +644,72 @@ export class PageRenderer {
     // Background blur reads what is already drawn, so it goes before this node's own layer.
     if (fx?.backgroundBlur && outline) this.drawBackgroundBlur(canvas, outline, fx.backgroundBlur);
 
-    // Opacity, blend mode, layer blur and filtered shadows apply to the node and its children as one group, as in Figma.
-    const filter = fx ? this.layerFilter(fx, !direct) : null;
-    const blend = n.blendMode && n.blendMode !== "PASS_THROUGH" && (n.blendMode !== "NORMAL" || this.blendsInside(kids));
-    if (n.opacity < 1 || blend || filter) {
-      this.layerPaint.setAlphaf(n.opacity);
-      this.kit.setBlend(this.layerPaint, n.blendMode);
-      this.layerPaint.setImageFilter(filter);
-      canvas.saveLayer(this.layerPaint);
-      this.layerPaint.setImageFilter(null);
-      this.layerPaint.setBlendMode(this.ck.BlendMode.SrcOver);
-      filter?.delete();
-    }
-
+    // What the node draws in its own space: its shadows cast from its outline, fills, strokes, then its children inside its clip.
     const rect = this.ck.XYWHRect(0, 0, n.width, n.height);
-    const silhouette = direct && outline ? this.silhouette(n, geometry, outline) : null;
-    if (silhouette && fx) this.drawDropShadows(canvas, n, silhouette, fx.drops);
-    if (n.type === "TEXT" && this.fonts) {
-      this.drawText(canvas, n);
-    } else if (geometry) {
-      this.drawGeometry(canvas, n, geometry, direct && outline && fx ? fx.inners : [], outline);
-    } else {
-      for (const fill of n.fills) this.drawShape(canvas, n, rect, fill, false);
-      if (direct && outline && fx) this.drawInnerShadows(canvas, outline, fx.inners);
-      this.withStrokeAlign(canvas, n, this.alignedStroke(n, null) ? outline : null, (scale) => {
-        for (const stroke of n.strokes) this.drawShape(canvas, n, rect, stroke, true, scale);
-      });
-    }
-    if (silhouette && silhouette !== outline) silhouette.path.delete();
-    outline?.path.delete();
-
-    if (CLIPPING.has(n.type)) {
-      if (n.cornerRadius > 0) {
-        canvas.clipRRect(this.ck.RRectXY(rect, n.cornerRadius, n.cornerRadius), this.ck.ClipOp.Intersect, true);
+    const content = (canvas: Canvas) => {
+      const silhouette = direct && outline ? this.silhouette(n, geometry, outline) : null;
+      if (silhouette && fx) this.drawDropShadows(canvas, n, silhouette, fx.drops);
+      if (n.type === "TEXT" && this.fonts) {
+        this.drawText(canvas, n);
+      } else if (geometry) {
+        this.drawGeometry(canvas, n, geometry, direct && outline && fx ? fx.inners : [], outline);
       } else {
-        canvas.clipRect(rect, this.ck.ClipOp.Intersect, true);
+        for (const fill of n.fills) this.drawShape(canvas, n, rect, fill, false);
+        if (direct && outline && fx) this.drawInnerShadows(canvas, outline, fx.inners);
+        this.withStrokeAlign(canvas, n, this.alignedStroke(n, null) ? outline : null, (scale) => {
+          for (const stroke of n.strokes) this.drawShape(canvas, n, rect, stroke, true, scale);
+        });
       }
+      if (silhouette && silhouette !== outline) silhouette.path.delete();
+      if (CLIPPING.has(n.type)) {
+        if (n.cornerRadius > 0) {
+          canvas.clipRRect(this.ck.RRectXY(rect, n.cornerRadius, n.cornerRadius), this.ck.ClipOp.Intersect, true);
+        } else {
+          canvas.clipRect(rect, this.ck.ClipOp.Intersect, true);
+        }
+      }
+      if (children) children(canvas);
+      else for (const child of kids) this.drawNode(canvas, child);
+    };
+
+    // Opacity, blend mode, layer blur and filtered shadows apply to the node and its children as one group, as in Figma.
+    const filtered = !!fx && (fx.layerBlur > 0 || (!direct && (fx.drops.length > 0 || fx.inners.length > 0)));
+    const blend = n.blendMode && n.blendMode !== "PASS_THROUGH" && (n.blendMode !== "NORMAL" || this.blendsInside(kids));
+    if (filtered && fx) {
+      // What the node draws is recorded first, so its layers can be bounded by it: without bounds a layer
+      // is the whole clip (the whole surface), and every filter runs over all of it, which is slow on the CPU.
+      const recorder = new this.ck.PictureRecorder();
+      content(recorder.beginRecording(EVERYWHERE(this.ck), true));
+      const picture = recorder.finishRecordingAsPicture();
+      recorder.delete();
+      const bounds = Float32Array.from(picture.cullRect());
+      const pixelShadows = !direct && (fx.drops.length > 0 || fx.inners.length > 0);
+      const grouped = n.opacity < 1 || blend || fx.layerBlur > 0;
+      if (grouped) {
+        const filters: ImageFilter[] = [];
+        const keep = (f: ImageFilter) => (filters.push(f), f);
+        const blur = fx.layerBlur > 0 ? pixelBlur(this.ck, sigma(fx.layerBlur), this.pixelTarget(bounds, 0), keep) : null;
+        this.layerPaint.setAlphaf(n.opacity);
+        this.kit.setBlend(this.layerPaint, n.blendMode);
+        this.layerPaint.setImageFilter(blur);
+        canvas.saveLayer(this.layerPaint, pixelShadows ? shadowReach(bounds, fx) : bounds);
+        this.layerPaint.setImageFilter(null);
+        this.layerPaint.setBlendMode(this.ck.BlendMode.SrcOver);
+        for (const f of filters) f.delete();
+      }
+      if (pixelShadows) this.drawPixelDropShadows(canvas, picture, bounds, fx.drops);
+      this.drawWithPixelInnerShadows(canvas, picture, bounds, pixelShadows ? fx.inners : []);
+      picture.delete();
+    } else {
+      if (n.opacity < 1 || blend) {
+        this.layerPaint.setAlphaf(n.opacity);
+        this.kit.setBlend(this.layerPaint, n.blendMode);
+        canvas.saveLayer(this.layerPaint);
+        this.layerPaint.setBlendMode(this.ck.BlendMode.SrcOver);
+      }
+      content(canvas);
     }
-    if (children) children(canvas);
-    else for (const child of kids) this.drawNode(canvas, child);
+    outline?.path.delete();
     canvas.restoreToCount(saved);
   }
 
@@ -700,11 +778,80 @@ export class PageRenderer {
       const bytes = this.lookupImage(paint.imageHash);
       if (bytes instanceof Uint8Array) this.decodeInto(entry, bytes);
     }
-    if (entry.state === "loading") {
-      if (this.recordingTop) entry.waiting.add(this.recordingTop);
-      return undefined;
+    // Loading: re-recorded once decoded. Missing: re-recorded if the file is added later (`imageAdded`).
+    if (this.recordingTop && (entry.state === "loading" || entry.state === "missing")) entry.waiting.add(this.recordingTop);
+    if (entry.state === "loading") return undefined;
+    if (!entry.image) return null;
+    if (!entry.levels) return this.kit.image(paint, entry.image, n.width, n.height);
+    // A very large image: the level whose pixels are closest to the device's (within a factor of 1.4), so it neither aliases nor blurs.
+    if (this.recordingTop && !this.decodeNow) this.zoomDependent.add(this.recordingTop);
+    const perPixel = imagePixelScale(paint, entry.image.width(), entry.image.height(), n.width, n.height) * this.drawScale;
+    const level = perPixel > 0 ? Math.max(0, Math.round(Math.log2(1 / perPixel))) : 0;
+    const { image, factor } = this.imageLevel(entry, level);
+    return this.kit.image(paint, image, n.width, n.height, factor, false);
+  }
+
+  /** Level `level` of a very large image (half the size per level, down to 64 px), made on the GPU when first asked for. */
+  private imageLevel(e: ImageEntry, level: number): { image: Image; factor: number } {
+    const levels = e.levels as Image[];
+    const ck = this.ck;
+    while (levels.length <= level) {
+      const prev = levels[levels.length - 1] as Image;
+      if (prev.width() <= 64 && prev.height() <= 64) break;
+      const w = Math.max(1, Math.ceil(prev.width() / 2));
+      const h = Math.max(1, Math.ceil(prev.height() / 2));
+      const surface = this.surface.makeSurface({ width: w, height: h, colorType: ck.ColorType.RGBA_8888, alphaType: ck.AlphaType.Premul, colorSpace: ck.ColorSpace.SRGB });
+      if (!surface) break;
+      const canvas = surface.getCanvas();
+      canvas.clear(ck.TRANSPARENT);
+      // Halving with bilinear sampling averages each 2 × 2 block exactly.
+      canvas.drawImageRectOptions(prev, ck.XYWHRect(0, 0, prev.width(), prev.height()), ck.XYWHRect(0, 0, w, h), ck.FilterMode.Linear, ck.MipmapMode.None, null);
+      levels.push(surface.makeImageSnapshot());
+      surface.delete();
     }
-    return entry.image ? this.kit.image(paint, entry.image, n.width, n.height) : null;
+    const i = Math.min(level, levels.length - 1);
+    const image = levels[i] as Image;
+    return { image, factor: (levels[0] as Image).width() / image.width() };
+  }
+
+  /**
+   * An image was added to the document: if layers drew it as missing,
+   * forget that and re-record them, so the next frame decodes it.
+   */
+  private imageAdded(hash: string): void {
+    const entry = this.images.get(hash);
+    if (this.disposed || entry?.state !== "missing") return;
+    this.images.delete(hash);
+    for (const id of entry.waiting) this.stale.set(id, null);
+    this.dirty = true;
+    this.onImageReady?.();
+  }
+
+  /**
+   * On the GPU, in a browser: decode `bytes` off the main thread
+   * (`createImageBitmap`) and upload it once, as a texture-backed image. A
+   * CanvasKit-decoded image this big would be decoded on the main thread at
+   * its first frame (800 ms for 8000 × 8000), and uploaded again on every
+   * frame: with its mipmaps it doesn't stay in the GPU's resource cache. A
+   * texture is never evicted, and `imageLevel` stands in for mipmaps (Skia
+   * would rebuild those for a texture on every draw). Null when that isn't
+   * possible: the caller decodes with CanvasKit.
+   */
+  private async decodeToTexture(bytes: Uint8Array): Promise<Image | null> {
+    if (typeof createImageBitmap !== "function" || typeof Blob !== "function" || !this.surface.reportBackendTypeIsGPU()) return null;
+    let bitmap: ImageBitmap | null = null;
+    try {
+      // Unpremultiplied, as WebGL uploads it by default: no rounding through premultiplied alpha.
+      bitmap = await createImageBitmap(new Blob([bytes as Uint8Array<ArrayBuffer>]), { premultiplyAlpha: "none" });
+      if (this.disposed || !this.surface.reportBackendTypeIsGPU()) return null;
+      const ck = this.ck;
+      const info = { width: bitmap.width, height: bitmap.height, alphaType: ck.AlphaType.Unpremul, colorType: ck.ColorType.RGBA_8888, colorSpace: ck.ColorSpace.SRGB };
+      return this.surface.makeImageFromTextureSource(bitmap, info, false);
+    } catch {
+      return null; // not decodable by the browser, or too big for a texture
+    } finally {
+      bitmap?.close();
+    }
   }
 
   private decodeInto(e: ImageEntry, bytes: Uint8Array | null | undefined): void {
@@ -724,15 +871,18 @@ export class PageRenderer {
 
   private imageEntry(hash: string): ImageEntry {
     let entry = this.images.get(hash);
+    // Layers that drew it as missing: re-recorded once it decodes.
+    let waiting: Set<NodeId> | undefined;
     // A missing image may have been added since (e.g. `Document.addImage` after the paint): look again, synchronously.
     if (entry?.state === "missing") {
       const again = this.lookupImage(hash);
       if (!(again instanceof Uint8Array)) return entry;
       this.images.delete(hash);
+      waiting = entry.waiting;
       entry = undefined;
     }
     if (entry) return entry;
-    const e: ImageEntry = { state: "loading", image: null, waiting: new Set() };
+    const e: ImageEntry = { state: "loading", image: null, waiting: waiting ?? new Set() };
     this.images.set(hash, e);
     const found = this.lookupImage(hash);
     if (!found) {
@@ -749,6 +899,19 @@ export class PageRenderer {
       // Decoded after the recording that asked, never inside it.
       await Promise.resolve();
       if (this.disposed) return;
+      const size = bytes && e.state === "loading" ? imageDimensions(bytes) : null;
+      const texture = size && size.width * size.height > BIG_IMAGE_PIXELS ? await this.decodeToTexture(bytes as Uint8Array) : null;
+      if (this.disposed) {
+        texture?.delete();
+        return;
+      }
+      if (texture && e.state === "loading") {
+        e.image = texture;
+        e.levels = [texture];
+        e.state = "ready";
+      } else {
+        texture?.delete();
+      }
       if (e.state === "loading") this.decodeInto(e, bytes);
       for (const id of e.waiting) this.stale.set(id, null); // re-record the whole child: its chunks may hold the image too
       e.waiting.clear();
@@ -1051,47 +1214,104 @@ export class PageRenderer {
   }
 
   /**
-   * The image filter for the node's layer: layer blur, plus (with `shadows`)
-   * drop and inner shadows cast from the layer's own pixels, for nodes
-   * without one outline of their own (groups, text, frames without a fill).
+   * Drop shadows cast from what a node without one outline draws (groups,
+   * text, frames without a fill), recorded in `picture`, bottom first. Unless
+   * a shadow shows behind the node, it is knocked out where the node draws:
+   * that only matters inside the node's bounds, so only that part of the
+   * shadow goes through the extra blend.
    */
-  private layerFilter(fx: NodeEffects, shadows: boolean): ImageFilter | null {
+  private drawPixelDropShadows(canvas: Canvas, picture: SkPicture, bounds: Float32Array, drops: readonly Shadow[]): void {
+    const ck = this.ck;
+    const paint = this.layerPaint;
+    paint.setAlphaf(1);
+    for (const d of drops) {
+      const filters: ImageFilter[] = [];
+      const keep = (f: ImageFilter) => (filters.push(f), f);
+      const spec = { dx: d.offset.x, dy: d.offset.y, sigma: sigma(d.radius), spread: d.spread ?? 0, color: ck.Color4f(d.color.r, d.color.g, d.color.b, d.color.a) };
+      const shadow = pixelShadow(ck, spec, this.pixelTarget(bounds, spec.spread), keep);
+      const layer = (filter: ImageFilter, clip?: "inside" | "outside") => {
+        canvas.save();
+        // Hard-edged clips, so the two parts meet without a seam.
+        if (clip) canvas.clipRect(bounds, clip === "inside" ? ck.ClipOp.Intersect : ck.ClipOp.Difference, false);
+        paint.setImageFilter(filter);
+        canvas.saveLayer(paint, bounds);
+        paint.setImageFilter(null);
+        canvas.drawPicture(picture);
+        canvas.restore();
+        canvas.restore();
+      };
+      if (d.showShadowBehindNode) {
+        layer(shadow);
+      } else {
+        layer(shadow, "outside");
+        layer(keep(ck.ImageFilter.MakeBlend(ck.BlendMode.DstOut, shadow, null)), "inside");
+      }
+      for (const f of filters) f.delete();
+    }
+  }
+
+  /**
+   * What a node without one outline draws (`picture`), with its inner
+   * shadows on top. Each shadow is its colour wherever the node draws, less
+   * the blurred, moved node (the hole it is cast around, which spread
+   * shrinks), laid over the node with SrcATop, so the node's alpha stays as
+   * it is. Built from the node's own pixels, so it stays within its bounds.
+   */
+  private drawWithPixelInnerShadows(canvas: Canvas, picture: SkPicture, bounds: Float32Array, inners: readonly Shadow[]): void {
+    if (!inners.length) {
+      canvas.drawPicture(picture);
+      return;
+    }
     const ck = this.ck;
     const IF = ck.ImageFilter;
-    const made: ImageFilter[] = [];
-    const keep = (f: ImageFilter) => (made.push(f), f);
-    let result: ImageFilter | null = null; // null: the layer itself
-    if (shadows) {
-      for (const d of fx.inners) {
-        // The layer's outside as an opaque shape: alpha inverted.
-        const inverted = keep(IF.MakeColorFilter(ck.ColorFilter.MakeMatrix(INVERT_ALPHA), null));
-        const s = d.spread ?? 0;
-        const grown = s > 0 ? keep(IF.MakeDilate(s, s, inverted)) : s < 0 ? keep(IF.MakeErode(-s, -s, inverted)) : inverted;
-        const shadow = keep(IF.MakeDropShadowOnly(d.offset.x, d.offset.y, sigma(d.radius), sigma(d.radius), ck.Color4f(d.color.r, d.color.g, d.color.b, d.color.a), grown));
-        result = keep(IF.MakeBlend(ck.BlendMode.SrcATop, result, shadow));
-      }
-      let under: ImageFilter | null = null;
-      for (const d of fx.drops) {
-        const s = d.spread ?? 0;
-        const grown = s > 0 ? keep(IF.MakeDilate(s, s, null)) : s < 0 ? keep(IF.MakeErode(-s, -s, null)) : null;
-        let shadow = keep(IF.MakeDropShadowOnly(d.offset.x, d.offset.y, sigma(d.radius), sigma(d.radius), ck.Color4f(d.color.r, d.color.g, d.color.b, d.color.a), grown));
-        // Not behind the layer: only where the layer is transparent.
-        if (!d.showShadowBehindNode) shadow = keep(IF.MakeBlend(ck.BlendMode.DstOut, shadow, null));
-        under = under ? keep(IF.MakeBlend(ck.BlendMode.SrcOver, under, shadow)) : shadow;
-      }
-      if (under) result = keep(IF.MakeBlend(ck.BlendMode.SrcOver, under, result));
+    const filters: ImageFilter[] = [];
+    const keep = (f: ImageFilter) => (filters.push(f), f);
+    let result: ImageFilter | null = null; // null: the node itself
+    for (const d of inners) {
+      const spec = { dx: d.offset.x, dy: d.offset.y, sigma: sigma(d.radius), spread: -(d.spread ?? 0), color: ck.BLACK };
+      const hole = pixelShadow(ck, spec, this.pixelTarget(bounds, spec.spread), keep);
+      // The shadow's colour wherever the node isn't fully transparent (bounded, unlike a flood of colour).
+      const { r, g, b, a } = d.color;
+      const flood = ck.ColorFilter.MakeMatrix([0, 0, 0, 0, r, 0, 0, 0, 0, g, 0, 0, 0, 0, b, 0, 0, 0, 255, 0]);
+      const fade = ck.ColorFilter.MakeMatrix([1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, a, 0]);
+      const colour = keep(IF.MakeColorFilter(fade, keep(IF.MakeColorFilter(flood, null))));
+      flood.delete();
+      fade.delete();
+      const shadow = keep(IF.MakeBlend(ck.BlendMode.DstOut, colour, hole));
+      result = keep(IF.MakeBlend(ck.BlendMode.SrcATop, result, shadow));
     }
-    if (fx.layerBlur > 0) result = keep(IF.MakeBlur(sigma(fx.layerBlur), sigma(fx.layerBlur), ck.TileMode.Decal, result));
-    // Every filter holds references to its inputs, so only the outermost handle is kept.
-    for (const f of made) if (f !== result) f.delete();
-    return result;
+    this.layerPaint.setAlphaf(1);
+    this.layerPaint.setImageFilter(result);
+    canvas.saveLayer(this.layerPaint, bounds);
+    this.layerPaint.setImageFilter(null);
+    canvas.drawPicture(picture);
+    canvas.restore();
+    for (const f of filters) f.delete();
+  }
+
+  /**
+   * Where pixel effects run (see `spread.ts`): device pixels per local unit
+   * (`drawScale`: layers never scale, only the canvas does), the device
+   * pixels a layer drawing `bounds` covers once grown by `spread` (at most
+   * the surface), and whether on the GPU.
+   */
+  private pixelTarget(bounds: Float32Array, spread: number): PixelTarget {
+    // Export draws straight onto its own (CPU) canvas; recordings replay on the editor's surface.
+    const gpu = !this.decodeNow && this.surface.reportBackendTypeIsGPU();
+    // On the CPU, recordings are made for the zoom (see `render`).
+    if (!gpu && !this.decodeNow && this.recordingTop) this.zoomDependent.add(this.recordingTop);
+    const scale = this.drawScale;
+    const pad = Math.max(0, spread);
+    const w = Math.max(0, (bounds[2] as number) - (bounds[0] as number) + 2 * pad);
+    const h = Math.max(0, (bounds[3] as number) - (bounds[1] as number) + 2 * pad);
+    return { scale, area: Math.min(w * h * scale * scale, this.drawArea || Infinity), gpu };
   }
 
   // ---- text ----
 
   /**
    * Left-aligned text wrapped at the node's width, drawn once per visible
-   * fill. Text strokes (glyph outlines) come with the full text engine.
+   * fill, then its strokes.
    */
   private drawText(canvas: Canvas, n: ReadonlyNode): void {
     if (!n.characters || !this.fonts) return;
@@ -1104,6 +1324,59 @@ export class PageRenderer {
       const paragraph = this.paragraph(n, color, plain ? null : this.paint);
       canvas.drawParagraph(paragraph, 0, 0);
       paragraph.delete();
+    }
+    this.drawTextStrokes(canvas, n);
+  }
+
+  /**
+   * Text strokes, over the fills (as in Figma): the glyph outlines stroked
+   * with each visible stroke paint. Centred strokes are drawn as they are.
+   * Inside and outside strokes are drawn at twice the weight in a layer, then
+   * cut to the inside (DstIn) or the outside (DstOut) of the glyphs, drawn
+   * solid, so they cover exactly their side of the outline.
+   */
+  private drawTextStrokes(canvas: Canvas, n: ReadonlyNode): void {
+    if (!(n.strokeWeight > 0) || !n.strokes.some((p) => p.visible)) return;
+    const ck = this.ck;
+    const align = n.strokeAlign === "INSIDE" || n.strokeAlign === "OUTSIDE" ? n.strokeAlign : "CENTER";
+    const scale = align === "CENTER" ? 1 : 2;
+    const black = { r: 0, g: 0, b: 0, a: 1 };
+    let bounds: Float32Array | null = null;
+    for (const stroke of n.strokes) {
+      if (align === "CENTER") {
+        if (!this.usePaint(n, stroke, true)) continue;
+        const paragraph = this.paragraph(n, black, this.paint);
+        canvas.drawParagraph(paragraph, 0, 0);
+        paragraph.delete();
+        continue;
+      }
+      if (!stroke.visible) continue;
+      // The glyphs, solid: what the doubled stroke is cut to.
+      const glyphs = this.paragraph(n, black, null);
+      if (!bounds) {
+        // The text's box and its lines (which may run past it), plus the stroke and its miters.
+        const pad = n.strokeWeight * scale * 4 + 1;
+        const w = Math.max(n.width, glyphs.getMaxIntrinsicWidth(), glyphs.getLongestLine());
+        const h = Math.max(n.height, glyphs.getHeight());
+        bounds = ck.LTRBRect(-pad, -pad, w + pad, h + pad);
+      }
+      // The layer blends with what is below in the stroke's blend mode; inside it, the stroke draws normally.
+      this.kit.setBlend(this.layerPaint, stroke.blendMode);
+      this.layerPaint.setAlphaf(1);
+      canvas.saveLayer(this.layerPaint, bounds);
+      this.layerPaint.setBlendMode(ck.BlendMode.SrcOver);
+      if (this.usePaint(n, { ...stroke, blendMode: "NORMAL" }, true, scale)) {
+        const outline = this.paragraph(n, black, this.paint);
+        canvas.drawParagraph(outline, 0, 0);
+        outline.delete();
+      }
+      this.plainPaint.setBlendMode(align === "INSIDE" ? ck.BlendMode.DstIn : ck.BlendMode.DstOut);
+      canvas.saveLayer(this.plainPaint, bounds);
+      this.plainPaint.setBlendMode(ck.BlendMode.SrcOver);
+      canvas.drawParagraph(glyphs, 0, 0);
+      canvas.restore();
+      canvas.restore();
+      glyphs.delete();
     }
   }
 
@@ -1154,8 +1427,29 @@ export class PageRenderer {
   }
 }
 
-/** Colour matrix: RGB to 0, alpha to 1 − alpha (the outside of a layer, as an opaque shape). */
-const INVERT_ALPHA = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 1];
+/** Images with more pixels than this (2048 × 2048) are decoded off the main thread and kept as GPU textures, where there is a GPU. */
+const BIG_IMAGE_PIXELS = 2048 * 2048;
+
+/** Free a decoded image and its smaller levels. */
+function freeImage(e: ImageEntry): void {
+  for (const level of e.levels ?? []) if (level !== e.image) level.delete();
+  e.image?.delete();
+  delete e.levels;
+}
+
+/** `bounds` grown by as far as the node's drop shadows reach (offset, spread, 3 sigma). */
+function shadowReach(bounds: Float32Array, fx: NodeEffects): Float32Array {
+  const [x0, y0, x1, y1] = bounds as unknown as [number, number, number, number];
+  let l = x0, t = y0, r = x1, b = y1;
+  for (const d of fx.drops) {
+    const grow = Math.max(0, d.spread ?? 0) + 3 * sigma(d.radius) + 1;
+    l = Math.min(l, x0 + d.offset.x - grow);
+    t = Math.min(t, y0 + d.offset.y - grow);
+    r = Math.max(r, x1 + d.offset.x + grow);
+    b = Math.max(b, y1 + d.offset.y + grow);
+  }
+  return Float32Array.of(l, t, r, b);
+}
 
 function nodeEffects(effects: DeepReadonly<Effect[]>): NodeEffects | null {
   const fx: NodeEffects = { drops: [], inners: [], layerBlur: 0, backgroundBlur: 0 };
