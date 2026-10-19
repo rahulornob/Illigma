@@ -14,6 +14,7 @@ import { measureBetween } from "./snap/measure";
 import { droppable, reparent } from "./snap/drop";
 import { rememberDuplicate } from "./snap/repeat";
 import { SNAP_PX } from "./snap/snap";
+import { snapToObjects } from "./snap/settings";
 import { fitRect, zoomStep } from "./camera/zoom";
 import {
   duplicateLayers,
@@ -801,17 +802,17 @@ export function Canvas(props: CanvasProps) {
         const t = SNAP_PX / l.camera.zoom;
         if (hx) {
           const edge = hx > 0 ? box.x + box.width : box.x;
-          dx = g.assist.coordinate("x", edge + dx, t, !p.free) - edge;
+          dx = g.assist.coordinate("x", edge + dx, t, !p.free && snapToObjects()) - edge;
         }
         if (hy) {
           const edge = hy > 0 ? box.y + box.height : box.y;
-          dy = g.assist.coordinate("y", edge + dy, t, !p.free) - edge;
+          dy = g.assist.coordinate("y", edge + dy, t, !p.free && snapToObjects()) - edge;
         }
         const x1 = hx < 0 ? box.x + dx : box.x;
         const x2 = hx > 0 ? box.x + box.width + dx : box.x + box.width;
         const y1 = hy < 0 ? box.y + dy : box.y;
         const y2 = hy > 0 ? box.y + box.height + dy : box.y + box.height;
-        g.assist.showFor(rectFromPoints(x1, y1, x2, y2), !p.free && !p.shift);
+        g.assist.showFor(rectFromPoints(x1, y1, x2, y2), !p.free && !p.shift && snapToObjects());
         l.guides = g.assist.layer;
       } else l.guides = null;
       g.edit.update((tx) => resizeBy(tx, d, g.starts, g.handle, dx, dy, { keepRatio: p.shift, fromCenter: p.alt, constraints: !p.meta }));
@@ -1100,7 +1101,7 @@ export function Canvas(props: CanvasProps) {
     const { doc: d, pageId: page } = l.props;
     const inside = frameAt(d, page, raw.x, raw.y);
     const assist = new EdgeAssist(d, [], inside ? [page, inside] : [page]);
-    const w = assist.point(raw.x, raw.y, SNAP_PX / l.camera.zoom, !(e.ctrlKey || e.metaKey));
+    const w = assist.point(raw.x, raw.y, SNAP_PX / l.camera.zoom, !(e.ctrlKey || e.metaKey) && snapToObjects());
     l.gesture = { kind: "draw", tool: l.props.tool, wx: w.x, wy: w.y, sx, sy, assist };
   };
 
@@ -1213,7 +1214,7 @@ export function Canvas(props: CanvasProps) {
       cur.lastY = sy;
     } else if (cur?.kind === "draw") {
       const raw = toWorld(sx, sy);
-      const w = e.shiftKey ? raw : cur.assist.point(raw.x, raw.y, SNAP_PX / l.camera.zoom, !(e.ctrlKey || e.metaKey));
+      const w = e.shiftKey ? raw : cur.assist.point(raw.x, raw.y, SNAP_PX / l.camera.zoom, !(e.ctrlKey || e.metaKey) && snapToObjects());
       l.guides = e.shiftKey ? null : cur.assist.layer;
       let dx = w.x - cur.wx;
       let dy = w.y - cur.wy;
@@ -1459,7 +1460,7 @@ export function Canvas(props: CanvasProps) {
 
 /** Modifiers for snapping and dropping. */
 function mods(p: Pointer): Mods {
-  return { snap: !p.free, keep: false, force: p.meta };
+  return { snap: !p.free && snapToObjects(), keep: false, force: p.meta };
 }
 
 /** The copy's id for an original, made once per drag so live updates keep it. */
