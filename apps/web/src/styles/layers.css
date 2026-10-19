@@ -55,7 +55,7 @@
 .row-chevron {
   width: 16px;
   height: 16px;
-  margin-left: 4px;
+  margin-left: -4px;
   flex: none;
   display: grid;
   place-items: center;

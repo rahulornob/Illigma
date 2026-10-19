@@ -156,7 +156,7 @@ const LayerRow = memo(function LayerRow({ row, index, selected, tabbable, height
       aria-posinset={row.posinset}
       aria-expanded={row.hasChildren ? !row.collapsed : undefined}
       aria-label={`${row.name}, ${row.type.toLowerCase()}${row.visible ? "" : ", hidden"}${row.locked ? ", locked" : ""}`}
-      style={{ position: "absolute", top: index * height, left: 0, paddingLeft: row.depth * 16 }}
+      style={{ position: "absolute", top: index * height, left: 0, paddingLeft: 8 + row.depth * 16 }}
       onClick={(e) => actions.click(e, index)}
       onPointerDown={(e) => actions.pointerDown(e, index)}
       onDoubleClick={(e) => {
