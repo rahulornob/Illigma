@@ -80,6 +80,7 @@ export default defineConfig({
       "@illigma/layout": src("layout"),
       "@illigma/renderer": src("renderer"),
       "@illigma/host-web": src("host-web"),
+      "@illigma/export": src("export"),
     },
   },
   build: { target: "es2022", sourcemap: true },
