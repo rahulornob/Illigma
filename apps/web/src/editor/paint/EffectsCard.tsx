@@ -1,11 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Document, ReadonlyNode } from "@illigma/core";
 import type { Effect, EffectType, Paint, ShadowEffect } from "@illigma/format";
 import { EFFECT_TYPES, PAINT_LIMITS } from "@illigma/format";
 import { MenuButton } from "../../ui/Menu";
 import { NumberField } from "../../ui/NumberField";
 import { ColorPicker } from "./ColorPicker";
-import { cssColor, parseHex, toHex } from "./color";
+import { cssColor, hexHasAlpha, parseHex, toHex } from "./color";
 import { addEffect, EditSession, effectAt, removeEffect, sharedEffects, type Patcher, type Phase } from "./edits";
 import { InlineField, parsePercent, pct } from "./fields";
 import { PaintIcon, type PaintIconName } from "./icons";
@@ -37,6 +37,8 @@ function previewStyle(e: Effect): { boxShadow?: string; filter?: string; backdro
  */
 export function EffectsCard({ doc, nodes, readOnly, onError }: { doc: Document; nodes: readonly ReadonlyNode[]; readOnly: boolean; onError(e: unknown): void }) {
   const session = useMemo(() => new EditSession(doc), [doc]);
+  // Never leave a drag open when the card goes (selection changed mid-drag): an open edit holds autosave and swallows ⌘Z.
+  useEffect(() => () => session.settle(), [session]);
   const [open, setOpen] = useState<{ index: number; anchor: HTMLElement } | null>(null);
   if (!nodes.length || nodes.some((n) => n.type === "PAGE")) return null;
   const ids = nodes.map((n) => n.id);
@@ -153,6 +155,7 @@ export function EffectsCard({ doc, nodes, readOnly, onError }: { doc: Document; 
           effect={openEffect}
           readOnly={readOnly}
           onEffect={(next, phase, label) => run(phase, label, effectAt(open.index, () => next))}
+          onSettle={() => session.settle()}
           onError={onError}
           onClose={(refocus) => {
             session.settle();
@@ -174,6 +177,7 @@ function EffectSettings({
   effect,
   readOnly,
   onEffect,
+  onSettle,
   onError,
   onClose,
 }: {
@@ -183,6 +187,8 @@ function EffectSettings({
   effect: Effect;
   readOnly: boolean;
   onEffect(next: Effect, phase: Phase, label: string): void;
+  /** End a drag still open (the colour picker closed mid-drag): keep it as one undo step. */
+  onSettle(): void;
   onError(e: unknown): void;
   onClose(refocus: boolean): void;
 }) {
@@ -260,7 +266,8 @@ function EffectSettings({
               parse={(t) => (parseHex(t) ? t : null)}
               onCommit={(t) => {
                 const c = parseHex(String(t));
-                if (c) onEffect({ ...shadow, color: { ...c, a: shadow.color.a } }, "once", `Change ${lower} colour`);
+                // #rgba and #rrggbbaa carry their own alpha; otherwise the shadow keeps its alpha.
+                if (c) onEffect({ ...shadow, color: { ...c, a: hexHasAlpha(String(t)) ? c.a : shadow.color.a } }, "once", `Change ${lower} colour`);
               }}
             />
             <InlineField
@@ -307,6 +314,7 @@ function EffectSettings({
           }}
           onError={(m) => onError(new Error(m))}
           onClose={(refocus) => {
+            onSettle();
             const el = picker;
             setPicker(null);
             if (refocus && el.isConnected) el.focus();

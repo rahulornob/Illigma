@@ -555,7 +555,11 @@ function size(v: number, notes: Notes): number {
   return MAX_SIZE;
 }
 
-/** A solid paint for a prototype colour string; [] for "none", missing or unreadable values. */
+/**
+ * A solid paint for a prototype colour string; [] for "none", missing or
+ * unreadable values. A colour's alpha (#rrggbbaa, rgba()) becomes the paint's
+ * opacity and the colour is stored opaque, as Figma and the editor keep solids.
+ */
 function paints(v: unknown, notes: Notes): Paint[] {
   if (v === undefined || v === null) return [];
   if (typeof v !== "string") {
@@ -564,7 +568,8 @@ function paints(v: unknown, notes: Notes): Paint[] {
   }
   const color = parsePrototypeColor(v);
   if (color === undefined) notes.add(/gradient/i.test(v) ? "gradients" : "badColors");
-  return color ? [{ type: "SOLID", visible: true, color }] : [];
+  if (!color) return [];
+  return [{ type: "SOLID", visible: true, color: { r: color.r, g: color.g, b: color.b, a: 1 }, ...(color.a < 1 ? { opacity: color.a } : {}) }];
 }
 
 function noteCommon(raw: Obj, known: Set<string>, notes: Notes, extraUnknown: string[] = []): void {

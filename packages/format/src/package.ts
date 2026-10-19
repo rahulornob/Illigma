@@ -53,6 +53,22 @@ export function hashImage(bytes: Uint8Array): string {
   return hash;
 }
 
+/**
+ * `hashImage` without blocking: the SHA-256 runs in the platform's native
+ * `crypto.subtle` where there is one. The result is remembered for these
+ * bytes, so `hashImage` (and `Document.addImage`) on them afterwards returns
+ * it at once. Rejects with the same `FormatError` as `hashImage`.
+ */
+export async function hashImageAsync(bytes: Uint8Array): Promise<string> {
+  const problem = imageProblem(bytes);
+  if (problem) throw new FormatError(`This image can't be used: it ${problem}.`);
+  const known = verified.get(bytes);
+  if (known) return known;
+  const hash = await sha256HexAsync(bytes);
+  verified.set(bytes, hash);
+  return hash;
+}
+
 export class FormatError extends Error {
   constructor(
     message: string,

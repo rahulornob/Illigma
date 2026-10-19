@@ -1,13 +1,13 @@
-import { useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { Document, ReadonlyNode } from "@illigma/core";
 import type { Paint } from "@illigma/format";
 import { ColorPicker, type PickerWhat } from "./ColorPicker";
-import { cssColor, parseHex, toHex } from "./color";
-import { addPaint, EditSession, movePaint, paintAt, removePaint, sharedPaints, type PaintKey, type Patcher, type Phase } from "./edits";
+import { cssColor, hexHasAlpha, parseHex, toHex } from "./color";
+import { addPaint, EditSession, movedIndex, movePaint, paintAt, removePaint, sharedPaints, type PaintKey, type Patcher, type Phase } from "./edits";
 import { InlineField, parsePercent, pct } from "./fields";
 import { PaintIcon, type PaintIconName } from "./icons";
-import { addImageFile, imageFiles, imagePaint } from "./image";
-import { cssStops, isGradient, PAINT_TYPE_LABEL } from "./paints";
+import { imageFiles, imagePaint, readImageFiles, refusalMessage, whenIdle } from "./image";
+import { cssStops, isGradient, PAINT_TYPE_LABEL, paintAlpha, setSolid, solidAlpha, withPaintOpacity } from "./paints";
 
 /** The swatch's look (`--paint`, drawn over a checkerboard): the colour, the gradient, or none for an image (a glyph shows). */
 export function swatchStyle(p: Paint): Record<string, string> {
@@ -52,12 +52,18 @@ export function PaintList({
   children?: ReactNode;
 }) {
   const session = useMemo(() => new EditSession(doc), [doc]);
+  // Never leave a drag open when the card goes (selection changed mid-drag): an open edit holds autosave and swallows ⌘Z.
+  useEffect(() => () => session.settle(), [session]);
   const ids = nodes.map((n) => n.id);
   const paints = sharedPaints(nodes, paintKey);
   const lower = noun.toLowerCase();
-  const [open, setOpen] = useState<{ index: number; anchor: HTMLElement } | null>(null);
+  /** The paint whose picker is open; `serial` names the picker, so it stays the same picker while its paint moves. */
+  const [open, setOpen] = useState<{ index: number; anchor: HTMLElement; serial: number } | null>(null);
+  const serial = useRef(0);
   const [dropAt, setDropAt] = useState<number | null>(null);
-  const reorder = useRef<{ pointer: number; from: number; y: number; moved: boolean } | null>(null);
+  /** Read out after a reorder (polite live region): "Fill moved to position 1 of 3, now Fill 1". */
+  const [announce, setAnnounce] = useState("");
+  const reorder = useRef<{ pointer: number; from: number; y: number; moved: boolean; released?: boolean } | null>(null);
   const rows = useRef<(HTMLDivElement | null)[]>([]);
   const headingId = `${paintKey}-heading`;
 
@@ -74,16 +80,21 @@ export function PaintList({
   /** Row number for array index `i`: the top paint (last in the list) is 1. */
   const rowNumber = (i: number) => count - i;
 
+  /**
+   * Images dropped on the card: on a row, the first replaces that paint; elsewhere each becomes an image
+   * paint on top, in the order dropped, all in one undo step (as Figma adds them). Files that can't be used
+   * are listed in one message; the rest are still added.
+   */
   const addImages = async (files: File[], replace: number | null) => {
-    for (const file of files) {
-      try {
-        const added = await addImageFile(doc, file);
-        if (replace !== null) run("once", `Change ${lower} image`, paintAt(paintKey, replace, (p) => imagePaint(added.hash, p)));
-        else run("once", `Add image ${lower}`, (n) => ({ [paintKey]: [...(n[paintKey] as Paint[]), imagePaint(added.hash)] }));
-      } catch (e) {
-        onError(e);
-      }
-    }
+    const { added, refused } = await readImageFiles(doc, files);
+    const refusal = refusalMessage(refused);
+    if (refusal) onError(new Error(refusal));
+    const first = added[0];
+    if (!first) return;
+    // A drag that started while the files were read ends first; the images are added after it.
+    await whenIdle(doc);
+    if (replace !== null) run("once", `Change ${lower} image`, paintAt(paintKey, replace, (p) => imagePaint(first.hash, p)));
+    else run("once", added.length === 1 ? `Add image ${lower}` : `Add ${added.length} image ${lower}s`, (n) => ({ [paintKey]: [...(n[paintKey] as Paint[]), ...added.map((a) => imagePaint(a.hash))] }));
   };
   const fileDrag = (e: DragEvent) => [...(e.dataTransfer?.types ?? [])].includes("Files");
   const dropFiles = (replace: number | null) => (e: DragEvent) => {
@@ -99,7 +110,24 @@ export function PaintList({
     void addImages(replace === null ? files : files.slice(0, 1), replace);
   };
 
-  // ---- reorder by dragging a swatch ----
+  // ---- reorder (drag a swatch, or Alt+↑ / Alt+↓) ----
+  const swatchOf = (i: number) => rows.current[i]?.querySelector<HTMLButtonElement>(".paint-swatch") ?? null;
+  /**
+   * Move paint `from` to `to` (one undo step). An open picker follows its
+   * paint (and its swatch), and the new place is read out. Returns whether it moved.
+   */
+  const reorderPaint = (from: number, to: number): boolean => {
+    const before = ids[0] ? doc.get(ids[0])?.[paintKey] : undefined;
+    run("once", `Reorder ${lower}s`, movePaint(paintKey, from, to));
+    if (!ids[0] || doc.get(ids[0])?.[paintKey] === before) return false; // nothing moved (a canvas drag holds the file)
+    setOpen((o) => {
+      if (!o) return o;
+      const index = movedIndex(o.index, from, to);
+      return index === o.index ? o : { ...o, index, anchor: swatchOf(index) ?? o.anchor };
+    });
+    setAnnounce(`${noun} moved to position ${rowNumber(to)} of ${count}, now ${noun} ${rowNumber(to)}`);
+    return true;
+  };
   const targetAt = (clientY: number): number | null => {
     let best: number | null = null;
     rows.current.forEach((el, i) => {
@@ -123,18 +151,26 @@ export function PaintList({
   };
   const swatchUp = (e: ReactPointerEvent<HTMLButtonElement>) => {
     const r = reorder.current;
-    if (!r || r.pointer !== e.pointerId) return;
+    if (!r || r.pointer !== e.pointerId || r.released) return;
     if (!r.moved) {
       reorder.current = null;
       return;
     }
+    r.released = true;
     const to = targetAt(e.clientY);
     setDropAt(null);
-    if (to !== null && to !== r.from) run("once", `Reorder ${lower}s`, movePaint(paintKey, r.from, to));
+    if (to !== null && to !== r.from) reorderPaint(r.from, to);
     // The click that follows this release must not open the picker.
     setTimeout(() => {
       reorder.current = null;
     });
+  };
+  /** Cancelled or capture lost before release: no reorder. */
+  const swatchLost = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    const r = reorder.current;
+    if (!r || r.pointer !== e.pointerId || r.released) return;
+    reorder.current = null;
+    setDropAt(null);
   };
   const swatchKey = (i: number) => (e: KeyboardEvent<HTMLButtonElement>) => {
     if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown") || readOnly) return;
@@ -143,9 +179,9 @@ export function PaintList({
     // Up the list is towards the top paint: a higher index.
     const to = e.key === "ArrowUp" ? i + 1 : i - 1;
     if (to < 0 || to >= count) return;
-    run("once", `Reorder ${lower}s`, movePaint(paintKey, i, to));
+    if (!reorderPaint(i, to)) return;
     // Keep focus on the moved row's swatch.
-    requestAnimationFrame(() => rows.current[to]?.querySelector<HTMLButtonElement>(".paint-swatch")?.focus());
+    requestAnimationFrame(() => swatchOf(to)?.focus());
   };
 
   const box = nodes[0] ? { width: nodes[0].width, height: nodes[0].height } : { width: 100, height: 100 };
@@ -200,18 +236,20 @@ export function PaintList({
                         className="paint-swatch"
                         aria-label={`${name}: ${p.type === "SOLID" ? toHex(p.color) : PAINT_TYPE_LABEL[p.type]}. Open colour picker`}
                         title={`Edit ${lower} (drag or Alt+↑ ↓ to reorder)`}
+                        aria-description={count > 1 ? "Alt+Up and Alt+Down arrows move it up or down the list" : undefined}
                         aria-haspopup="dialog"
                         aria-expanded={open?.index === i}
                         style={swatchStyle(p)}
                         onPointerDown={swatchDown(i)}
                         onPointerMove={swatchMove}
                         onPointerUp={swatchUp}
-                        onPointerCancel={swatchUp}
+                        onPointerCancel={swatchLost}
+                        onLostPointerCapture={swatchLost}
                         onKeyDown={swatchKey(i)}
                         onClick={(e) => {
                           if (reorder.current?.moved) return;
                           const anchor = e.currentTarget;
-                          setOpen((o) => (o?.index === i ? null : { index: i, anchor }));
+                          setOpen((o) => (o?.index === i ? null : { index: i, anchor, serial: ++serial.current }));
                         }}
                       >
                         {p.type === "IMAGE" && <PaintIcon name="image" size={12} />}
@@ -225,7 +263,8 @@ export function PaintList({
                           parse={(t) => (parseHex(t) ? t : null)}
                           onCommit={(t) => {
                             const c = parseHex(String(t));
-                            if (c) run("once", `Change ${lower} colour`, paintAt(paintKey, i, (q) => (q.type === "SOLID" ? { ...q, color: { ...c, a: q.color.a } } : q)));
+                            // #rgba and #rrggbbaa set the opacity too; otherwise the alpha shown stays (any alpha the colour carried is folded into the opacity).
+                            if (c) run("once", `Change ${lower} colour`, paintAt(paintKey, i, (q) => (q.type === "SOLID" ? setSolid(q, c, hexHasAlpha(String(t)) ? c.a : solidAlpha(q)) : q)));
                           }}
                         />
                       ) : (
@@ -234,7 +273,7 @@ export function PaintList({
                       <InlineField
                         label={`${name} opacity`}
                         className="paint-opacity"
-                        value={pct(p.opacity ?? 1)}
+                        value={pct(paintAlpha(p))}
                         readOnly={readOnly}
                         step={1}
                         parse={parsePercent}
@@ -242,12 +281,7 @@ export function PaintList({
                           run(
                             "once",
                             `Change ${lower} opacity`,
-                            paintAt(paintKey, i, (q) => {
-                              const next = { ...q };
-                              if ((v as number) >= 100) delete next.opacity;
-                              else next.opacity = (v as number) / 100;
-                              return next;
-                            }),
+                            paintAt(paintKey, i, (q) => (q.type === "SOLID" ? setSolid(q, q.color, (v as number) / 100) : withPaintOpacity(q, (v as number) / 100))),
                           )
                         }
                       />
@@ -269,7 +303,9 @@ export function PaintList({
                       title={`Remove ${lower}`}
                       disabled={readOnly}
                       onClick={() => {
+                        // The open picker closes with its paint, or follows its paint down the list.
                         if (open?.index === i) setOpen(null);
+                        else if (open && open.index > i) setOpen({ ...open, index: open.index - 1, anchor: swatchOf(open.index - 1) ?? open.anchor });
                         run("once", `Remove ${lower}`, removePaint(paintKey, i));
                       }}
                     >
@@ -282,9 +318,12 @@ export function PaintList({
         )
       )}
       {paints && paints.length > 0 && children}
+      <p className="sr-only" role="status" aria-live="polite">
+        {announce}
+      </p>
       {open && openPaint && (
         <ColorPicker
-          key={open.index}
+          key={open.serial}
           doc={doc}
           anchor={open.anchor}
           label={`${noun} ${rowNumber(open.index)} colour`}
