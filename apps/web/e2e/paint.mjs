@@ -37,8 +37,21 @@ await runE2E("paint", {}, async ({ browser, url, log, check, outDir, errors }) =
   const undo = () => page.keyboard.press("ControlOrMeta+z");
   const redo = () => page.keyboard.press("ControlOrMeta+Shift+z");
 
-  /** Every node on disk (all pages) and the image files saved, read straight from OPFS. */
-  const disk = (fileId) =>
+  /**
+   * Every node on disk (all pages) and the image files saved, read straight from OPFS. A read while a save
+   * holds the file fails; it is retried, so a check never fails just because it landed mid-save.
+   */
+  const disk = async (fileId) => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await readDisk(fileId);
+      } catch (e) {
+        if (attempt >= 20) throw e;
+        await page.waitForTimeout(100);
+      }
+    }
+  };
+  const readDisk = (fileId) =>
     page.evaluate(async (id) => {
       const root = await navigator.storage.getDirectory();
       const dir = await (await root.getDirectoryHandle("files")).getDirectoryHandle(id);
@@ -304,6 +317,9 @@ await runE2E("paint", {}, async ({ browser, url, log, check, outDir, errors }) =
   await banner.getByRole("button", { name: "OK" }).click();
 
   log("reload: every change is still there, images too");
+  // Reload only once the last edits are on disk (otherwise they come back as recovered edits, not in the file).
+  await saved(fileId, "Green", (n) => n.fills[0]?.type === "IMAGE", "the dropped image's layer is saved");
+  await saved(fileId, "Pasted", (n) => n.fills[0]?.type === "IMAGE", "the pasted image's layer is saved");
   let images = [];
   check(await eventually(async () => (images = (await disk(fileId)).images).length === 3, 10_000), `the three images in use are saved in the package, got ${images.join(", ")}`);
   await page.reload();
