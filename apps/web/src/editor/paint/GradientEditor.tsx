@@ -1,0 +1,206 @@
+import { useRef, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import type { ColorStop, GradientPaint } from "@illigma/format";
+import { toHex } from "./color";
+import type { Phase } from "./edits";
+import { InlineField, pct } from "./fields";
+import { PaintIcon } from "./icons";
+import { addStop, cssStops, flipStops, gradientAngle, MIN_STOPS, moveStop, removeStop, rotateGradient, sortStops } from "./paints";
+import { fractionIn } from "./drag";
+
+/** What a gradient edit changed, for the undo label. */
+export type GradientWhat = "gradient stop" | "gradient";
+
+/**
+ * The gradient's stop bar and settings (Figma's gradient row in the colour
+ * picker): click the bar to add a stop, drag a stop to move it (one undo
+ * step), select a stop to edit its colour below. Keyboard: Tab to a stop,
+ * ← → move it 1 % (Shift: 10 %), Home / End to the ends, Delete removes it
+ * (a gradient keeps two). Below: the stop's position, the angle, rotate 90°
+ * and flip.
+ */
+export function GradientEditor({
+  paint,
+  stop,
+  box,
+  readOnly,
+  onStop,
+  onPaint,
+}: {
+  paint: GradientPaint;
+  /** The selected stop (index into `gradientStops`). */
+  stop: number;
+  /** The layer's size, so the angle is the one seen on the canvas. */
+  box: { width: number; height: number };
+  readOnly: boolean;
+  onStop(index: number): void;
+  onPaint(next: GradientPaint, phase: Phase, what: GradientWhat): void;
+}) {
+  const bar = useRef<HTMLDivElement>(null);
+  const stops = paint.gradientStops as ColorStop[];
+  const drag = useRef<{ pointer: number; stops: ColorStop[]; index: number } | null>(null);
+  const order = sortStops(stops);
+  const selected = stops[stop];
+
+  const withStops = (next: ColorStop[]): GradientPaint => ({ ...paint, gradientStops: next });
+
+  const move = (index: number, position: number, phase: Phase, from = stops) => {
+    const r = moveStop(from, index, position);
+    onPaint(withStops(r.stops), phase, "gradient stop");
+    onStop(r.index);
+  };
+
+  const remove = (index: number) => {
+    const r = removeStop(stops, index);
+    if (!r || readOnly) return;
+    onPaint(withStops(r.stops), "once", "gradient stop");
+    onStop(r.index);
+  };
+
+  const add = (position: number) => {
+    if (readOnly) return;
+    const r = addStop(stops, position);
+    onPaint(withStops(r.stops), "once", "gradient stop");
+    onStop(r.index);
+  };
+
+  /** "Add stop": halfway between the selected stop and the next one (or the one before, at the end). */
+  const addNext = () => {
+    const i = order.indexOf(selected as ColorStop);
+    const a = order[i] ?? order[0];
+    const b = order[i + 1] ?? order[i - 1] ?? a;
+    add(((a?.position ?? 0) + (b?.position ?? 1)) / 2);
+  };
+
+  const onBarDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.target !== bar.current || e.button !== 0 || readOnly) return;
+    add(fractionIn(bar.current, e.clientX, e.clientY).x);
+  };
+
+  const stopDown = (index: number) => (e: ReactPointerEvent<HTMLButtonElement>) => {
+    if (e.button !== 0) return;
+    onStop(index);
+    if (readOnly) return;
+    e.preventDefault();
+    e.currentTarget.focus();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    drag.current = { pointer: e.pointerId, stops: [...stops], index };
+    onPaint(withStops(stops), "start", "gradient stop");
+  };
+  const stopMove = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    const d = drag.current;
+    if (!d || d.pointer !== e.pointerId || !bar.current) return;
+    move(d.index, fractionIn(bar.current, e.clientX, e.clientY).x, "move", d.stops);
+  };
+  const stopUp = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    const d = drag.current;
+    if (!d || d.pointer !== e.pointerId || !bar.current) return;
+    drag.current = null;
+    move(d.index, fractionIn(bar.current, e.clientX, e.clientY).x, "end", d.stops);
+  };
+
+  const stopKey = (index: number) => (e: KeyboardEvent<HTMLButtonElement>) => {
+    const s = stops[index];
+    if (!s || readOnly) return;
+    const step = e.shiftKey ? 0.1 : 0.01;
+    let to: number | null = null;
+    if (e.key === "ArrowLeft" || e.key === "ArrowDown") to = s.position - step;
+    else if (e.key === "ArrowRight" || e.key === "ArrowUp") to = s.position + step;
+    else if (e.key === "Home") to = 0;
+    else if (e.key === "End") to = 1;
+    else if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      remove(index);
+      return;
+    } else return;
+    e.preventDefault();
+    move(index, to, "once");
+  };
+
+  const angle = gradientAngle(paint, box.width, box.height);
+  const rotate = (deg: number) => onPaint({ ...paint, gradientTransform: rotateGradient(paint, deg, box.width, box.height) }, "once", "gradient");
+
+  return (
+    <div className="gradient-editor">
+      <div className="stop-bar-wrap">
+        <div ref={bar} className="stop-bar" style={{ ["--stops" as string]: `linear-gradient(90deg, ${cssStops(stops)})` }} onPointerDown={onBarDown} title="Click to add a stop">
+          {stops.map((s, i) => {
+            const rank = order.indexOf(s) + 1;
+            return (
+              <button
+                key={i}
+                type="button"
+                className="stop-handle"
+                role="slider"
+                aria-label={`Gradient stop ${rank} of ${stops.length}`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(s.position * 100)}
+                aria-valuetext={`${pct(s.position)}, ${toHex(s.color)}`}
+                aria-pressed={undefined}
+                data-selected={i === stop || undefined}
+                style={{ left: `${s.position * 100}%`, ["--stop" as string]: `rgb(${Math.round(s.color.r * 255)}, ${Math.round(s.color.g * 255)}, ${Math.round(s.color.b * 255)})` }}
+                onFocus={() => onStop(i)}
+                onPointerDown={stopDown(i)}
+                onPointerMove={stopMove}
+                onPointerUp={stopUp}
+                onPointerCancel={stopUp}
+                onKeyDown={stopKey(i)}
+              />
+            );
+          })}
+        </div>
+      </div>
+      <div className="picker-row">
+        <InlineField
+          label="Stop position"
+          className="picker-field narrow"
+          value={selected ? pct(selected.position) : ""}
+          readOnly={readOnly}
+          step={1}
+          parse={(t) => {
+            const n = Number.parseFloat(t.replace("%", "").replace(",", "."));
+            return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) / 100 : null;
+          }}
+          onCommit={(v) => move(stop, v as number, "once")}
+        />
+        <InlineField
+          label="Gradient angle"
+          className="picker-field narrow"
+          value={`${angle}°`}
+          readOnly={readOnly}
+          step={1}
+          parse={(t) => {
+            const n = Number.parseFloat(t.replace("°", "").replace(",", "."));
+            return Number.isFinite(n) ? n : null;
+          }}
+          onCommit={(v) => rotate(v as number)}
+        />
+        <span className="picker-spacer" />
+        <button type="button" className="icon-button" aria-label="Add gradient stop" title="Add stop" disabled={readOnly} onClick={addNext}>
+          <PaintIcon name="plus" />
+        </button>
+        <button type="button" className="icon-button" aria-label="Remove gradient stop" title="Remove stop (Delete)" disabled={readOnly || stops.length <= MIN_STOPS} onClick={() => remove(stop)}>
+          <PaintIcon name="minus" />
+        </button>
+        <button type="button" className="icon-button" aria-label="Rotate gradient 90°" title="Rotate 90°" disabled={readOnly} onClick={() => rotate(angle + 90)}>
+          <PaintIcon name="rotate-cw" />
+        </button>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Flip gradient"
+          title="Flip"
+          disabled={readOnly}
+          onClick={() => {
+            const flipped = flipStops(stops);
+            onPaint(withStops(flipped), "once", "gradient");
+            const s = stops[stop];
+            if (s) onStop(Math.max(0, flipped.findIndex((f) => Math.abs(f.position - (1 - s.position)) < 1e-6 && f.color === s.color)));
+          }}
+        >
+          <PaintIcon name="arrow-left-right" />
+        </button>
+      </div>
+    </div>
+  );
+}

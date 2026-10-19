@@ -264,7 +264,11 @@ await runE2E("export", {}, async ({ browser, url, log, check, outDir, errors }) 
       const walk = async (d, prefix) => {
         for await (const [name, h] of d.entries()) {
           if (h.kind === "directory") await walk(h, `${prefix}${name}/`);
-          else out.push(`${prefix}${name}:${(await h.getFile()).size}`);
+          else {
+            // A file being written can vanish between listing and reading it (its write swaps it in): skip it this time.
+            const file = await h.getFile().catch(() => null);
+            if (file) out.push(`${prefix}${name}:${file.size}`);
+          }
         }
       };
       await walk(dir, "");
@@ -276,7 +280,8 @@ await runE2E("export", {}, async ({ browser, url, log, check, outDir, errors }) 
   await layerRow(fsPage, "Avatar").click();
   await fsCard.getByRole("button", { name: "Add export setting" }).click();
   await fsCard.getByRole("button", { name: "Export Avatar" }).click();
-  const first = await poll(async () => (await listFolder()).find((f) => f.startsWith("Avatar.png:")), "Avatar.png should be written to the folder", 15_000);
+  // The entry can appear (empty) before its write is committed: wait for the written file.
+  const first = await poll(async () => (await listFolder()).find((f) => f.startsWith("Avatar.png:") && !f.endsWith(":0")), "Avatar.png should be written to the folder", 15_000);
   check(Number(first.split(":")[1]) > 0, "Avatar.png has bytes");
   check(await fsPage.getByRole("status").filter({ hasText: "Exported 1 file to “my-exports”" }).isVisible(), "the toast names the folder");
   check(!(await fsPage.getByRole("button", { name: "Open folder" }).count()), "no Open folder in a browser (it can't open one)");
