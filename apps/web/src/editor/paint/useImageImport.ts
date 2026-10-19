@@ -7,6 +7,8 @@ import { imageFiles, placeImages, readImageFiles, refusalMessage, whenIdle } fro
 
 const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
 const hasFiles = (e: { dataTransfer: DataTransfer | null }) => [...(e.dataTransfer?.types ?? [])].includes("Files");
+/** Fired by Place image (vector/shortcuts.ts). */
+const PLACE_IMAGE_EVENT = "illigma:place-image";
 const NOT_IMAGES = "Only PNG, JPEG, WebP and GIF images can be placed on the canvas.";
 
 /**
@@ -96,10 +98,26 @@ export function useImageImport({
       }
       void place(files, null);
     };
+    // Place image (⇧⌘K, the shapes menu): pick image files, placed in the middle of the view.
+    const onPlaceImage = () => {
+      if (state.current.locked) return;
+      const input = document.createElement("input");
+      input.type = "file";
+      input.multiple = true;
+      input.accept = "image/png,image/jpeg,image/webp,image/gif";
+      input.addEventListener("change", () => {
+        const files = imageFiles(input.files ?? undefined);
+        if (files.length) void place(files, null);
+        else if (input.files?.length) state.current.onError(NOT_IMAGES);
+      });
+      input.click();
+    };
+    window.addEventListener(PLACE_IMAGE_EVENT, onPlaceImage);
     window.addEventListener("paste", onPaste);
     window.addEventListener("dragover", onWindowDragOver);
     window.addEventListener("drop", onWindowDrop);
     return () => {
+      window.removeEventListener(PLACE_IMAGE_EVENT, onPlaceImage);
       window.removeEventListener("paste", onPaste);
       window.removeEventListener("dragover", onWindowDragOver);
       window.removeEventListener("drop", onWindowDrop);

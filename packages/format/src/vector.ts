@@ -12,7 +12,7 @@
  */
 
 import { FormatError } from "./package.js";
-import { VECTOR_LIMITS, WINDING_RULES, type VectorNetwork, type WindingRule } from "./schema.js";
+import { STROKE_CAPS, VECTOR_LIMITS, WINDING_RULES, type VectorNetwork, type WindingRule } from "./schema.js";
 
 /**
  * Flat path commands, shared by the renderer and hit-testing:
@@ -61,10 +61,11 @@ export function vectorNetworkProblem(value: unknown): string | null {
 
   for (let i = 0; i < vertices.length; i++) {
     const v: unknown = vertices[i];
-    if (!isObj(v) || !hasKeys(v, ["x", "y"], ["cornerRadius"]) || !finite(v.x) || !finite(v.y)) {
+    if (!isObj(v) || !hasKeys(v, ["x", "y"], ["cornerRadius", "strokeCap"]) || !finite(v.x) || !finite(v.y)) {
       return `vertex ${i} must be { x, y } with finite numbers (and an optional cornerRadius)`;
     }
     if (v.cornerRadius !== undefined && !(finite(v.cornerRadius) && v.cornerRadius >= 0)) return `vertex ${i} has a corner radius that isn't a number, 0 or more`;
+    if (v.strokeCap !== undefined && !(STROKE_CAPS as readonly unknown[]).includes(v.strokeCap)) return `vertex ${i} has an unknown stroke cap`;
   }
   const nv = vertices.length;
   const index = (x: unknown) => typeof x === "number" && Number.isInteger(x) && x >= 0 && x < nv;

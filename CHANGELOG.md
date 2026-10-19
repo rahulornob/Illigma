@@ -33,6 +33,15 @@ After v1.0: a Tauri desktop app in v1.x, then optional multiplayer (CRDT over LA
 - Phase 0 (foundations): renderer spike (CanvasKit, 10,000 layers at 60 fps), offline web app, design tokens in code. See [docs/dev/phase-0.md](docs/dev/phase-0.md).
 - Run the real usability sessions (Phase 5) in parallel; fix what they find.
 
+### Added (2026-10-19, vector tools)
+
+- Shape tools in the tool dock's shapes flyout: Rectangle (R), Line (L), Arrow (⇧L), Ellipse (O), Polygon, Star, Place image (⇧⌘K). Shift constrains, ⌥ draws from the centre. Polygon and Star cards set count and ratio.
+- Pen (P): click for corners, drag for symmetric curve handles (⌥ breaks them), click the first point to close, Enter or Esc finishes, ⌫ removes the last point, Shift snaps to 45°.
+- Vector edit mode (Enter or double-click; shapes convert to a vector first): select points (click, Shift, marquee, ⌘A), drag points and handles, ⌥ breaks handle symmetry, double-click toggles corner and smooth, ⌫ deletes points (⌘⌫ heals the path), click a segment to add a point, ⌘-drag bends a segment, arrows nudge, corner radius per point in Properties. One undo step per drag; the box re-fits around the path, which stays in place.
+- Booleans (Union, Subtract, Intersect, Exclude) from the Combine card: a new `BOOLEAN_OPERATION` node type with a `booleanOperation` field; children are the operands. Drawn, hit-tested and exported (SVG, PDF, PNG) by the combined path from Skia's PathOps.
+- Flatten (⌘E) into one vector (booleans baked) and Outline stroke (⌥⌘O) through CanvasKit's stroker.
+- Format: arrow stroke caps `ARROW_LINES` and `ARROW_EQUILATERAL`, on the node or per vertex (`VectorVertex.strokeCap`); per-vertex corner radius is now drawn.
+
 ### Added (2026-10-19, snapping, smart guides, drop into frames and zoom)
 - **Snapping and smart guides.** Moving, resizing and drawing snap edges and centres to sibling layers and the parent frame within 4 screen pixels, with 1 px guides; equal spacing snaps with gap pills; otherwise whole pixels. Ctrl (or ⌘) suspends snapping. Candidates are indexed once per drag, so 12,000 layers stay fast.
 - **Drop onto a frame.** Dragged layers smaller than a frame drop into it (2 px outline while hovering; page position kept; one undo step). ⌘ drops a larger layer into auto layout, with the insertion line; Space keeps the parent; dragging out of a frame puts layers on the page, auto layout children included.

@@ -394,14 +394,14 @@ export function hex(c: Color): string {
 export type Outline =
   | { kind: "rect"; width: number; height: number; radius: number }
   | { kind: "ellipse"; width: number; height: number }
-  | { kind: "paths"; fills: readonly FillPath[]; stroke: readonly number[] }
+  | { kind: "paths"; fills: readonly FillPath[]; stroke: readonly number[]; /** Arrow-head triangles, filled with the stroke paints. */ capFill?: readonly number[] | undefined }
   | { kind: "text" }
   | { kind: "none" };
 
 /** The outline the renderer draws for `n` (groups and pages have none). */
-export function outlineOf(n: ReadonlyNode): Outline {
-  const geo = shapeGeometry(n);
-  if (geo) return { kind: "paths", fills: geo.fills, stroke: geo.stroke };
+export function outlineOf(n: ReadonlyNode, src?: { children(id: string): readonly ReadonlyNode[] }): Outline {
+  const geo = shapeGeometry(n, src);
+  if (geo) return { kind: "paths", fills: geo.fills, stroke: geo.stroke, capFill: geo.capFill };
   switch (n.type) {
     case "GROUP":
     case "PAGE":

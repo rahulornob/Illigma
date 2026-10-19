@@ -54,7 +54,9 @@ function hitNode(doc: NodeSource, n: ReadonlyNode, px: number, py: number, toler
   // Hidden and locked layers can't be picked on the canvas, and neither can anything inside them.
   if (!n.visible || n.locked) return null;
   const [lx, ly] = toLocal(n, px, py);
-  const inside = insideShape(n, lx, ly, tolerance);
+  const inside = insideShape(n, lx, ly, tolerance, doc);
+  // A boolean is hit by its combined shape; its children (operands) are never picked on the canvas.
+  if (n.type === "BOOLEAN_OPERATION") return inside ? n.id : null;
   // A clipping frame hides everything outside its shape, children included (its own stroke may reach further).
   if (CLIPPING.has(n.type) && !(boxStrokeReach(n) > 0 ? insideBox(n, lx, ly, 0) : inside)) return inside ? n.id : null;
   const kids = doc.children(n.id);
@@ -83,8 +85,8 @@ export function toLocal(n: ReadonlyNode, px: number, py: number): [number, numbe
  * visible centred or outside stroke on a rectangle, ellipse or frame widens
  * it by how far the stroke reaches past the box.
  */
-export function insideShape(n: ReadonlyNode, x: number, y: number, tolerance = DEFAULT_HIT_TOLERANCE): boolean {
-  const geo = shapeGeometry(n);
+export function insideShape(n: ReadonlyNode, x: number, y: number, tolerance = DEFAULT_HIT_TOLERANCE, src?: NodeSource): boolean {
+  const geo = shapeGeometry(n, src);
   if (geo) return onGeometry(n, geo, x, y, tolerance);
   return insideBox(n, x, y, boxStrokeReach(n));
 }
@@ -139,6 +141,7 @@ function onGeometry(n: ReadonlyNode, geo: ShapeGeometry, x: number, y: number, t
   if (testFill) {
     for (const f of geo.fills) if (insideFill(flatten(f.commands), x, y, f.evenOdd)) return true;
   }
+  if (geo.capFill?.length && hasStroke && insideFill(flatten(geo.capFill), x, y, false)) return true;
   if (testStroke && geo.stroke.length) {
     const closed = n.type === "STAR" || n.type === "POLYGON" || (n.type === "VECTOR" && (n.vectorNetwork?.regions.length ?? 0) > 0);
     const align = closed && hasStroke ? (n.strokeAlign ?? "CENTER") : "CENTER";

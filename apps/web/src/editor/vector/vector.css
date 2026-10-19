@@ -1,0 +1,111 @@
+/* Vector edit mode and the pen (interactions.md §7): blue is interactive, lines stay 1 px at any zoom. */
+.vector-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.vector-overlay .v-path {
+  fill: none;
+  stroke: var(--accent-default);
+  stroke-width: 1px;
+}
+.vector-overlay .v-rubber {
+  fill: none;
+  stroke: var(--accent-default);
+  stroke-width: 1px;
+  stroke-dasharray: 4 4;
+}
+.vector-overlay .v-handle-line {
+  fill: none;
+  stroke: var(--accent-default);
+  stroke-width: 1px;
+}
+.vector-overlay .v-point {
+  fill: var(--selection-on, #fff);
+  stroke: var(--accent-default);
+  stroke-width: 1px;
+}
+.vector-overlay .v-point.is-selected {
+  fill: var(--accent-default);
+  stroke: var(--selection-on, #fff);
+}
+.vector-overlay .v-handle {
+  fill: var(--accent-default);
+  stroke: var(--selection-on, #fff);
+  stroke-width: 1px;
+}
+.vector-overlay .v-marquee {
+  fill: color-mix(in srgb, var(--accent-default) 8%, transparent);
+  stroke: var(--accent-default);
+  stroke-width: 1px;
+}
+
+/* The shapes flyout in the tool dock (Figma's shapes menu). */
+.tool-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.tool-flyout-toggle {
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: var(--size-tool);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-button);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+.tool-flyout-toggle:hover {
+  color: var(--text-primary);
+}
+.tool-flyout {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  padding: 4px;
+  border-radius: var(--radius-card);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
+}
+.tool-flyout-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-button);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.tool-flyout-item:hover,
+.tool-flyout-item:focus-visible {
+  background: var(--bg-hover, color-mix(in srgb, var(--text-primary) 8%, transparent));
+}
+.tool-flyout-item[aria-checked="true"] {
+  color: var(--accent-default);
+}
+.tool-flyout-item .tool-flyout-key {
+  margin-left: auto;
+  color: var(--text-tertiary);
+}
+
+.vector-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}

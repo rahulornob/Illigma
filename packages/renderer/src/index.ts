@@ -27,6 +27,7 @@ import {
 } from "@illigma/format";
 import type { Canvas, CanvasKit, Image, ImageFilter, Paint, Path, SkPicture, Surface } from "canvaskit-wasm";
 import { shapeGeometry, type ShapeGeometry } from "./geometry.js";
+import { usePathOps } from "./path-ops.js";
 import { CLIPPING, hitTest, type NodeSource } from "./hit-test.js";
 import { imagePixelScale, PaintKit, sigma, type Box } from "./paint.js";
 import { pixelBlur, pixelShadow, type PixelTarget } from "./spread.js";
@@ -35,6 +36,8 @@ import { TextEngine, type FontSource, type PlacedParagraph } from "./text.js";
 export { CLIPPING, DEFAULT_HIT_TOLERANCE, hitTest, insideShape, toLocal, type HitTestOptions, type NodeSource } from "./hit-test.js";
 export { flatten, insideFill, nearStroke, PATH_TYPES, roundedPolygon, shapeGeometry, starPoints, type FillPath, type Flattened, type ShapeGeometry } from "./geometry.js";
 export { GpuCanvas } from "./gpu-canvas.js";
+export { booleanPath, ckPathFromCommands, commandsFromCkPath, pathOpsEngine, strokeOutline, svgFromCommands, usePathOps } from "./path-ops.js";
+export { arrowHeads, arrowLength, booleanOperands, ellipseCommands, isArrowCap, openEnds, operandOutline, pathOps, rectCommands, roundPathCorners, setPathOps, transformCommands, type ChildSource, type FillPathLike, type PathOpsEngine } from "./shape-extras.js";
 export { invertTransform } from "./paint.js";
 export { styleItalic, styleWeight, TextEngine, TextLayout, type FontSource, type PlacedParagraph, type TextCaret, type TextLayoutLine, type TextNode, type TextRect } from "./text.js";
 
@@ -234,6 +237,7 @@ export class PageRenderer {
     private readonly dpr = 1,
     options: RendererOptions = {},
   ) {
+    usePathOps(ck);
     this.paint = new ck.Paint();
     this.paint.setAntiAlias(true);
     this.layerPaint = new ck.Paint();
@@ -629,7 +633,7 @@ export class PageRenderer {
 
     const kids = this.doc.children(n.id);
     const fx = n.effects?.length ? nodeEffects(n.effects) : null;
-    const geometry = shapeGeometry(n);
+    const geometry = shapeGeometry(n, this.doc);
     // Leaf shapes (and clipping frames with a fill) cast shadows from their outline, drawn directly;
     // anything else (groups, text, frames without a fill) from what it draws, through a layer filter.
     const shadows = !!fx && (fx.drops.length > 0 || fx.inners.length > 0);
@@ -665,7 +669,8 @@ export class PageRenderer {
         }
       }
       if (children) children(canvas);
-      else for (const child of kids) this.drawNode(canvas, child);
+      // A boolean's children are its operands: only the combined shape draws.
+      else if (n.type !== "BOOLEAN_OPERATION") for (const child of kids) this.drawNode(canvas, child);
     };
 
     // Opacity, blend mode, layer blur and filtered shadows apply to the node and its children as one group, as in Figma.
@@ -942,6 +947,12 @@ export class PageRenderer {
         });
         path.delete();
       }
+      // Arrow-head triangles, filled with the stroke's paints.
+      const heads = geo.capFill?.length ? this.toPath(geo.capFill, false) : null;
+      if (heads) {
+        for (const stroke of n.strokes) if (this.usePaint(n, stroke, false)) canvas.drawPath(heads, this.paint);
+        heads.delete();
+      }
     }
   }
 
@@ -977,6 +988,7 @@ export class PageRenderer {
     if (!n.strokeAlign || n.strokeAlign === "CENTER" || !(n.strokeWeight > 0) || n.type === "TEXT") return false;
     if (n.type === "LINE") return false;
     if (n.type === "VECTOR") return !!geo && (n.vectorNetwork?.regions.length ?? 0) > 0;
+    if (n.type === "BOOLEAN_OPERATION") return !!geo;
     return !NO_OUTLINE.has(n.type);
   }
 

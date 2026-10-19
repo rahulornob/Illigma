@@ -97,7 +97,7 @@ export const EFFECT_LABEL: Record<EffectType, string> = {
   BACKGROUND_BLUR: "Background blur",
 };
 
-export const STROKE_CAP_LABEL: Record<StrokeCap, string> = { NONE: "None", ROUND: "Round", SQUARE: "Square" };
+export const STROKE_CAP_LABEL: Record<StrokeCap, string> = { NONE: "None", ROUND: "Round", SQUARE: "Square", ARROW_LINES: "Line arrow", ARROW_EQUILATERAL: "Triangle arrow" };
 export const STROKE_JOIN_LABEL: Record<StrokeJoin, string> = { MITER: "Miter", BEVEL: "Bevel", ROUND: "Round" };
 
 /** Layers that hold children: their blend mode can be Pass through (the default). */

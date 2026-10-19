@@ -18,6 +18,7 @@ import {
   type PathCommands,
   type VectorNetwork,
 } from "@illigma/format";
+import { arrowHeads, booleanOperands, isArrowCap, pathOps, roundPathCorners, type ChildSource } from "./shape-extras.js";
 
 export interface FillPath {
   evenOdd: boolean;
@@ -29,22 +30,96 @@ export interface ShapeGeometry {
   fills: readonly FillPath[];
   /** The stroked outline (empty when there is nothing to stroke). */
   stroke: readonly number[];
+  /** Arrow-head triangles at stroke ends, filled with the stroke's paints. */
+  capFill?: readonly number[];
 }
 
 /** Node types drawn from path geometry rather than as rectangles or ellipses. */
-export const PATH_TYPES: ReadonlySet<NodeType> = new Set(["VECTOR", "STAR", "POLYGON", "LINE"]);
+export const PATH_TYPES: ReadonlySet<NodeType> = new Set(["VECTOR", "STAR", "POLYGON", "LINE", "BOOLEAN_OPERATION"]);
 
 const EMPTY: ShapeGeometry = Object.freeze({ fills: Object.freeze([]), stroke: Object.freeze([]) });
 
 /** Networks are frozen document values, replaced on change, so geometry is cached per network. */
 const vectorCache = new WeakMap<object, ShapeGeometry>();
 
-/** The outline of a path-based node, or `null` for the other types. */
-export function shapeGeometry(n: ReadonlyNode): ShapeGeometry | null {
+/**
+ * The outline of a path-based node, or `null` for the other types. A
+ * BOOLEAN_OPERATION needs `src` (its children are its operands); without it
+ * it has no outline.
+ */
+export function shapeGeometry(n: ReadonlyNode, src?: ChildSource): ShapeGeometry | null {
+  const geo = baseGeometry(n, src);
+  if (!geo || (n.type !== "LINE" && n.type !== "VECTOR")) return geo;
+  return withArrows(n, geo);
+}
+
+const arrowCache = new WeakMap<ShapeGeometry, { weight: number; cap: string | undefined; net: unknown; geo: ShapeGeometry }>();
+
+/** Adds arrow heads where the node's (or a point's) cap is an arrow. */
+function withArrows(n: ReadonlyNode, geo: ShapeGeometry): ShapeGeometry {
+  const net = n.type === "VECTOR" ? n.vectorNetwork : undefined;
+  const pointCaps = !!net && net.vertices.some((v) => v.strokeCap !== undefined);
+  if (!isArrowCap(n.strokeCap) && !pointCaps) return geo;
+  const hit = arrowCache.get(geo);
+  if (hit && hit.weight === n.strokeWeight && hit.cap === n.strokeCap && hit.net === net) return hit.geo;
+  const capAt = (x: number, y: number) => {
+    if (net) for (const v of net.vertices) if (v.strokeCap !== undefined && v.x === x && v.y === y) return v.strokeCap;
+    return n.strokeCap;
+  };
+  const heads = arrowHeads(geo.stroke, n.strokeWeight, capAt);
+  const out: ShapeGeometry = Object.freeze({
+    fills: geo.fills,
+    stroke: heads.stroke.length ? [...geo.stroke, ...heads.stroke] : geo.stroke,
+    ...(heads.fill.length && { capFill: heads.fill }),
+  });
+  arrowCache.set(geo, { weight: n.strokeWeight, cap: n.strokeCap, net, geo: out });
+  return out;
+}
+
+const LINE_CACHE = new WeakMap<ReadonlyNode, ShapeGeometry>();
+const booleanCache = new WeakMap<ReadonlyNode, { deps: ReadonlyNode[]; geo: ShapeGeometry }>();
+
+function subtreeOf(src: ChildSource, id: string, out: ReadonlyNode[]): ReadonlyNode[] {
+  for (const k of src.children(id)) {
+    out.push(k);
+    subtreeOf(src, k.id, out);
+  }
+  return out;
+}
+
+/** A boolean's result, cached until it or anything under it changes (nodes are replaced on change). */
+function booleanGeometry(n: ReadonlyNode, src: ChildSource): ShapeGeometry {
+  const deps = subtreeOf(src, n.id, []);
+  const hit = booleanCache.get(n);
+  if (hit && hit.deps.length === deps.length && hit.deps.every((d, i) => d === deps[i])) return hit.geo;
+  const operands = booleanOperands(src, n, (k, s) => shapeGeometry(k, s));
+  const engine = pathOps();
+  let geo: ShapeGeometry;
+  const op = n.booleanOperation ?? "UNION";
+  const result = engine && operands.length ? engine(op, operands) : null;
+  if (result) geo = Object.freeze({ fills: Object.freeze([{ evenOdd: result.evenOdd, commands: result.commands }]), stroke: result.commands });
+  else {
+    // No engine (or nothing to combine): the operands as they are.
+    const fills = operands.flat().map((f) => ({ evenOdd: f.evenOdd, commands: f.commands }));
+    geo = Object.freeze({ fills, stroke: fills.flatMap((f) => f.commands as number[]) });
+  }
+  if (engine) booleanCache.set(n, { deps, geo });
+  return geo;
+}
+
+function baseGeometry(n: ReadonlyNode, src?: ChildSource): ShapeGeometry | null {
   switch (n.type) {
-    case "LINE":
-      // Figma's line runs along its width, at y = 0; its height is 0.
-      return { fills: [], stroke: [PATH_MOVE, 0, 0, PATH_LINE, n.width, 0] };
+    case "BOOLEAN_OPERATION":
+      return src ? booleanGeometry(n, src) : EMPTY;
+    case "LINE": {
+      // Figma's line runs along its width, at y = 0; its height is 0. Cached so arrow heads cache too.
+      let g = LINE_CACHE.get(n);
+      if (!g) {
+        g = Object.freeze({ fills: [], stroke: [PATH_MOVE, 0, 0, PATH_LINE, n.width, 0] });
+        LINE_CACHE.set(n, g);
+      }
+      return g;
+    }
     case "POLYGON":
     case "STAR": {
       const outline = starPoints(n);
@@ -67,7 +142,16 @@ export function shapeGeometry(n: ReadonlyNode): ShapeGeometry | null {
 }
 
 function vectorGeometry(net: VectorNetwork): ShapeGeometry {
-  const { regions, stroke } = vectorNetworkPaths(net);
+  const paths = vectorNetworkPaths(net);
+  let { regions, stroke } = paths;
+  // Per-point corner radius rounds the corners between straight segments.
+  if (net.vertices.some((v) => (v.cornerRadius ?? 0) > 0)) {
+    const radii = new Map<string, number>();
+    for (const v of net.vertices) if ((v.cornerRadius ?? 0) > 0) radii.set(`${v.x},${v.y}`, v.cornerRadius as number);
+    const at = (x: number, y: number) => radii.get(`${x},${y}`) ?? 0;
+    regions = regions.map((r) => ({ windingRule: r.windingRule, commands: roundPathCorners(r.commands, at) }));
+    stroke = roundPathCorners(stroke, at);
+  }
   // With no regions, fills cover each open or closed run as if closed, as in Figma and SVG.
   const fills: FillPath[] = regions.length
     ? regions.map((r) => ({ evenOdd: r.windingRule === "EVENODD", commands: r.commands }))
@@ -294,7 +378,8 @@ export function insideFill(flat: Flattened, x: number, y: number, evenOdd: boole
 export interface StrokeShape {
   /** Half the stroke weight: how far caps and miters reach past the line. */
   half: number;
-  cap?: "NONE" | "ROUND" | "SQUARE" | undefined;
+  /** Arrow caps reach like butt ends (their heads are tested on their own). */
+  cap?: "NONE" | "ROUND" | "SQUARE" | "ARROW_LINES" | "ARROW_EQUILATERAL" | undefined;
   join?: "MITER" | "BEVEL" | "ROUND" | undefined;
 }
 

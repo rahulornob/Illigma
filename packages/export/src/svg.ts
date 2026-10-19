@@ -223,7 +223,8 @@ class SvgWriter {
     if (this.options.idAttribute) common.push(["id", escapeAttr(this.uniqueId(n.name.replace(INVALID_XML, "") || n.type.toLowerCase()))]);
     const transform = transformAttr(m);
     if (transform) common.push(["transform", transform]);
-    const kids = this.source.children(n.id).filter(draws);
+    // A boolean's children are its operands: only the combined shape is written.
+    const kids = n.type === "BOOLEAN_OPERATION" ? [] : this.source.children(n.id).filter(draws);
     // Opacity, blend mode and filter apply to the layer as a whole: they never share an element with a clip or mask.
     const group: Attr[] = [];
     if (n.opacity < 1) group.push(["opacity", fmt(n.opacity)]);
@@ -275,7 +276,7 @@ class SvgWriter {
   private children(n: ReadonlyNode, kids: readonly ReadonlyNode[]): void {
     if (kids.length && CLIPPING.has(n.type)) {
       const clip = this.generatedId("clip", n);
-      const r = outlineOf(n);
+      const r = outlineOf(n, this.source);
       const box = r.kind === "rect" ? r : { width: n.width, height: n.height, radius: 0 };
       this.defs.push(`<clipPath id="${clip}">`, serialize({ tag: "rect", attrs: rectAttrs(box.width, box.height, box.radius) }), "</clipPath>");
       this.lines.push(`<g clip-path="url(#${clip})">`);
@@ -301,7 +302,7 @@ class SvgWriter {
 
   /** The elements a layer draws itself: fills, then strokes (text: one `<text>` per fill). */
   private own(n: ReadonlyNode): Element[] {
-    const outline = outlineOf(n);
+    const outline = outlineOf(n, this.source);
     if (outline.kind === "none") return [];
     if (outline.kind === "text") return this.text(n);
     const fills = this.paints(n, false);
@@ -336,6 +337,10 @@ class SvgWriter {
         if (outline.stroke.length) {
           const d = svgPathData(outline.stroke);
           for (const p of strokes) out.push({ tag: "path", attrs: [["d", d], ...strokeAttrs(p)], stroke: true });
+        }
+        if (outline.capFill?.length) {
+          const d = svgPathData(outline.capFill);
+          for (const p of strokes) out.push({ tag: "path", attrs: [["d", d], ...this.paintAttrs(p, "fill", n)], stroke: true });
         }
         break;
       }
@@ -487,7 +492,7 @@ class SvgWriter {
   private outlineShadows(n: ReadonlyNode, hasKids: boolean): { drops: string[]; inners: string[] } | null {
     const fx = visibleEffects(n);
     if (![...fx.drops, ...fx.inners].some((e) => (e.spread ?? 0) !== 0) || !shadowsFromOutline(n, hasKids)) return null;
-    const outline = outlineOf(n);
+    const outline = outlineOf(n, this.source);
     if (outline.kind !== "rect" && outline.kind !== "ellipse" && !(outline.kind === "paths" && outline.fills.length)) return null;
     const filled = n.fills.some((p) => p.visible);
     const stroked = hasVisibleStroke(n);

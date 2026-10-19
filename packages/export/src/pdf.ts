@@ -267,7 +267,7 @@ class PageWriter {
 
   /** A layer's own paints, then its (clipped) children, in its own space; `here` maps that space to the stream's. */
   private content(n: ReadonlyNode, out: string[], here: Matrix): void {
-    const outline = outlineOf(n);
+    const outline = outlineOf(n, this.source);
     if (outline.kind === "text") this.text(n, out);
     else if (outline.kind !== "none") {
       let fills: { commands: readonly number[]; evenOdd: boolean }[];
@@ -310,7 +310,7 @@ class PageWriter {
         if (clip) out.push("Q");
       }
     }
-    const kids = this.source.children(n.id).filter(draws);
+    const kids = n.type === "BOOLEAN_OPERATION" ? [] : this.source.children(n.id).filter(draws);
     if (!kids.length) return;
     const clip = CLIPPING.has(n.type);
     if (clip) {

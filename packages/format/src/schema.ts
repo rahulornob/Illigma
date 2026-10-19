@@ -25,6 +25,7 @@ export type NodeType =
   | "POLYGON"
   | "STAR"
   | "VECTOR"
+  | "BOOLEAN_OPERATION"
   | "TEXT"
   | "COMPONENT"
   | "COMPONENT_SET"
@@ -41,6 +42,7 @@ export const NODE_TYPES: readonly NodeType[] = [
   "POLYGON",
   "STAR",
   "VECTOR",
+  "BOOLEAN_OPERATION",
   "TEXT",
   "COMPONENT",
   "COMPONENT_SET",
@@ -413,6 +415,8 @@ export interface VectorVertex {
   y: number;
   /** Rounds the corner at this point, 0 or more. Default 0. */
   cornerRadius?: number;
+  /** The cap where a stroke ends at this point (a free end), overriding the node's `strokeCap`. Default: the node's. */
+  strokeCap?: StrokeCap;
 }
 
 /**
@@ -450,10 +454,14 @@ export interface VectorNetwork {
   regions: VectorRegion[];
 }
 
-/** Line ends. Arrow caps arrive with the vector editor. */
-export type StrokeCap = "NONE" | "ROUND" | "SQUARE";
+/** Line ends. Arrow caps draw an open arrow head (two lines) or a filled triangle at the end, as in Figma. */
+export type StrokeCap = "NONE" | "ROUND" | "SQUARE" | "ARROW_LINES" | "ARROW_EQUILATERAL";
 export type StrokeJoin = "MITER" | "BEVEL" | "ROUND";
-export const STROKE_CAPS: readonly StrokeCap[] = ["NONE", "ROUND", "SQUARE"];
+export const STROKE_CAPS: readonly StrokeCap[] = ["NONE", "ROUND", "SQUARE", "ARROW_LINES", "ARROW_EQUILATERAL"];
+
+/** How a BOOLEAN_OPERATION combines its children (Figma's `booleanOperation`). */
+export type BooleanOperation = "UNION" | "INTERSECT" | "SUBTRACT" | "EXCLUDE";
+export const BOOLEAN_OPERATIONS: readonly BooleanOperation[] = ["UNION", "INTERSECT", "SUBTRACT", "EXCLUDE"];
 export const STROKE_JOINS: readonly StrokeJoin[] = ["MITER", "BEVEL", "ROUND"];
 
 /** Limits on one vector network, so a file can't make the editor run out of memory. */
@@ -487,6 +495,8 @@ export interface ShapeFields {
   strokeCap?: StrokeCap;
   /** Corners of strokes. Default "MITER". */
   strokeJoin?: StrokeJoin;
+  /** BOOLEAN_OPERATION: how its children (the operands, bottom first) combine. Default "UNION". */
+  booleanOperation?: BooleanOperation;
 }
 
 /**

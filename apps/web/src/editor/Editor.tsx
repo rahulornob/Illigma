@@ -31,6 +31,7 @@ import { ExportHost } from "./export/ExportHost";
 import { TOOLS, ToolDock } from "./ToolDock";
 import { settleTextForSave } from "./text/session";
 import { inLayer, onControl } from "./focus";
+import { useVectorShortcuts } from "./vector/shortcuts";
 import { useLayerCommands } from "./useLayerCommands";
 import { usePageMemory } from "./usePageMemory";
 
@@ -545,6 +546,8 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [doc, reportEditError]);
+
+  useVectorShortcuts({ doc, selection, locked, setTool, setSelection, onError: reportEditError });
 
   // Images dropped on the canvas or pasted (⌘V): placed as image-filled rectangles. A refused file says why.
   const imageDrop = useImageImport({ doc, pageId, canvas, locked, onSelect: setSelection, onError: setEditError });

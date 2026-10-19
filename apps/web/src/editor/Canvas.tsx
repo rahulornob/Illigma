@@ -7,6 +7,8 @@ import { loadCanvasKit, loadTextEngine } from "./text/engine";
 import { newTextFields, textPlacement } from "./text/create";
 import { TextEditor } from "./text/TextEditor";
 import { useFileFonts } from "./text/file-fonts";
+import { VectorController } from "./vector/VectorController";
+import { VECTOR_EDITABLE } from "./vector/ops";
 import { inLayer, keyboardFocused, onControl } from "./focus";
 import { EdgeAssist, MoveAssist, type Mods } from "./snap/assist";
 import { renderGuides, type GuideLayer } from "./snap/overlay";
@@ -54,7 +56,7 @@ import {
   type Rect,
 } from "./geometry";
 
-export type Tool = "move" | "frame" | "rectangle" | "ellipse" | "text";
+export type Tool = "move" | "frame" | "rectangle" | "ellipse" | "line" | "arrow" | "polygon" | "star" | "pen" | "text";
 
 /**
  * Canvas hit-testing: given a point in page (world) coordinates on the
@@ -102,10 +104,12 @@ const MAX_ZOOM = 256;
 const FIT_PADDING = 64;
 const DRAG_THRESHOLD = 3;
 
-const DRAW: Record<Exclude<Tool, "move" | "text">, { type: NodeType; label: string; fill: [number, number, number] }> = {
+const DRAW: Record<Exclude<Tool, "move" | "text" | "line" | "arrow" | "pen">, { type: NodeType; label: string; fill: [number, number, number] }> = {
   frame: { type: "FRAME", label: "Frame", fill: [1, 1, 1] },
   rectangle: { type: "RECTANGLE", label: "Rectangle", fill: [0.85, 0.85, 0.85] },
   ellipse: { type: "ELLIPSE", label: "Ellipse", fill: [0.85, 0.85, 0.85] },
+  polygon: { type: "POLYGON", label: "Polygon", fill: [0.85, 0.85, 0.85] },
+  star: { type: "STAR", label: "Star", fill: [0.85, 0.85, 0.85] },
 };
 
 const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
@@ -205,7 +209,9 @@ type Gesture =
       assist: MoveAssist;
     }
   | { kind: "marquee"; wx: number; wy: number; scope: NodeId; additive: boolean; base: NodeId[]; rect: Rect | null }
-  | { kind: "draw"; tool: Exclude<Tool, "move">; wx: number; wy: number; sx: number; sy: number; assist: EdgeAssist }
+  | { kind: "draw"; tool: Exclude<Tool, "move" | "line" | "arrow" | "pen">; wx: number; wy: number; sx: number; sy: number; assist: EdgeAssist }
+  /** The pen, line and arrow tools, and vector edit mode (vector/VectorController.ts). */
+  | { kind: "vector" }
   /** Placing the caret or selecting in the text being edited. */
   | { kind: "text" };
 
@@ -254,6 +260,8 @@ export function Canvas(props: CanvasProps) {
     fitted: false,
     /** Editing a text layer: caret, selection and the hidden input (created on mount). */
     text: null as TextEditor | null,
+    /** The pen, line and arrow tools and vector edit mode. */
+    vector: null as VectorController | null,
     engine: null as TextEngine | null,
     /** The last press, for double and triple clicks. */
     lastPress: { t: 0, sx: 0, sy: 0, count: 0 },
@@ -304,6 +312,7 @@ export function Canvas(props: CanvasProps) {
    * none can be resized.
    */
   const handleFrame = (): SelectionFrame | null => {
+    if (live.current.vector?.editing()) return null;
     const ids = editable(pageSelection());
     return ids.length ? selectionFrame(live.current.props.doc, ids) : null;
   };
@@ -335,7 +344,7 @@ export function Canvas(props: CanvasProps) {
     const ids = pageSelection();
     // With handles, the box is the one they resize; otherwise it's around everything selected.
     const resizable = handleFrame();
-    const still = resizable ?? selectionFrame(p.doc, ids);
+    const still = live.current.vector?.editing() ? null : (resizable ?? selectionFrame(p.doc, ids));
     // While reordering, the box follows the pointer (the layers move on release).
     const frame = still && gesture?.kind === "reorder" ? { ...still, x: still.x + gesture.dx, y: still.y + gesture.dy } : still;
     if (sel && label) {
@@ -416,6 +425,7 @@ export function Canvas(props: CanvasProps) {
     l.renderer?.render(l.camera);
     updateOverlay();
     l.text?.render();
+    l.vector?.render();
   };
 
   const requestDraw = () => {
@@ -664,6 +674,35 @@ export function Canvas(props: CanvasProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc]);
 
+  // The vector tools draw in their own overlay layer in the canvas host.
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const l = live.current;
+    const vector = new VectorController(
+      {
+        doc: () => live.current.props.doc,
+        pageId: () => live.current.props.pageId,
+        camera: () => live.current.camera,
+        tool: () => live.current.props.tool,
+        readOnly: () => !!live.current.props.readOnly,
+        requestDraw,
+        select: (ids) => select(ids),
+        created: (id) => live.current.props.onCreated(id),
+      },
+      host,
+    );
+    l.vector = vector;
+    return () => {
+      vector.dispose();
+      l.vector = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc]);
+  useEffect(() => live.current.vector?.selectionChanged(selection), [selection]);
+  useEffect(() => live.current.vector?.toolChanged(tool), [tool]);
+  useEffect(() => live.current.vector?.exit(), [pageId]);
+
   // Editing ends when the selection moves elsewhere (the Layers panel), another tool is picked, or editing is locked.
   useEffect(() => {
     const t = live.current.text;
@@ -766,7 +805,7 @@ export function Canvas(props: CanvasProps) {
   const applyDrag = (p: Pointer) => {
     const l = live.current;
     const g = l.gesture;
-    if (!g || g.kind === "text") return;
+    if (!g || g.kind === "text" || g.kind === "vector") return;
     const w = toWorld(p.sx, p.sy);
     let dx = w.x - (g.kind === "pan" ? 0 : g.wx);
     let dy = w.y - (g.kind === "pan" ? 0 : g.wy);
@@ -859,6 +898,8 @@ export function Canvas(props: CanvasProps) {
     if (g.kind === "move" || g.kind === "resize" || g.kind === "reorder") {
       if (g.edit.open) g.edit.cancel();
       if (g.kind === "move" && g.dup) select(g.starts.map((s) => s.id));
+    } else if (g.kind === "vector") {
+      l.vector?.cancel();
     } else if (g.kind === "marquee") {
       select(g.base);
     } else if (g.kind === "draw") {
@@ -1078,8 +1119,9 @@ export function Canvas(props: CanvasProps) {
     if (l.gesture) return; // a second button, finger or pen during a drag: the first pointer keeps it
     const { sx, sy } = local(e);
     l.keepFocus = false;
+    let clicks = 1;
     if (e.button === 0 && !l.space) {
-      const clicks = countClicks(sx, sy);
+      clicks = countClicks(sx, sy);
       if (pressText(e, sx, sy, clicks)) {
         // The text input keeps focus; the drag selects text.
         l.keepFocus = true;
@@ -1099,23 +1141,31 @@ export function Canvas(props: CanvasProps) {
       return;
     }
     if (e.button !== 0) return;
+    if (l.vector?.pointerDown(pointerOf(sx, sy, e), clicks)) {
+      l.gesture = { kind: "vector" };
+      requestDraw();
+      return;
+    }
     if (l.props.tool === "move" || l.props.readOnly) {
       pressMove(e, sx, sy);
       requestDraw();
       return;
     }
+    const tool = l.props.tool;
+    if (tool === "line" || tool === "arrow" || tool === "pen") return;
     const raw = toWorld(sx, sy);
     const { doc: d, pageId: page } = l.props;
     const inside = frameAt(d, page, raw.x, raw.y);
     const assist = new EdgeAssist(d, [], inside ? [page, inside] : [page]);
     const w = assist.point(raw.x, raw.y, SNAP_PX / l.camera.zoom, !(e.ctrlKey || e.metaKey) && snapToObjects());
-    l.gesture = { kind: "draw", tool: l.props.tool, wx: w.x, wy: w.y, sx, sy, assist };
+    l.gesture = { kind: "draw", tool, wx: w.x, wy: w.y, sx, sy, assist };
   };
 
   /** Hover with the Move tool: outline what a click would select, and show a resize cursor over handles. */
   const hover = (e: ReactPointerEvent, sx: number, sy: number) => {
     const l = live.current;
     const p = l.props;
+    l.vector?.hover(pointerOf(sx, sy, e));
     if (l.text?.editing) {
       // Over the text being edited: an I-beam.
       const w = toWorld(sx, sy);
@@ -1209,6 +1259,10 @@ export function Canvas(props: CanvasProps) {
       startDrag(g, e.altKey);
     }
     const cur = l.gesture;
+    if (cur?.kind === "vector") {
+      l.vector?.pointerMove(pointerOf(sx, sy, e));
+      return;
+    }
     if (cur?.kind === "text") {
       const w = toWorld(sx, sy);
       l.text?.pointerMove(w.x, w.y);
@@ -1230,7 +1284,10 @@ export function Canvas(props: CanvasProps) {
         dx = Math.sign(dx || 1) * s;
         dy = Math.sign(dy || 1) * s;
       }
-      l.draft = { x: Math.min(cur.wx, cur.wx + dx), y: Math.min(cur.wy, cur.wy + dy), width: Math.abs(dx), height: Math.abs(dy) };
+      // ⌥ draws from the centre.
+      const ox = e.altKey ? cur.wx - dx : cur.wx;
+      const oy = e.altKey ? cur.wy - dy : cur.wy;
+      l.draft = { x: Math.min(ox, cur.wx + dx), y: Math.min(oy, cur.wy + dy), width: Math.abs(cur.wx + dx - ox), height: Math.abs(cur.wy + dy - oy) };
       requestDraw();
     } else if (cur) {
       applyDrag(pointerOf(sx, sy, e));
@@ -1258,6 +1315,11 @@ export function Canvas(props: CanvasProps) {
     if (!g) return;
     if (g.kind === "text") {
       l.text?.pointerUp();
+      return;
+    }
+    if (g.kind === "vector") {
+      l.vector?.pointerUp(e ? pointerOf(local(e).sx, local(e).sy, e) : null);
+      requestDraw();
       return;
     }
     if (g.kind === "press") {
@@ -1433,10 +1495,13 @@ export function Canvas(props: CanvasProps) {
           const l = live.current;
           if (l.text?.editing || l.props.tool !== "move" || l.props.readOnly || l.space) return;
           const { sx, sy } = local(e);
+          if (l.vector?.doubleClick(pointerOf(sx, sy, e))) return;
           const w = toWorld(sx, sy);
           const hit = l.props.hitTest?.(w.x, w.y, { deep: true });
           const node = hit ? l.props.doc.get(hit) : undefined;
           if (hit && node?.type === "TEXT" && !node.locked) startEditingAt(hit, w.x, w.y);
+          // On a vector or a shape: vector edit mode (interactions.md §7).
+          else if (hit && node && VECTOR_EDITABLE.has(node.type) && !node.locked && !l.vector?.editing()) l.vector?.edit(hit);
           else l.props.onDoubleClickLayer?.(w.x, w.y);
         }}
         onLostPointerCapture={(e) => live.current.gesture && live.current.gesture.kind !== "pan" && onPointerCancel(e)}
