@@ -12,3 +12,4 @@ export {
 } from "./document.js";
 export { invert, type DeepReadonly, type Operation, type ReadonlyNode } from "./operations.js";
 export { newId } from "./ids.js";
+export * from "./components/index.js";
