@@ -1,4 +1,5 @@
 export * from "./schema.js";
+export * from "./guides-grids.js";
 export * from "./fractional-index.js";
 export * from "./package.js";
 export { compareOrder, isSafePageId, NODE_KEYS, validateFile, validateNode, validateNodeField } from "./validate.js";

@@ -7,6 +7,7 @@ import type { Document } from "@illigma/core";
 import type { NodeId } from "@illigma/format";
 import { worldBounds, type Rect } from "../geometry";
 import { buildIndex, type SnapIndex } from "./snap";
+import { snapLinesFor } from "../grids";
 
 /** Collect the boxes of `parents`' visible children (minus `skip`) and of the parents themselves (not pages). */
 export function snapRects(doc: Document, parents: Iterable<NodeId>, skip: ReadonlySet<NodeId>): Rect[] {
@@ -39,5 +40,5 @@ export function snapIndexFor(doc: Document, ids: readonly NodeId[], extra: reado
     if (p) parents.push(p);
   }
   parents.push(...extra);
-  return buildIndex(snapRects(doc, parents, skip));
+  return buildIndex(snapRects(doc, parents, skip), snapLinesFor(doc, parents, skip));
 }

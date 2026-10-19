@@ -39,6 +39,7 @@ import {
   type Node,
 } from "./schema.js";
 import { vectorNetworkProblem } from "./vector.js";
+import { guidesProblem, layoutGridsProblem, MASK_TYPES } from "./guides-grids.js";
 
 const MAX_PROBLEMS = 50;
 const isId = (v: unknown): v is string => typeof v === "string" && NODE_ID_PATTERN.test(v);
@@ -307,6 +308,10 @@ const RULES: { [K in keyof Node]-?: Rule } = {
   blendMode: optional(blendMode),
   strokeAlign: optional(oneOf(STROKE_ALIGNS)),
   exportSettings: optional(exportSettings),
+  isMask: optional(boolean),
+  maskType: optional(oneOf(MASK_TYPES)),
+  layoutGrids: optional(layoutGridsProblem),
+  guides: optional(guidesProblem),
 };
 
 /** Every node field name, required and optional. */

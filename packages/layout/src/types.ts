@@ -30,7 +30,7 @@ export interface ReadonlyVectorNetwork {
  * core freezes them deeply. A vector's network is read (deeply read-only) only
  * to scale it with the node when layout changes the node's size.
  */
-export type LayoutNode = Readonly<Omit<Node, "fills" | "strokes" | "constraints" | "vectorNetwork" | "effects" | "exportSettings">> & {
+export type LayoutNode = Readonly<Omit<Node, "fills" | "strokes" | "constraints" | "vectorNetwork" | "effects" | "exportSettings" | "layoutGrids" | "guides">> & {
   readonly constraints?: Readonly<Constraints>;
   readonly vectorNetwork?: ReadonlyVectorNetwork;
 };

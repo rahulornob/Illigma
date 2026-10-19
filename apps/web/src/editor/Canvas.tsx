@@ -12,6 +12,7 @@ import { VECTOR_EDITABLE } from "./vector/ops";
 import { inLayer, keyboardFocused, onControl } from "./focus";
 import { EdgeAssist, MoveAssist, type Mods } from "./snap/assist";
 import { renderGuides, type GuideLayer } from "./snap/overlay";
+import { useGridsAndRulers } from "./useGridsAndRulers";
 import { measureBetween } from "./snap/measure";
 import { droppable, reparent } from "./snap/drop";
 import { rememberDuplicate } from "./snap/repeat";
@@ -233,6 +234,7 @@ export function Canvas(props: CanvasProps) {
   const insertRef = useRef<HTMLDivElement>(null);
   const guidesRef = useRef<HTMLDivElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLCanvasElement>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [errorText, setErrorText] = useState("");
   const [spaceHeld, setSpaceHeld] = useState(false);
@@ -423,6 +425,7 @@ export function Canvas(props: CanvasProps) {
     const l = live.current;
     l.frame = 0;
     l.renderer?.render(l.camera);
+    overlays.current?.render();
     updateOverlay();
     l.text?.render();
     l.vector?.render();
@@ -646,6 +649,18 @@ export function Canvas(props: CanvasProps) {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(requestDraw, [selection, tool, props.readOnly]);
+
+  // Layout grids (⌃G) and rulers with guides (⇧R).
+  const overlays = useGridsAndRulers({
+    host: hostRef,
+    grid: gridRef,
+    doc: () => live.current.props.doc,
+    pageId: () => live.current.props.pageId,
+    camera: () => live.current.camera,
+    readOnly: () => !!live.current.props.readOnly,
+    selection: () => unionRects(pageSelection().map((id) => worldBounds(live.current.props.doc, id)).filter((b): b is Rect => b !== null)),
+    requestDraw: () => requestDraw(),
+  });
 
   // Text editing (text/TextEditor.ts): its caret, selection and hidden input live in the canvas host.
   useEffect(() => {
@@ -1509,6 +1524,7 @@ export function Canvas(props: CanvasProps) {
         onContextMenu={(e) => e.preventDefault()}
       />
       <div className="canvas-overlay" aria-hidden="true">
+        <canvas ref={gridRef} className="grid-overlay" />
         <div ref={outlinesRef} />
         <div ref={marqueeRef} className="marquee-box" />
         <div ref={insertRef} className="insert-line" />
@@ -1522,6 +1538,14 @@ export function Canvas(props: CanvasProps) {
         <div ref={sizeRef} className="size-pill" />
         <div ref={draftRef} className="draft-box" />
       </div>
+      <div className="ruler-guides" aria-hidden="true" />
+      <div className="ruler ruler-top" aria-hidden="true">
+        <canvas />
+      </div>
+      <div className="ruler ruler-left" aria-hidden="true">
+        <canvas />
+      </div>
+      <div className="ruler-corner" aria-hidden="true" />
       {status !== "ready" && (
         <div className="canvas-status" role={status === "error" ? "alert" : "status"}>
           {status === "loading" ? "Loading canvas…" : `Couldn't start the canvas. ${errorText}`}

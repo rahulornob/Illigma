@@ -13,6 +13,7 @@ import { deleteLayers, duplicateLayers, topmost } from "./edit";
 import { inLayer } from "./focus";
 import { reorderZ, toggleLocked, toggleVisible, ungroupLayers, wrapLayers, type OrderStep } from "./layer-ops";
 import { layoutTransact } from "./layout-props";
+import { toggleMask } from "./masks";
 
 export type LayerCommand =
   | "copy"
@@ -29,7 +30,8 @@ export type LayerCommand =
   | "toggle-locked"
   | "rename"
   | "select-parent"
-  | "select-children";
+  | "select-children"
+  | "mask";
 
 /** Asks the Layers panel to rename a layer inline (⌘R, the context menu). */
 export const RENAME_EVENT = "illigma:rename-layer";
@@ -150,6 +152,12 @@ export function useLayerCommands({ doc, pageId, selection, setSelection, locked,
             if (g) setSelection([g]);
             return;
           }
+          case "mask": {
+            const all = sel.every((id) => doc.get(id)?.isMask);
+            const out = layoutTransact(doc, all ? "Remove mask" : "Use as mask", (tx) => toggleMask(tx, doc, sel));
+            if (out) setSelection(out);
+            return;
+          }
           case "frame": {
             const f = layoutTransact(doc, "Frame selection", (tx) => wrapLayers(tx, doc, sel, "FRAME"));
             if (f) setSelection([f]);
@@ -237,7 +245,8 @@ export function useLayerCommands({ doc, pageId, selection, setSelection, locked,
         else inPlace.current = true; // a paste event may still follow
         return;
       }
-      if (code === "KeyG") cmd = e.altKey ? "frame" : e.shiftKey ? "ungroup" : "group";
+      if (code === "KeyM" && e.ctrlKey && e.metaKey) cmd = "mask";
+      else if (code === "KeyG") cmd = e.altKey ? "frame" : e.shiftKey ? "ungroup" : "group";
       else if (code === "BracketRight") cmd = e.altKey ? "front" : "forward";
       else if (code === "BracketLeft") cmd = e.altKey ? "back" : "backward";
       else if (code === "KeyH" && e.shiftKey) cmd = "toggle-visible";
@@ -300,6 +309,7 @@ export function useLayerCommands({ doc, pageId, selection, setSelection, locked,
     { value: "group", label: "Group selection", shortcut: "⌘G", disabled: noEdit },
     { value: "frame", label: "Frame selection", shortcut: "⌥⌘G", disabled: noEdit },
     { value: "ungroup", label: "Ungroup", shortcut: "⇧⌘G", disabled: noEdit || !canUngroup },
+    { value: "mask", label: has && nodes.every((n) => n.isMask) ? "Remove mask" : "Use as mask", shortcut: "⌃⌘M", disabled: noEdit },
     { kind: "separator" },
     { value: "toggle-visible", label: anyVisible || !has ? "Hide" : "Show", shortcut: "⇧⌘H", disabled: noEdit },
     { value: "toggle-locked", label: anyUnlocked || !has ? "Lock" : "Unlock", shortcut: "⇧⌘L", disabled: noEdit },

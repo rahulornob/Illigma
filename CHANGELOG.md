@@ -21,6 +21,12 @@ After v1.0: a Tauri desktop app in v1.x, then optional multiplayer (CRDT over LA
 
 ## [Unreleased]
 
+### Added (2026-10-19, masks, layout grids, rulers and guides)
+
+- Masks: ⌃⌘M "Use as mask" groups the selection with the bottom layer as the mask (`isMask`, `maskType` alpha, vector or luminance); drawn, hit-tested and exported (PNG/JPG through the renderer, SVG `<mask>`/`<clipPath>`, PDF clip); mask icon in Layers and a Mask card.
+- Layout grids on frames (`layoutGrids`: grid, columns, rows): Properties card, editor-only overlay, ⌃G to show or hide, snapping to column and row edges.
+- Rulers (⇧R) with the selection's extent, and page guides (`PAGE.guides`): drag from a ruler to add, drag to move, drop on a ruler to remove; layers snap to guides.
+
 ### Added (2026-10-19, pages, groups, layer operations and clipboard)
 
 - Pages list: add (+), rename (double-click, Enter, F2), duplicate, delete with a confirmation (never the last page), reorder by drag or ⌥↑ ⌥↓; each page keeps its own camera and selection. Core: `Transaction.movePage`.
