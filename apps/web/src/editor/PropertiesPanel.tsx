@@ -5,6 +5,7 @@ import { MenuButton, type MenuEntry } from "../ui/Menu";
 import { fmt, LIMITS, NumberField } from "../ui/NumberField";
 import { AutoLayoutCard } from "./AutoLayoutCard";
 import { ConstraintsCard } from "./ConstraintsCard";
+import { TypographyCard } from "./TypographyCard";
 import { effectiveSizing, hasConstraints, isAutoLayoutNode, setSizing, sizingOptions, type Axis } from "./layout-model";
 import { guard, setBoxFields, setLayoutProps, type BoxField, type OnEditError } from "./layout-props";
 
@@ -155,6 +156,7 @@ export function PropertiesPanel({
             </section>
             <AutoLayoutCard key={ids.join(",")} doc={doc} nodes={nodes} readOnly={readOnly} onSelect={onSelect} onError={onError} />
             {constrained && <ConstraintsCard doc={doc} nodes={nodes} readOnly={readOnly} onError={onError} />}
+            {nodes.every((n) => n.type === "TEXT") && <TypographyCard doc={doc} nodes={nodes} readOnly={readOnly} onError={onError} />}
           </>
         ) : (
           <section className="card" aria-labelledby="page-heading">

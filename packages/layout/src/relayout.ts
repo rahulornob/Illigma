@@ -26,7 +26,24 @@ import { applyConstraints } from "./constraints.js";
 import { quarterTurns, rotatedBounds, roundLayout } from "./geometry.js";
 import type { Box, LayoutChange, LayoutNode, LayoutReader, ReadonlyVectorNetwork, Size } from "./types.js";
 
-export interface RelayoutOptions {
+/**
+ * The size a TEXT node's text needs: wrapped at `width`, or with no width on
+ * one line per line break (auto width). Null when it can't be measured now
+ * (no fonts yet): the node keeps its stored size.
+ */
+export type TextMeasure = (node: LayoutNode, width: number | undefined) => Size | null;
+
+/** How layout measures text. Without it, text keeps its stored size (as if Fixed). */
+export interface TextOptions {
+  /**
+   * Measures text for `textAutoResize` "WIDTH_AND_HEIGHT" (auto width: the
+   * box hugs the text) and "HEIGHT" (auto height: the text wraps at the
+   * box's width, which may come from Fill, and the box hugs its height).
+   */
+  measureText?: TextMeasure | undefined;
+}
+
+export interface RelayoutOptions extends TextOptions {
   /**
    * Lay out everything under the affected frames, not only the paths to the
    * changes. Use it once for content that was never laid out (an import).
@@ -45,10 +62,10 @@ export interface RelayoutOptions {
  * frame's size before the resize, which the document no longer has afterwards.
  */
 export function relayout(doc: LayoutReader, changed: Iterable<NodeId>, options: RelayoutOptions = {}): LayoutChange[] {
-  return new Engine(doc, new Map(), new Set(), options.deep ?? false).run(changed);
+  return new Engine(doc, new Map(), new Set(), options.deep ?? false, options.measureText).run(changed);
 }
 
-export interface ResizeOptions {
+export interface ResizeOptions extends TextOptions {
   /** false: children keep their positions and sizes (Figma: hold Cmd or Ctrl while resizing). Default true. */
   constraints?: boolean;
 }
@@ -85,7 +102,7 @@ export function resizeMany(doc: LayoutReader, entries: Iterable<ResizeEntry>, op
   const overlay = new Map<NodeId, Partial<Box>>();
   for (const { id, box } of entries) overlay.set(id, { ...overlay.get(id), ...box });
   const ignore = new Set<NodeId>(options.constraints === false ? overlay.keys() : []);
-  return new Engine(doc, overlay, ignore, false).run(overlay.keys());
+  return new Engine(doc, overlay, ignore, false, options.measureText).run(overlay.keys());
 }
 
 /** The shape of a `@illigma/core` operation, as far as `changedIds` needs it. */
@@ -93,9 +110,10 @@ export type OperationLike =
   | { readonly op: "create" | "delete"; readonly node: { readonly id: NodeId; readonly parentId: NodeId | null } }
   | { readonly op: "set"; readonly id: NodeId; readonly key: string; readonly value: unknown; readonly prev: unknown };
 
-/** Node fields whose change can move or resize layers. */
+/** Node fields whose change can move or resize layers (text fields: auto width and auto height text). */
 export const LAYOUT_KEYS: ReadonlySet<string> = new Set([
   "parentId", "index", "visible", "x", "y", "width", "height", "rotation",
+  "characters", "fontFamily", "fontStyle", "fontSize", "lineHeight", "letterSpacing", "textAutoResize",
   "layoutMode", "itemSpacing", "counterAxisSpacing", "paddingLeft", "paddingRight", "paddingTop", "paddingBottom",
   "primaryAxisAlignItems", "counterAxisAlignItems", "counterAxisAlignContent", "primaryAxisSizingMode", "counterAxisSizingMode",
   "layoutWrap", "layoutPositioning", "layoutSizingHorizontal", "layoutSizingVertical",
@@ -138,12 +156,16 @@ class Engine {
   readonly #dirty = new Set<NodeId>();
   readonly #flows = new Map<string, FrameLayout>();
   readonly #out = new Map<NodeId, Box>();
+  readonly #measureText: TextMeasure | undefined;
+  /** Measured text, per node and width, for this run. */
+  readonly #texts = new Map<string, Size | null>();
 
-  constructor(doc: LayoutReader, overlay: Map<NodeId, Partial<Box>>, ignore: Set<NodeId>, deep: boolean) {
+  constructor(doc: LayoutReader, overlay: Map<NodeId, Partial<Box>>, ignore: Set<NodeId>, deep: boolean, measureText?: TextMeasure) {
     this.#doc = doc;
     this.#overlay = overlay;
     this.#ignore = ignore;
     this.#deep = deep;
+    this.#measureText = measureText;
   }
 
   run(changed: Iterable<NodeId>): LayoutChange[] {
@@ -161,7 +183,7 @@ class Engine {
     const outer = [...roots].filter((id) => !this.#insideAny(id, roots)).sort();
     for (const id of outer) {
       const n = this.#node(id) as LayoutNode;
-      this.#place(n, { x: n.x, y: n.y, ...this.#measure(n, undefined, undefined) }, undefined, undefined);
+      this.#place(n, this.#free(n), undefined, undefined);
     }
 
     const changes: LayoutChange[] = [];
@@ -212,6 +234,7 @@ class Engine {
 
   /** `n`'s size with the forced width and/or height (`undefined`: its own sizing, hugging if it hugs). */
   #measure(n: LayoutNode, width: number | undefined, height: number | undefined): Size {
+    if (n.type === "TEXT") return this.#text(n, width, height);
     if (!isAutoLayout(n)) return { width: width ?? n.width, height: height ?? n.height };
     // Nothing in this frame changed and it keeps its size: its last layout still holds.
     const same = (width === undefined || width === n.width) && (height === undefined || height === n.height);
@@ -224,6 +247,43 @@ class Engine {
     if (!hugW && !hugH) return { width: frameSize(n, "width", fw ?? n.width, false), height: frameSize(n, "height", fh ?? n.height, false) };
     const lay = this.#flow(n, fw, fh);
     return { width: lay.width, height: lay.height };
+  }
+
+  /**
+   * A TEXT node's size: auto width hugs its text on both axes, auto height
+   * wraps at its width (or the forced one) and hugs its height. Fixed and
+   * truncated text, and text that can't be measured, keep their box.
+   */
+  #text(n: LayoutNode, width: number | undefined, height: number | undefined): Size {
+    const mode = n.textAutoResize;
+    const stored = { width: width ?? n.width, height: height ?? n.height };
+    if (!this.#measureText || (mode !== "WIDTH_AND_HEIGHT" && mode !== "HEIGHT")) return stored;
+    // Fill width (or auto height) wraps at the box: only auto width without a forced width measures on one line.
+    const at = width ?? (mode === "HEIGHT" || n.layoutSizingHorizontal === "FILL" ? n.width : undefined);
+    const key = `${n.id} ${at}`;
+    let size = this.#texts.get(key);
+    if (size === undefined) {
+      size = this.#measureText(n, at);
+      this.#texts.set(key, size);
+    }
+    if (!size) return stored;
+    return { width: at ?? size.width, height: height ?? size.height };
+  }
+
+  /**
+   * The box of `n` where it isn't in an auto layout flow: its own position,
+   * at its measured size. Auto width text that changes width grows from its
+   * alignment, as in Figma: centred text both ways, right-aligned text to the left.
+   */
+  #free(n: LayoutNode): Box {
+    const size = this.#measure(n, undefined, undefined);
+    const box = { x: n.x, y: n.y, ...size };
+    if (n.type !== "TEXT" || n.textAutoResize !== "WIDTH_AND_HEIGHT" || size.width === n.width) return box;
+    const f = n.textAlignHorizontal === "CENTER" ? 0.5 : n.textAlignHorizontal === "RIGHT" ? 1 : 0;
+    if (!f) return box;
+    const shift = (size.width - n.width) * f;
+    const turn = ((n.rotation || 0) * Math.PI) / 180;
+    return { ...box, x: n.x - shift * Math.cos(turn), y: n.y - shift * Math.sin(turn) };
   }
 
   #flow(n: LayoutNode, width: number | undefined, height: number | undefined): FrameLayout {
@@ -283,7 +343,7 @@ class Engine {
 
   /** A child that keeps its position; it still hugs its content. */
   #keep(k: LayoutNode): void {
-    this.#place(k, { x: k.x, y: k.y, ...this.#measure(k, undefined, undefined) }, undefined, undefined);
+    this.#place(k, this.#free(k), undefined, undefined);
   }
 
   /** A child following its constraints as its parent goes from `old` to `now` in size. */

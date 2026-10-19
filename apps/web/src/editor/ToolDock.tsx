@@ -6,6 +6,7 @@ export const TOOLS: { id: Tool; label: string; key: string; icon: IconName }[] =
   { id: "frame", label: "Frame", key: "F", icon: "frame" },
   { id: "rectangle", label: "Rectangle", key: "R", icon: "square" },
   { id: "ellipse", label: "Ellipse", key: "O", icon: "circle" },
+  { id: "text", label: "Text", key: "T", icon: "type" },
 ];
 
 export function ToolDock({ tool, onTool }: { tool: Tool; onTool(t: Tool): void }) {

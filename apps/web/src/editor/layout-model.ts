@@ -98,9 +98,17 @@ export function directionPatch(n: ReadonlyNode, direction: Direction): LayoutPat
 
 // ---- sizing: Fixed, Hug contents, Fill container ----
 
-/** The sizing a node stores for `axis`: the explicit field, else Hug on an auto layout frame's AUTO axes, else Fixed. */
+/**
+ * The sizing a node stores for `axis`: the explicit field, else Hug on an auto layout frame's AUTO axes, else Fixed.
+ * Text hugs through its resize mode, as in Figma: auto width hugs both axes, auto height hugs its height.
+ */
 export function storedSizing(n: ReadonlyNode, axis: Axis): LayoutSizing {
   const explicit = axis === "width" ? n.layoutSizingHorizontal : n.layoutSizingVertical;
+  if (n.type === "TEXT") {
+    if (explicit === "FILL") return "FILL";
+    const mode = n.textAutoResize ?? "NONE";
+    return mode === "WIDTH_AND_HEIGHT" || (axis === "height" && mode === "HEIGHT") ? "HUG" : "FIXED";
+  }
   if (explicit) return explicit;
   if (!isAutoLayout(n)) return "FIXED";
   const primary = (n.layoutMode === "HORIZONTAL") === (axis === "width");
@@ -116,7 +124,7 @@ export function inAutoLayoutFlow(doc: Document, n: ReadonlyNode): boolean {
 /** The sizing options the W or H menu offers for `n`: Hug only for auto layout frames, Fill only in an auto layout flow. */
 export function sizingOptions(doc: Document, n: ReadonlyNode): LayoutSizing[] {
   const out: LayoutSizing[] = ["FIXED"];
-  if (isAutoLayout(n)) out.push("HUG");
+  if (isAutoLayout(n) || n.type === "TEXT") out.push("HUG");
   if (inAutoLayoutFlow(doc, n)) out.push("FILL");
   return out;
 }
@@ -144,6 +152,14 @@ export function setSizing(doc: Document, ids: readonly NodeId[], axis: Axis, siz
   for (const id of ids) {
     const n = doc.get(id);
     if (!n || !sizingOptions(doc, n).includes(sizing)) continue;
+    if (n.type === "TEXT") {
+      add(id, textSizingPatch(n, axis, sizing));
+      if (sizing === "FILL") {
+        const parent = doc.get(n.parentId as NodeId);
+        if (parent && isPrimaryAxis(parent, axis) && storedSizing(parent, axis) === "HUG" && !ids.includes(parent.id)) add(parent.id, { [key]: "FIXED" });
+      }
+      continue;
+    }
     add(id, { [key]: sizing });
     if (sizing === "FILL") {
       const parent = doc.get(n.parentId as NodeId);
@@ -154,6 +170,28 @@ export function setSizing(doc: Document, ids: readonly NodeId[], axis: Axis, siz
     }
   }
   if (patches.size) setLayoutProps(doc, [...patches.keys()], (id) => patches.get(id) ?? {}, label);
+}
+
+/**
+ * Text sizing goes through its resize mode (Figma): Hug width is auto width;
+ * Hug height is auto height (auto width if the width hugs too); Fixed or
+ * Fill width turns auto width into auto height; Fixed or Fill height makes
+ * the box a fixed size. Fill is the layout field itself.
+ */
+export function textSizingPatch(n: ReadonlyNode, axis: Axis, sizing: LayoutSizing): LayoutPatch {
+  const key = SIZING_KEY[axis];
+  const mode = n.textAutoResize ?? "NONE";
+  const patch: LayoutPatch = { [key]: sizing === "FILL" ? "FILL" : undefined };
+  let next = mode;
+  if (axis === "width") {
+    if (sizing === "HUG") next = "WIDTH_AND_HEIGHT";
+    else if (mode === "WIDTH_AND_HEIGHT") next = "HEIGHT";
+    if (sizing === "HUG" && n.layoutSizingVertical === "FILL") patch.layoutSizingVertical = undefined;
+  } else if (sizing === "HUG") {
+    if (mode === "NONE" || mode === "TRUNCATE") next = "HEIGHT";
+  } else next = "NONE";
+  if (next !== mode) (patch as { textAutoResize?: string }).textAutoResize = next;
+  return patch;
 }
 
 // ---- constraints ----

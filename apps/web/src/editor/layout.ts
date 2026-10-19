@@ -13,7 +13,17 @@
 
 import type { Document, DocumentOptions, Normalizer, ReadonlyNode, Transaction } from "@illigma/core";
 import type { NodeId } from "@illigma/format";
-import { changedIds, isAutoLayout, isInFlow, layoutSizing, relayout, resizeMany, type Box, type LayoutChange, type ResizeEntry } from "@illigma/layout";
+import { changedIds, isAutoLayout, isInFlow, layoutSizing, relayout, resizeMany, type Box, type LayoutChange, type ResizeEntry, type TextMeasure } from "@illigma/layout";
+
+/**
+ * How layout measures text (auto width and auto height text, Hug text in auto
+ * layout): the app's text engine, set once it has loaded (`text/engine.ts`).
+ * Until then text keeps its stored size.
+ */
+let measureText: TextMeasure | undefined;
+export function setTextMeasure(measure: TextMeasure | undefined): void {
+  measureText = measure;
+}
 
 /** Apply layout's changes inside the running transaction. */
 export function applyLayout(tx: Transaction, changes: readonly LayoutChange[]): void {
@@ -26,7 +36,7 @@ export function applyLayout(tx: Transaction, changes: readonly LayoutChange[]): 
 /** Lays out whatever an edit changed, inside the edit (see `Normalizer` in `@illigma/core`). */
 export const layoutNormalizer: Normalizer = (doc, tx, ops) => {
   const ids = changedIds(ops);
-  if (ids.length) applyLayout(tx, relayout(doc, ids));
+  if (ids.length) applyLayout(tx, relayout(doc, ids, { measureText }));
 };
 
 /** Options for every document the editor opens or creates. */
@@ -64,13 +74,24 @@ export function resizeLayers(tx: Transaction, doc: Document, entries: readonly R
   const live = entries.filter((e) => doc.has(e.id));
   if (!live.length) return;
   for (const { id, box } of live) toFixed(tx, doc, id, box);
-  applyLayout(tx, resizeMany(doc, live, opts.constraints === false ? { constraints: false } : {}));
+  applyLayout(tx, resizeMany(doc, live, opts.constraints === false ? { constraints: false, measureText } : { measureText }));
 }
 
-/** A Hug or Fill axis that `box` changes becomes Fixed. */
+/**
+ * A Hug or Fill axis that `box` changes becomes Fixed. Text, as in Figma:
+ * a new width makes auto width text auto height (it wraps there); a new
+ * height makes it a fixed size.
+ */
 function toFixed(tx: Transaction, doc: Document, id: NodeId, box: Partial<Box>): void {
   const n = doc.get(id);
   if (!n) return;
+  if (n.type === "TEXT") {
+    const mode = n.textAutoResize ?? "NONE";
+    const wide = box.width !== undefined && box.width !== n.width;
+    const tall = box.height !== undefined && box.height !== n.height;
+    const next = tall && (mode === "WIDTH_AND_HEIGHT" || mode === "HEIGHT") ? "NONE" : wide && mode === "WIDTH_AND_HEIGHT" ? "HEIGHT" : mode;
+    if (next !== mode) tx.set(id, "textAutoResize", next);
+  }
   const flowing = inFlow(doc, id);
   for (const axis of ["width", "height"] as const) {
     const size = box[axis];

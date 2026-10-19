@@ -1141,3 +1141,262 @@ ul {
   opacity: 0.6;
   cursor: progress;
 }
+
+/* ---- Text: on-canvas editing, Typography card, font picker ---- */
+
+/* The caret (2 px, accent/default) and selection (accent/default at 32%) over the text being edited (interactions.md). */
+.text-edit {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: none;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+.text-range,
+.text-caret {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+.text-range {
+  background: color-mix(in srgb, var(--accent-default) 32%, transparent);
+}
+.text-caret {
+  width: 2px;
+  background: var(--accent-default);
+}
+.text-caret.is-blinking {
+  animation: text-caret-blink 1s steps(1) 0.5s infinite;
+}
+@keyframes text-caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .text-caret.is-blinking {
+    animation: none;
+  }
+}
+/* The hidden input that takes the keyboard, the clipboard and IME composition. It follows the caret, so IME windows open there. */
+.text-input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  opacity: 0;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  font-size: 16px; /* never small enough for a mobile browser to zoom the page */
+  white-space: pre;
+  pointer-events: none;
+}
+
+.type-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.type-pair > * {
+  flex: 1;
+  min-width: 0;
+}
+.type-align {
+  justify-content: space-between;
+}
+.select-button {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--size-field);
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: var(--bg-field);
+  color: var(--text-primary);
+  font: var(--type-ui-value);
+  text-align: left;
+  cursor: pointer;
+}
+.select-button:hover:not(:disabled),
+.select-button[aria-expanded="true"] {
+  background: var(--bg-field-hover);
+}
+.select-button:disabled {
+  color: var(--text-disabled);
+  cursor: default;
+}
+.select-button .icon {
+  flex: none;
+  color: var(--text-secondary);
+}
+.select-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.font-warn,
+.select-button .font-warn .icon {
+  display: grid;
+  place-items: center;
+  color: var(--state-warning);
+}
+.type-missing {
+  color: var(--text-secondary);
+}
+/* Icon segments in one field-coloured strip (Figma "Align" and "Resize"): 28 × 24 each. */
+.seg-group {
+  display: inline-flex;
+  flex: none;
+  border-radius: var(--radius-field);
+  background: var(--bg-field);
+}
+.seg {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.seg:hover:not(:disabled) {
+  color: var(--text-primary);
+}
+.seg[aria-checked="true"] {
+  background: var(--bg-field-hover);
+  color: var(--text-primary);
+}
+.seg:disabled {
+  color: var(--text-disabled);
+  cursor: default;
+}
+
+.font-picker {
+  position: fixed;
+  z-index: 20;
+  width: 264px;
+  max-height: min(480px, calc(100vh - 16px));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-card);
+  background: var(--bg-panel);
+  box-shadow: var(--elevation-2-popover);
+}
+.font-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: var(--radius-field);
+  background: var(--bg-field);
+  color: var(--text-secondary);
+}
+.font-search:focus-within {
+  outline: 2px solid var(--accent-default);
+  outline-offset: -2px;
+}
+.font-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: var(--type-ui-body);
+}
+.font-search-input:focus-visible {
+  outline: none;
+}
+.font-search-input::placeholder {
+  color: var(--text-tertiary);
+}
+.font-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px 0;
+}
+.font-tab {
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font: var(--type-ui-value);
+  cursor: pointer;
+}
+.font-tab:hover {
+  color: var(--text-primary);
+}
+.font-tab[aria-checked="true"] {
+  background: var(--bg-field-hover);
+  color: var(--text-primary);
+}
+.font-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.font-option {
+  height: var(--size-field);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  border-radius: var(--radius-button);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.font-option[data-active] {
+  background: var(--accent-fill);
+  color: var(--accent-on);
+}
+.font-option[data-active] .font-warn {
+  color: var(--accent-on);
+}
+.font-empty {
+  padding: 4px 8px;
+  color: var(--text-tertiary);
+}
+.font-local {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px;
+}
+.font-missing {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-card);
+  background: var(--state-warning-tint);
+  color: var(--text-primary);
+}
+.font-missing .icon {
+  flex: none;
+  color: var(--state-warning);
+}

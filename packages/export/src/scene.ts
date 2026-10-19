@@ -6,7 +6,7 @@
  */
 
 import type { ReadonlyNode } from "@illigma/core";
-import type { NodeId } from "@illigma/format";
+import { lineHeightPx, type NodeId } from "@illigma/format";
 import { CLIPPING, flatten, shapeGeometry, type TextLine } from "@illigma/renderer";
 import { ExportError, type ExportSettings } from "./settings.js";
 
@@ -165,7 +165,7 @@ export function textLinesBounds(n: ReadonlyNode, lines: readonly TextLine[] | nu
   if (!first || !last || !top) return box;
   const size = n.fontSize ?? 12;
   // The distance between baselines; a single line's is its line height.
-  const pitch = all.length > 1 ? ((all[all.length - 1] as Measured).baseline - top.baseline) / (all.length - 1) : (n.lineHeight ?? (ASCENT + DESCENT) * size);
+  const pitch = all.length > 1 ? ((all[all.length - 1] as Measured).baseline - top.baseline) / (all.length - 1) : (lineHeightPx(n) ?? (ASCENT + DESCENT) * size);
   const descent = typeof last.descent === "number" ? last.descent : Math.max(DESCENT * size, pitch - top.baseline);
   const ascent = typeof first.ascent === "number" ? Math.abs(first.ascent) : ASCENT * size;
   let x0 = 0, y0 = 0, x1 = box.width, y1 = box.height;
