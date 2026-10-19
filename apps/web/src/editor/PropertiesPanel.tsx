@@ -5,6 +5,7 @@ import { MenuButton, type MenuEntry } from "../ui/Menu";
 import { fmt, LIMITS, NumberField } from "../ui/NumberField";
 import { AutoLayoutCard } from "./AutoLayoutCard";
 import { ConstraintsCard } from "./ConstraintsCard";
+import { hasGridCard, LayoutGridCard, MaskCard } from "./LayoutGridCard";
 import { TypographyCard } from "./TypographyCard";
 import { ExportCard } from "./export/ExportCard";
 import { effectiveSizing, hasConstraints, isAutoLayoutNode, setSizing, sizingOptions, type Axis } from "./layout-model";
@@ -158,6 +159,8 @@ export function PropertiesPanel({
               </div>
             </section>
             <AutoLayoutCard key={ids.join(",")} doc={doc} nodes={nodes} readOnly={readOnly} onSelect={onSelect} onError={onError} />
+            {hasGridCard(nodes) && node && <LayoutGridCard key={`grid-${node.id}`} doc={doc} node={node} readOnly={readOnly} onError={onError} />}
+            {nodes.every((n) => n.isMask) && <MaskCard doc={doc} nodes={nodes} readOnly={readOnly} onError={onError} />}
             {constrained && <ConstraintsCard doc={doc} nodes={nodes} readOnly={readOnly} onError={onError} />}
             {nodes.every((n) => n.type === "TEXT") && <TypographyCard doc={doc} nodes={nodes} readOnly={readOnly} onError={onError} />}
             <VectorCards doc={doc} nodes={nodes} readOnly={readOnly} onSelect={onSelect} onError={onError} />

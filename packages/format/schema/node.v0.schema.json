@@ -89,7 +89,39 @@
     "effects": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/effect" }, "description": "Shadows and blurs, bottom first. Default none" },
     "blendMode": { "$ref": "#/$defs/blendMode", "description": "How the layer mixes with what is under it. Default PASS_THROUGH" },
     "strokeAlign": { "enum": ["CENTER", "INSIDE", "OUTSIDE"], "description": "Where strokes sit on the outline. Absent means CENTER (format 0 drew every stroke centred); lines and open paths are always centred" },
-    "exportSettings": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/exportSettings" }, "description": "The files this layer or page exports to (Figma's ExportSettings), in order. Default none" }
+    "exportSettings": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/exportSettings" }, "description": "The files this layer or page exports to (Figma's ExportSettings), in order. Default none" },
+    "isMask": { "type": "boolean", "description": "This layer masks the siblings above it in its parent (Figma's isMask). Default false" },
+    "maskType": { "enum": ["ALPHA", "VECTOR", "LUMINANCE"], "description": "How the mask clips: its pixels' alpha, its outline or its brightness. Default ALPHA" },
+    "layoutGrids": {
+      "type": "array",
+      "maxItems": 50,
+      "description": "Frame layout grids (Figma's layoutGrids), bottom first. Editor-only: never exported. Default none",
+      "items": {
+        "type": "object",
+        "required": ["pattern"],
+        "properties": {
+          "pattern": { "enum": ["GRID", "COLUMNS", "ROWS"] },
+          "sectionSize": { "type": "number", "minimum": 1, "maximum": 100000 },
+          "alignment": { "enum": ["MIN", "MAX", "STRETCH", "CENTER"] },
+          "gutterSize": { "type": "number", "minimum": 0, "maximum": 100000 },
+          "count": { "type": "integer", "minimum": 0, "maximum": 1000 },
+          "offset": { "type": "number", "minimum": 0, "maximum": 100000 },
+          "visible": { "type": "boolean" },
+          "color": { "$ref": "#/$defs/color" }
+        }
+      }
+    },
+    "guides": {
+      "type": "array",
+      "maxItems": 2000,
+      "description": "PAGE: ruler guides. Default none",
+      "items": {
+        "type": "object",
+        "required": ["axis", "offset"],
+        "additionalProperties": false,
+        "properties": { "axis": { "enum": ["X", "Y"] }, "offset": { "type": "number" } }
+      }
+    }
   },
   "$defs": {
     "exportSettings": {

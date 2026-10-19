@@ -43,6 +43,7 @@ export function hitTest(doc: NodeSource, pageId: NodeId, x: number, y: number, o
   const tolerance = Math.max(0, options.tolerance ?? DEFAULT_HIT_TOLERANCE);
   for (let i = top.length - 1; i >= 0; i--) {
     const n = top[i] as ReadonlyNode;
+    if (!maskedIn(doc, top, i, x, y)) continue;
     const hit = hitNode(doc, n, x, y, tolerance);
     if (hit) return options.deep ? hit : n.id;
   }
@@ -61,10 +62,35 @@ function hitNode(doc: NodeSource, n: ReadonlyNode, px: number, py: number, toler
   if (CLIPPING.has(n.type) && !(boxStrokeReach(n) > 0 ? insideBox(n, lx, ly, 0) : inside)) return inside ? n.id : null;
   const kids = doc.children(n.id);
   for (let i = kids.length - 1; i >= 0; i--) {
+    if (!maskedIn(doc, kids, i, lx, ly)) continue;
     const hit = hitNode(doc, kids[i] as ReadonlyNode, lx, ly, tolerance);
     if (hit) return hit;
   }
   return inside && !NO_AREA.has(n.type) ? n.id : null;
+}
+
+/**
+ * Whether sibling `i` is visible at (`px`, `py`) through every mask below it
+ * (masks clip the siblings above them, as in Figma). The mask itself counts
+ * only through the masks under it.
+ */
+function maskedIn(doc: NodeSource, sibs: readonly ReadonlyNode[], i: number, px: number, py: number): boolean {
+  for (let j = i - 1; j >= 0; j--) {
+    const m = sibs[j] as ReadonlyNode;
+    if (!m.isMask || !m.visible) continue;
+    if (!maskCovers(doc, m, px, py)) return false;
+  }
+  return true;
+}
+
+/** Whether mask `m` covers (`px`, `py`) in its parent's space: its own shape or, for a group, any visible descendant. */
+export function maskCovers(doc: NodeSource, m: ReadonlyNode, px: number, py: number): boolean {
+  if (!m.visible) return false;
+  const [lx, ly] = toLocal(m, px, py);
+  if (!NO_AREA.has(m.type) && insideShape(m, lx, ly, 0, doc)) return true;
+  if (m.type === "BOOLEAN_OPERATION") return false;
+  for (const k of doc.children(m.id)) if (maskCovers(doc, k, lx, ly)) return true;
+  return false;
 }
 
 /** Parent space to `n`'s local space: undo the translate, then the rotation. */

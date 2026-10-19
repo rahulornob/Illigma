@@ -253,3 +253,17 @@ describe("hitTest: stroke alignment (QC round 7)", () => {
     expect(hitTest(doc, page, 95, 210, { deep: true })).toBe(child);
   });
 });
+
+describe("hitTest with masks", () => {
+  it("a mask clips the siblings above it: only points inside the mask hit them", () => {
+    let top = "";
+    const { doc, page } = setup((add, p) => {
+      const group = add("GROUP", p, { x: 0, y: 0, width: 100, height: 100 });
+      add("ELLIPSE", group, { x: 0, y: 0, width: 100, height: 100, isMask: true });
+      top = add("RECTANGLE", group, { x: 0, y: 0, width: 100, height: 100 });
+    });
+    expect(hitTest(doc, page, 50, 50, { deep: true })).toBe(top);
+    // The corner is outside the ellipse: the rectangle is masked away there, and nothing else is hit.
+    expect(hitTest(doc, page, 2, 2, { deep: true })).toBeNull();
+  });
+});
