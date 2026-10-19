@@ -55,6 +55,10 @@ export interface CanvasHandle {
   zoomOut(): void;
   zoomTo(zoom: number): void;
   fit(): void;
+  /** A point in the window (client pixels) in page (world) coordinates. */
+  toWorld(clientX: number, clientY: number): { x: number; y: number };
+  /** The part of the page the canvas shows, in world coordinates. */
+  viewport(): { x: number; y: number; width: number; height: number };
 }
 
 interface CanvasProps {
@@ -367,6 +371,15 @@ export function Canvas(props: CanvasProps) {
       zoomAround(z, w / 2, h / 2);
     },
     fit: () => fit(),
+    toWorld: (clientX: number, clientY: number) => {
+      const r = canvasRef.current?.getBoundingClientRect();
+      return toWorld(clientX - (r?.left ?? 0), clientY - (r?.top ?? 0));
+    },
+    viewport: () => {
+      const { w, h } = size();
+      const { camera } = live.current;
+      return { x: camera.x, y: camera.y, width: w / camera.zoom, height: h / camera.zoom };
+    },
   }));
 
   // CanvasKit, the GPU surface and the page renderer. Rebuilt when the canvas resizes.

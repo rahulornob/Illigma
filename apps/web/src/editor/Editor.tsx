@@ -24,6 +24,7 @@ import { useDocVersion, useSaveDisplay } from "./hooks";
 import { LayersPanel } from "./LayersPanel";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { openWarnings } from "./open-warnings";
+import { useImageImport } from "./paint/useImageImport";
 import { TOOLS, ToolDock } from "./ToolDock";
 
 interface EditorProps {
@@ -493,6 +494,9 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [doc, reportEditError]);
 
+  // Images dropped on the canvas or pasted (⌘V): placed as image-filled rectangles. A refused file says why.
+  const imageDrop = useImageImport({ doc, pageId, canvas, locked, onSelect: setSelection, onError: setEditError });
+
   const status = viewOnly
     ? { text: session.compare ? "Disk version · read-only" : "Read-only", tone: "quiet" as const, state: "read-only", message: undefined }
     : save;
@@ -544,7 +548,7 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
           onSelect={setSelection}
         />
 
-        <main className="canvas-area" aria-label="Canvas area">
+        <main className="canvas-area" aria-label="Canvas area" {...imageDrop}>
           <Canvas
             doc={doc}
             pageId={pageId}

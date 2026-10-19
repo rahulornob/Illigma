@@ -1141,3 +1141,473 @@ ul {
   opacity: 0.6;
   cursor: progress;
 }
+
+/* ---- Paints and effects: Appearance, Fill, Stroke and Effects cards, colour picker ---- */
+
+/* Transparency under swatches and sliders: a small checkerboard from surface tokens. */
+.paint-swatch,
+.doc-swatch,
+.stop-bar,
+.alpha-slider {
+  --checker: conic-gradient(var(--border-strong) 25%, transparent 0 50%, var(--border-strong) 0 75%, transparent 0) 0 0 / 8px 8px, var(--bg-field-hover);
+}
+.paint-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.paint-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--radius-field);
+}
+.paint-row[data-drop] {
+  box-shadow: inset 0 2px 0 var(--accent-default);
+}
+.paint-row[data-open] .paint-field {
+  background: var(--accent-row);
+}
+.paint-row > .icon-button {
+  flex: none;
+  width: 24px;
+  height: 28px;
+}
+.paint-row[data-hidden] .paint-hex,
+.paint-row[data-hidden] .paint-type,
+.paint-row[data-hidden] .paint-opacity,
+.paint-row[data-hidden] .effect-name {
+  color: var(--text-tertiary);
+}
+.paint-field {
+  flex: 1;
+  min-width: 0;
+  height: var(--size-field);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 4px;
+  border-radius: var(--radius-field);
+  background: var(--bg-field);
+}
+.paint-field:hover {
+  background: var(--bg-field-hover);
+}
+.paint-field:focus-within {
+  outline: 2px solid var(--accent-default);
+  outline-offset: 2px;
+}
+/* The paint (--paint, a CSS image) over the checkerboard. */
+.paint-swatch {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  background: var(--paint, none), var(--checker);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.inline-field {
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: var(--type-ui-value);
+  font-variant-numeric: tabular-nums;
+}
+.inline-field:focus-visible {
+  outline: none;
+}
+.paint-hex {
+  flex: 1;
+  width: 0;
+}
+.paint-type {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.paint-opacity {
+  flex: none;
+  width: 40px;
+  text-align: right;
+  color: var(--text-secondary);
+}
+.paint-mixed {
+  padding: 0 4px;
+}
+/* A unit after a value (%, px), like .field-unit (kept apart: that class is the sizing unit, Hug or Fill). */
+.unit-suffix {
+  flex: none;
+  padding-right: 8px;
+  color: var(--text-secondary);
+}
+.stroke-settings {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.stroke-settings .field-letter {
+  width: 8px;
+}
+
+/* A field-shaped button that opens a menu (stroke position, effect type). */
+.select-button {
+  min-width: 0;
+  height: var(--size-field);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: var(--bg-field);
+  color: var(--text-primary);
+  font: var(--type-ui-value);
+  text-align: left;
+  cursor: pointer;
+}
+.select-button:hover:not(:disabled) {
+  background: var(--bg-field-hover);
+}
+.select-button:disabled {
+  color: var(--text-disabled);
+  cursor: default;
+}
+.select-button .icon {
+  color: var(--text-secondary);
+}
+.select-button.grow {
+  flex: 1;
+}
+.select-button-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Effects rows: a type tile and name (the type menu), then the settings button. */
+.effect-field {
+  padding: 0;
+  gap: 0;
+}
+.effect-type {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 4px;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: transparent;
+  color: var(--text-primary);
+  font: var(--type-ui-value);
+  text-align: left;
+  cursor: pointer;
+}
+.effect-tile {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-xs);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+}
+.effect-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.effect-field .icon-button {
+  flex: none;
+  width: 28px;
+}
+.effect-preview {
+  height: 88px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-field);
+  background: var(--bg-inverse);
+  overflow: hidden;
+}
+.effect-sample {
+  width: 96px;
+  height: 48px;
+  border-radius: var(--radius-field);
+  background: var(--bg-card);
+}
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.check-row input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent-fill);
+}
+
+/* ---- Popovers: colour picker, effect settings ---- */
+
+.popover {
+  position: fixed;
+  z-index: 15;
+  width: 256px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-card);
+  background: var(--bg-panel);
+  box-shadow: var(--elevation-2-popover);
+}
+.popover:focus-visible {
+  outline: none;
+}
+.picker-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.picker-tabs {
+  flex: 1;
+  display: flex;
+  gap: 4px;
+}
+.picker-tab {
+  height: var(--size-field);
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-button);
+  background: transparent;
+  color: var(--text-tertiary);
+  font: var(--type-ui-value);
+  cursor: pointer;
+}
+.picker-tab[aria-selected="true"] {
+  background: var(--bg-field);
+  color: var(--text-primary);
+}
+.picker-tab[aria-disabled="true"] {
+  color: var(--text-disabled);
+  cursor: default;
+}
+.picker-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.picker-row .icon-button {
+  flex: none;
+  width: 24px;
+  height: 28px;
+}
+.picker-spacer {
+  flex: 1;
+}
+.picker-select {
+  flex: none;
+  height: var(--size-field);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: var(--bg-field);
+  color: var(--text-primary);
+  font: var(--type-ui-value);
+  cursor: pointer;
+}
+.picker-select:hover:not(:disabled) {
+  background: var(--bg-field-hover);
+}
+.picker-select .icon {
+  color: var(--text-secondary);
+}
+.format-select {
+  width: 64px;
+  justify-content: space-between;
+}
+.picker-field {
+  height: var(--size-field);
+  padding: 0 8px;
+  border-radius: var(--radius-field);
+  background: var(--bg-field);
+}
+.picker-field:hover {
+  background: var(--bg-field-hover);
+}
+.picker-field:focus-visible {
+  outline: 2px solid var(--accent-default);
+  outline-offset: 2px;
+}
+.picker-field.hex {
+  flex: 1;
+  width: 0;
+}
+.picker-field.narrow {
+  flex: none;
+  width: 56px;
+}
+.picker-channels {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+.picker-channels .field-letter {
+  width: 20px;
+}
+
+/* Saturation (across) and brightness (down) for the current hue: black and white are the colour model's own ends. */
+.sv-area {
+  position: relative;
+  height: 160px;
+  border-radius: var(--radius-field);
+  background: linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, var(--hue));
+  cursor: crosshair;
+  touch-action: none;
+}
+.sv-thumb,
+.slider-thumb {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--accent-on);
+  border-radius: var(--radius-full);
+  box-shadow: 0 0 0 1px var(--border-strong);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.picker-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.channel-slider {
+  position: relative;
+  height: 12px;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  touch-action: none;
+}
+.channel-slider .slider-thumb {
+  top: 50%;
+}
+/* The hue wheel's own colours. */
+.hue-slider {
+  background: linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+}
+.alpha-slider {
+  background: linear-gradient(90deg, transparent, var(--solid)), var(--checker);
+}
+.sv-area:focus-visible,
+.channel-slider:focus-visible {
+  outline: 2px solid var(--accent-default);
+  outline-offset: 2px;
+}
+.picker-swatches {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.picker-caption {
+  color: var(--text-tertiary);
+}
+.swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 20px);
+  justify-content: space-between;
+  row-gap: 8px;
+}
+.doc-swatch {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  background: linear-gradient(var(--swatch), var(--swatch)), var(--checker);
+  cursor: pointer;
+}
+
+/* Gradient stops: the bar shows the gradient over the checkerboard; stops sit on it. */
+.gradient-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.stop-bar-wrap {
+  padding: 0 8px;
+}
+.stop-bar {
+  position: relative;
+  height: 24px;
+  border-radius: var(--radius-xs);
+  background: var(--stops), var(--checker);
+  cursor: copy;
+  touch-action: none;
+}
+.stop-handle {
+  position: absolute;
+  top: 50%;
+  width: 16px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid var(--accent-on);
+  border-radius: var(--radius-xs);
+  background: var(--stop);
+  box-shadow: 0 0 0 1px var(--border-strong);
+  transform: translate(-50%, -50%);
+  cursor: ew-resize;
+}
+.stop-handle[data-selected] {
+  border-color: var(--accent-default);
+  box-shadow: 0 0 0 1px var(--accent-on);
+}
+
+/* Image paints. */
+.image-fill {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.image-preview {
+  height: 128px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-field);
+  background: var(--bg-field);
+  overflow: hidden;
+}
+.image-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.image-preview[data-scale="FIT"] img {
+  object-fit: contain;
+}
+.image-preview[data-scale="TILE"] img {
+  object-fit: none;
+}

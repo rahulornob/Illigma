@@ -7,6 +7,7 @@ import { AutoLayoutCard } from "./AutoLayoutCard";
 import { ConstraintsCard } from "./ConstraintsCard";
 import { effectiveSizing, hasConstraints, isAutoLayoutNode, setSizing, sizingOptions, type Axis } from "./layout-model";
 import { guard, setBoxFields, setLayoutProps, type BoxField, type OnEditError } from "./layout-props";
+import { PaintCards } from "./paint/PaintCards";
 
 const FIELDS: { key: BoxField; letter: string; label: string; min: number; max: number }[] = [
   { key: "x", letter: "X", label: "X position", min: -LIMITS.position, max: LIMITS.position },
@@ -155,6 +156,7 @@ export function PropertiesPanel({
             </section>
             <AutoLayoutCard key={ids.join(",")} doc={doc} nodes={nodes} readOnly={readOnly} onSelect={onSelect} onError={onError} />
             {constrained && <ConstraintsCard doc={doc} nodes={nodes} readOnly={readOnly} onError={onError} />}
+            <PaintCards key={`paint-${ids.join(",")}`} doc={doc} nodes={nodes} readOnly={readOnly} onError={onError} />
           </>
         ) : (
           <section className="card" aria-labelledby="page-heading">
