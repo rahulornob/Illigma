@@ -590,7 +590,8 @@ await runE2E("canvas", {}, async ({ browser, url, log, check, outDir, errors }) 
   await page.keyboard.press("Escape");
   await page.mouse.move(avatarCentre.x + 60, avatarCentre.y, { steps: 6 });
   await page.mouse.up();
-  check((await selectedName()) === null, `Escape should clear the selection, got ${await selectedName()}`);
+  // Escape selects the parent, as in Figma (Avatar is inside Desktop).
+  check((await selectedName()) === "Desktop", `Escape should select the parent, got ${await selectedName()}`);
   check((await box4("Avatar")).x === 1200, `Avatar must not move after Escape, got X ${await field(page, "X position")}`);
 
   log("handles sit on the layers a resize changes (a parent and its child both selected)");

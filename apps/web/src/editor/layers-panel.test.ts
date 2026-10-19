@@ -51,10 +51,14 @@ describe("Layers panel", () => {
     expect(html).toContain(`height:${12_002 * 32}px`);
   });
 
-  it("rows have no aria-expanded while they can't collapse (QC round 7)", () => {
-    const { doc, page } = big(3);
+  it("only rows with children have aria-expanded, and collapsing hides their rows", () => {
+    const { doc, page, frame } = big(3);
     const html = render(doc, page);
-    expect(html).not.toContain("aria-expanded");
+    expect(html.match(/aria-expanded="true"/g)).toHaveLength(1);
+    expect(html).not.toContain('aria-expanded="false"');
+    const rows = layerRows(doc, page, new Set([frame]));
+    expect(rows.map((r) => r.id)).toHaveLength(2);
+    expect(rows[1]).toMatchObject({ id: frame, collapsed: true, hasChildren: true });
   });
 
   it("selected rows are aria-selected; one row is in the Tab order", () => {

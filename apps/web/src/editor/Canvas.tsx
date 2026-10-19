@@ -76,6 +76,9 @@ export interface CanvasHandle {
   viewport(): { x: number; y: number; width: number; height: number };
   /** Edit text layer `id` on the canvas, all its text selected (Enter on a selected text layer). */
   editText(id: NodeId): void;
+  /** The camera (per-page cameras in the editor) and setting it back. */
+  camera(): { x: number; y: number; zoom: number };
+  setCamera(camera: { x: number; y: number; zoom: number }): void;
 }
 
 interface CanvasProps {
@@ -89,6 +92,8 @@ interface CanvasProps {
   onSelect(ids: NodeId[]): void;
   onCreated(id: NodeId): void;
   onZoom(zoom: number): void;
+  /** A double-click with the Move tool that didn't start text editing (entering groups and frames), in page coordinates. */
+  onDoubleClickLayer?: ((x: number, y: number) => void) | undefined;
   handle: Ref<CanvasHandle>;
 }
 
@@ -475,6 +480,8 @@ export function Canvas(props: CanvasProps) {
     editText: (id: NodeId) => {
       if (!live.current.props.readOnly) live.current.text?.start(id, "all");
     },
+    camera: () => ({ ...live.current.camera }),
+    setCamera: (c) => setCamera({ x: c.x, y: c.y, zoom: clampZoom(c.zoom) }),
   }));
 
   // CanvasKit, the GPU surface and the page renderer. Rebuilt when the canvas resizes.
@@ -1430,6 +1437,7 @@ export function Canvas(props: CanvasProps) {
           const hit = l.props.hitTest?.(w.x, w.y, { deep: true });
           const node = hit ? l.props.doc.get(hit) : undefined;
           if (hit && node?.type === "TEXT" && !node.locked) startEditingAt(hit, w.x, w.y);
+          else l.props.onDoubleClickLayer?.(w.x, w.y);
         }}
         onLostPointerCapture={(e) => live.current.gesture && live.current.gesture.kind !== "pan" && onPointerCancel(e)}
         // Right-click never opens the browser's menu over the canvas (and can't leave a drag open behind it).

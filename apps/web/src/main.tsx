@@ -7,6 +7,7 @@ import { registerServiceWorker } from "./sw-update";
 import "./styles/tokens-fallback.css"; // app-only names; the Figma tokens below override any shared ones
 import "@illigma/tokens/tokens.css";
 import "./styles/app.css";
+import "./styles/layers.css";
 
 loadFonts();
 

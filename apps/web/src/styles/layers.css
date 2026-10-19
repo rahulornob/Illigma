@@ -1,0 +1,148 @@
+/* ---- Pages and layers: pages list, layer rows (collapse, hide, lock, rename, drag), context menus ---- */
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.section-head .section-heading {
+  flex: 1;
+}
+.page-list li {
+  position: relative;
+}
+.page-list li.drop-before::before,
+.page-list li.drop-after::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent-default);
+}
+.page-list li.drop-before::before {
+  top: -1px;
+}
+.page-list li.drop-after::after {
+  bottom: -1px;
+}
+.rename-field {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  padding: 0 4px;
+  border: 1px solid var(--accent-default);
+  border-radius: var(--radius-xs);
+  background: var(--bg-field);
+  color: var(--text-primary);
+  font: var(--type-ui-body);
+  outline: none;
+}
+.page-list .rename-field {
+  width: 100%;
+  height: var(--size-row);
+  padding: 0 8px;
+}
+.layer-row {
+  gap: 4px;
+  padding-right: 4px;
+}
+.layer-row .row-label {
+  margin-left: 4px;
+}
+.row-chevron {
+  width: 16px;
+  height: 16px;
+  margin-left: -4px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--text-tertiary);
+}
+.row-toggle {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  visibility: hidden;
+}
+.layer-row:hover .row-toggle,
+.layer-row:focus-visible .row-toggle,
+.row-toggle.is-on {
+  visibility: visible;
+}
+.row-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.layer-row.is-hidden .row-label,
+.layer-row.is-hidden .row-icon {
+  color: var(--text-disabled);
+}
+.layer-row.drop-into {
+  box-shadow: inset 0 0 0 2px var(--accent-default);
+}
+.layer-drop-line {
+  position: absolute;
+  right: 8px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent-default);
+  pointer-events: none;
+}
+.context-menu .menu-label {
+  padding-left: 4px;
+}
+.menu-shortcut {
+  flex: none;
+  color: var(--text-tertiary);
+}
+.menu-item:hover .menu-shortcut,
+.menu-item:focus-visible .menu-shortcut {
+  color: inherit;
+}
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.48);
+}
+.confirm-dialog {
+  width: min(360px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-panel);
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  box-shadow: var(--elevation-2-popover);
+  font: var(--type-ui-body);
+}
+.confirm-title {
+  font: var(--type-ui-title);
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.btn-danger {
+  background: var(--state-danger);
+  color: var(--accent-on);
+}
+.btn-danger:hover:not(:disabled) {
+  filter: brightness(1.08);
+}

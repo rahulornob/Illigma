@@ -762,6 +762,14 @@ export class Transaction {
     if (n.index !== index) this.#record({ op: "set", id, key: "index", value: index, prev: n.index });
   }
 
+  /** Move page `id` to `position` among the pages (pages have no parent, so `move` can't take them). */
+  movePage(id: NodeId, position: Position): void {
+    const n = this.#doc.get(id);
+    if (!n || n.type !== "PAGE") throw new DocumentError(`Page ${id} does not exist.`);
+    const index = this.indexAt(null, position, id);
+    if (n.index !== index) this.#record({ op: "set", id, key: "index", value: index, prev: n.index });
+  }
+
   /** Delete `id` and everything under it. */
   delete(id: NodeId): void {
     const all = this.#doc.subtree(id);

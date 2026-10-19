@@ -31,6 +31,8 @@ import { ExportHost } from "./export/ExportHost";
 import { TOOLS, ToolDock } from "./ToolDock";
 import { settleTextForSave } from "./text/session";
 import { inLayer, onControl } from "./focus";
+import { useLayerCommands } from "./useLayerCommands";
+import { usePageMemory } from "./usePageMemory";
 
 interface EditorProps {
   session: Session;
@@ -486,13 +488,29 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
       }
       if (e.key === "Escape") {
         if (keys.current.tool !== "move") setTool("move");
-        else setSelection([]);
+        else {
+          // Escape selects the parent (inside a group or frame), as in Figma; at the top it clears the selection.
+          const parents = [...new Set(sel.map((id) => doc.get(id)?.parentId))].filter((p): p is NodeId => !!p && doc.get(p)?.type !== "PAGE");
+          setSelection(parents);
+        }
         return;
       }
       // Enter on a selected text layer edits it, all its text selected (interactions.md §6).
       if (e.key === "Enter" && !e.shiftKey && sel.length === 1 && doc.get(sel[0] as NodeId)?.type === "TEXT") {
         e.preventDefault();
         if (!noEdits) canvas.current?.editText(sel[0] as NodeId);
+        return;
+      }
+      // Enter selects the children of the selected groups and frames; Shift+Enter their parents.
+      if (e.key === "Enter" && sel.length && !e.defaultPrevented) {
+        e.preventDefault();
+        if (e.shiftKey) {
+          const parents = [...new Set(sel.map((id) => doc.get(id)?.parentId))].filter((p): p is NodeId => !!p && doc.get(p)?.type !== "PAGE");
+          if (parents.length) setSelection(parents);
+        } else {
+          const kids = sel.flatMap((id) => doc.children(id).filter((k) => k.visible && !k.locked).map((k) => k.id));
+          if (kids.length) setSelection(kids);
+        }
         return;
       }
       if ((e.key === "Delete" || e.key === "Backspace") && sel.length) {
@@ -530,6 +548,33 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
 
   // Images dropped on the canvas or pasted (⌘V): placed as image-filled rectangles. A refused file says why.
   const imageDrop = useImageImport({ doc, pageId, canvas, locked, onSelect: setSelection, onError: setEditError });
+
+  // Layers and pages: clipboard, group, order, hide/lock, context menus; each page keeps its own camera and selection.
+  const layerCommands = useLayerCommands({ doc, pageId, selection, setSelection, locked, canvas, onError: reportEditError });
+  const switchPage = usePageMemory({ doc, pageId, selection, setPageId, setSelection, canvas });
+  const onCanvasMenu = (e: { preventDefault(): void; clientX: number; clientY: number }) => {
+    e.preventDefault();
+    if (doc.live) return;
+    const w = canvas.current?.toWorld(e.clientX, e.clientY);
+    const hit = w ? hitTest(w.x, w.y, { deep: false }) : null;
+    // Right-click on a layer that isn't selected selects it first; on empty canvas it clears the selection.
+    if (hit && !selection.includes(hit)) setSelection([hit]);
+    else if (!hit) setSelection([]);
+    layerCommands.openMenu(e.clientX, e.clientY, "canvas");
+  };
+  /** Double-click inside the selected group or frame selects its layer under the pointer (entering it). */
+  const enterAt = (x: number, y: number) => {
+    const deep = hitTestPage(doc, pageId, x, y, { deep: true, tolerance: HIT_TOLERANCE_PX / zoom });
+    if (!deep) return;
+    const chain: NodeId[] = [];
+    for (let id: NodeId | null | undefined = deep; id && id !== pageId; id = doc.get(id)?.parentId) chain.unshift(id);
+    const at = selection.length === 1 ? chain.indexOf(selection[0] as NodeId) : -1;
+    const next = at >= 0 ? chain[at + 1] : undefined;
+    if (next) {
+      if (doc.get(next)?.type === "TEXT" && !locked) canvas.current?.editText(next);
+      setSelection([next]);
+    }
+  };
 
   const status = viewOnly
     ? { text: session.compare ? "Disk version · read-only" : "Read-only", tone: "quiet" as const, state: "read-only", message: undefined }
@@ -575,14 +620,14 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
           doc={doc}
           pageId={pageId}
           selection={selection}
-          onPage={(id) => {
-            setPageId(id);
-            setSelection([]);
-          }}
+          onPage={switchPage}
           onSelect={setSelection}
+          readOnly={locked}
+          onError={reportEditError}
+          onLayerMenu={(x, y) => layerCommands.openMenu(x, y, "layers")}
         />
 
-        <main className="canvas-area" aria-label="Canvas area" {...imageDrop}>
+        <main className="canvas-area" aria-label="Canvas area" {...imageDrop} onContextMenu={onCanvasMenu}>
           <Canvas
             doc={doc}
             pageId={pageId}
@@ -596,6 +641,7 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
               setTool("move");
             }}
             onZoom={setZoom}
+            onDoubleClickLayer={enterAt}
             handle={canvas}
           />
 
@@ -788,6 +834,7 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
         <PropertiesPanel doc={doc} pageId={pageId} selection={selection} readOnly={locked} onSelect={setSelection} onError={reportEditError} />
       </div>
       <ExportHost doc={doc} pageId={pageId} />
+      {layerCommands.menu}
     </div>
   );
 }
