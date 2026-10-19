@@ -8,6 +8,7 @@ import "./styles/tokens-fallback.css"; // app-only names; the Figma tokens below
 import "@illigma/tokens/tokens.css";
 import "./styles/app.css";
 import "./styles/layers.css";
+import "./styles/definitions.css";
 
 loadFonts();
 

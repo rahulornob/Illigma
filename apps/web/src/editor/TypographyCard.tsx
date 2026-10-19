@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { StyleButton } from "./styles/StyleButton";
 import type { Document, ReadonlyNode } from "@illigma/core";
 import type { TextAlignHorizontal, TextAlignVertical, TextAutoResize } from "@illigma/format";
 import type { TextEngine } from "@illigma/renderer";
@@ -194,6 +195,7 @@ export function TypographyCard({ doc, nodes, readOnly, onError }: { doc: Documen
         <h2 id="typography-heading" className="section-heading card-title">
           Typography
         </h2>
+        <StyleButton doc={doc} nodes={nodes} role="text" readOnly={readOnly} onError={(e) => onError?.(e)} />
       </div>
 
       <div className="type-row">

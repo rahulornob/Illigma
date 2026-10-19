@@ -39,6 +39,7 @@ import {
   type Node,
 } from "./schema.js";
 import { vectorNetworkProblem } from "./vector.js";
+import { boundVariablesProblem, explicitModesProblem, styleIdProblem, stylesProblem, variablesProblem } from "./definitions.js";
 import { COMPONENT_KEYS, COMPONENT_LIMITS, COMPONENT_PROPERTY_TYPES } from "./components.js";
 import { guidesProblem, layoutGridsProblem, MASK_TYPES } from "./guides-grids.js";
 
@@ -363,6 +364,13 @@ const RULES: { [K in keyof Node]-?: Rule } = {
   blendMode: optional(blendMode),
   strokeAlign: optional(oneOf(STROKE_ALIGNS)),
   exportSettings: optional(exportSettings),
+  fillStyleId: optional(styleIdProblem),
+  strokeStyleId: optional(styleIdProblem),
+  textStyleId: optional(styleIdProblem),
+  effectStyleId: optional(styleIdProblem),
+  gridStyleId: optional(styleIdProblem),
+  boundVariables: optional(boundVariablesProblem),
+  explicitVariableModes: optional(explicitModesProblem),
   componentId: optional((v) => (isId(v) ? null : "must be a node id")),
   overrides: optional(overrides),
   componentProperties: optional(propValues),
@@ -409,6 +417,11 @@ export function validateFile(file: IlligmaFile): string[] {
   if (typeof m?.created !== "string") problems.push('The manifest\'s "created" date must be text.');
   if (typeof m?.app !== "string") problems.push('The manifest\'s "app" must be text.');
   if (!Array.isArray(m?.pages) || m.pages.length === 0) problems.push("The file must have at least one page.");
+  for (const key of ["styles", "variables"] as const) {
+    if (m?.[key] === undefined) continue;
+    const p = validateMeta(key, m[key]);
+    if (p) problems.push(`The manifest's ${key}: ${p}.`);
+  }
   if (!Array.isArray(file?.nodes)) return [...problems, "The file has no node list."];
   const images = file.images as unknown;
   if (images !== undefined) {
@@ -501,4 +514,11 @@ export function validateFile(file: IlligmaFile): string[] {
 /** Sibling order: by index, then by id. */
 export function compareOrder(a: { index: string; id: string }, b: { index: string; id: string }): number {
   return a.index < b.index ? -1 : a.index > b.index ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+/** The problem with a file-level definition value (`styles` or `variables`), or null. */
+export function validateMeta(key: string, value: unknown): string | null {
+  if (key === "styles") return stylesProblem(value, validateNodeField);
+  if (key === "variables") return variablesProblem(value);
+  return `"${key}" is not a file definition`;
 }

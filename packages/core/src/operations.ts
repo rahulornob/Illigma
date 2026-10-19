@@ -1,4 +1,4 @@
-import type { Node, NodeId, NodeKey } from "@illigma/format";
+import type { MetaKey, Node, NodeId, NodeKey } from "@illigma/format";
 
 /** `T` with every property and array readonly, at every depth. */
 export type DeepReadonly<T> = T extends (infer U)[]
@@ -18,7 +18,12 @@ export type ReadonlyNode = DeepReadonly<Node>;
 export type Operation =
   | { readonly op: "create"; readonly node: ReadonlyNode }
   | { readonly op: "delete"; readonly node: ReadonlyNode }
-  | { readonly op: "set"; readonly id: NodeId; readonly key: NodeKey; readonly value: unknown; readonly prev: unknown };
+  | { readonly op: "set"; readonly id: NodeId; readonly key: NodeKey; readonly value: unknown; readonly prev: unknown }
+  /** A file-level definition list (local styles, variables) replaced as a whole. `undefined` means none. */
+  | { readonly op: "meta"; readonly key: MetaKey; readonly value: unknown; readonly prev: unknown };
+
+/** Operations on nodes (every kind except "meta"). */
+export type NodeOperation = Exclude<Operation, { op: "meta" }>;
 
 /** The operation that undoes `o`. */
 export function invert(o: Operation): Operation {
@@ -29,6 +34,8 @@ export function invert(o: Operation): Operation {
       return { op: "create", node: o.node };
     case "set":
       return { op: "set", id: o.id, key: o.key, value: o.prev, prev: o.value };
+    case "meta":
+      return { op: "meta", key: o.key, value: o.prev, prev: o.value };
   }
 }
 

@@ -26,6 +26,7 @@ import { PaintIcon } from "./icons";
 import { ImageFill } from "./ImageFill";
 import { BLEND_LABEL, BLEND_MENU, convertPaint, documentColors, isGradient, PAINT_TYPE_LABEL, recolorStop, setSolid, solidAlpha } from "./paints";
 import { Popover } from "./Popover";
+import { VariablesTab, type PickerVariables } from "../variables/VariablesTab";
 
 /** What a picker change edits, for the undo label ("Change fill colour"). */
 export type PickerWhat = "colour" | "type" | "blend mode" | "gradient" | "gradient stop" | "image" | "image scale mode" | "tile scale";
@@ -57,6 +58,8 @@ export interface ColorPickerProps {
   onPaint(next: Paint, phase: Phase, what: PickerWhat): void;
   onError(message: string): void;
   onClose(refocus: boolean): void;
+  /** Colour variables for the Variables tab (fills and strokes of one layer). Absent: the tab is unavailable. */
+  variables?: PickerVariables | undefined;
 }
 
 /**
@@ -64,11 +67,12 @@ export interface ColorPickerProps {
  * with paint type and blend mode, the gradient's stops, a saturation and
  * brightness area, hue and opacity sliders, Hex / RGB / HSL / HSB fields,
  * the eyedropper (where the browser has one) and the colours used in this
- * file. The Variables tab is shown but not available yet (variables.md).
+ * file. The Variables tab binds the paint to a colour variable (variables.md).
  *
  * Every drag is one undo step, every typed value or click one more.
  */
-export function ColorPicker({ doc, anchor, label, paint, kind, box, readOnly, onPaint, onError, onClose }: ColorPickerProps) {
+export function ColorPicker({ doc, anchor, label, paint, kind, box, readOnly, onPaint, onError, onClose, variables }: ColorPickerProps) {
+  const [tab, setTab] = useState<"custom" | "variables">(variables?.boundId ? "variables" : "custom");
   const [stopState, setStop] = useState(0);
   const [hsvState, setHsv] = useState<Hsv | null>(null);
   const [format, setFormatState] = useState<ColorFormat>(lastFormat);
@@ -189,18 +193,28 @@ export function ColorPicker({ doc, anchor, label, paint, kind, box, readOnly, on
     <Popover anchor={anchor} label={label} className="color-picker" onClose={onClose} initialFocus=".picker-focus-first">
       <div className="picker-head">
         <div className="picker-tabs" role="tablist" aria-label="Colour source">
-          <button type="button" role="tab" aria-selected="true" className="picker-tab picker-focus-first" id={`${id}-custom`}>
+          <button type="button" role="tab" aria-selected={tab === "custom"} className="picker-tab picker-focus-first" id={`${id}-custom`} onClick={() => setTab("custom")}>
             Custom
           </button>
-          <button type="button" role="tab" aria-selected="false" aria-disabled="true" tabIndex={-1} className="picker-tab" title="Variables aren't available yet">
-            Variables
-          </button>
+          {variables ? (
+            <button type="button" role="tab" aria-selected={tab === "variables"} className="picker-tab" id={`${id}-variables`} onClick={() => setTab("variables")}>
+              Variables
+            </button>
+          ) : (
+            <button type="button" role="tab" aria-selected="false" aria-disabled="true" tabIndex={-1} className="picker-tab" title="Variables bind to one layer's fill or stroke">
+              Variables
+            </button>
+          )}
         </div>
         <button type="button" className="icon-button" aria-label="Close colour picker" title="Close (Esc)" onClick={() => onClose(true)}>
           <PaintIcon name="x" />
         </button>
       </div>
 
+      {tab === "variables" && variables ? (
+        <VariablesTab doc={doc} vars={variables} readOnly={readOnly} />
+      ) : (
+      <>
       {kind === "paint" && (
         <div className="picker-row">
           <MenuButton<PaintType>
@@ -388,6 +402,8 @@ export function ColorPicker({ doc, anchor, label, paint, kind, box, readOnly, on
             ))}
           </div>
         </div>
+      )}
+      </>
       )}
     </Popover>
   );

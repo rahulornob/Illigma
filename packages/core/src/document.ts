@@ -11,6 +11,11 @@ import {
   validateFile,
   validateNode,
   validateNodeField,
+  validateMeta,
+  META_KEYS,
+  type MetaKey,
+  type Style,
+  type VariablesData,
   type IlligmaFile,
   type Node,
   type NodeId,
@@ -68,6 +73,7 @@ export type Position = { before: NodeId } | { after: NodeId } | "first" | "last"
 export type CreateFields = Partial<DeepReadonly<Omit<Node, "id" | "type" | "parentId" | "index">>>;
 
 const NO_IDS: readonly NodeId[] = Object.freeze([]);
+const EMPTY_VARIABLES: DeepReadonly<VariablesData> = deepFreeze({ collections: [], variables: [] });
 const FIXED_FIELDS = new Set<string>(["id", "type", "parentId", "index"]);
 const KNOWN_FIELDS = new Set<string>(NODE_KEYS);
 
@@ -113,6 +119,8 @@ export class Document {
   /** Image files by hash (content-addressed, never changed). */
   #images = new Map<string, Uint8Array>();
   #imageListeners = new Set<(hash: string, bytes: Uint8Array) => void>();
+  /** File-level definitions (manifest `styles`, `variables`), frozen; absent when none. */
+  #meta: { styles?: DeepReadonly<Style[]>; variables?: DeepReadonly<VariablesData> } = {};
 
   static {
     applyOp = (doc, o) => doc.#apply(o);
@@ -154,6 +162,23 @@ export class Document {
 
   get size(): number {
     return this.#nodes.size;
+  }
+
+  // ---- file-level definitions ----
+
+  /** Local styles in panel order (empty when the file has none). */
+  styles(): DeepReadonly<Style[]> {
+    return this.#meta.styles ?? [];
+  }
+
+  /** Variable collections and variables. */
+  variables(): DeepReadonly<VariablesData> {
+    return this.#meta.variables ?? EMPTY_VARIABLES;
+  }
+
+  /** A definition list as stored, or undefined. */
+  meta(key: MetaKey): unknown {
+    return this.#meta[key];
   }
 
   // ---- images ----
@@ -449,6 +474,14 @@ export class Document {
         }
         return deepFreeze({ op: "set", id: o.id, key: o.key, value: o.value, prev: n[o.key] });
       }
+      case "meta": {
+        if (!META_KEYS.includes(o.key)) return fail(`unknown definition "${String(o.key)}".`);
+        if (o.value !== undefined) {
+          const problem = validateMeta(o.key, o.value);
+          if (problem) fail(problem + ".");
+        }
+        return deepFreeze({ op: "meta", key: o.key, value: o.value, prev: this.#meta[o.key] });
+      }
       default:
         return fail("unknown operation.");
     }
@@ -484,6 +517,11 @@ export class Document {
         if (relink) this.#unlink(n);
         this.#nodes.set(n.id, node);
         if (relink) this.#link(node);
+        return;
+      }
+      case "meta": {
+        if (o.value === undefined) delete this.#meta[o.key];
+        else (this.#meta as Record<string, unknown>)[o.key] = deepFreeze(o.value);
         return;
       }
     }
@@ -581,6 +619,11 @@ export class Document {
         pages: this.pages().map((p) => ({ id: p.id, name: p.name })),
         created: this.created,
         app,
+        // Written only when present, so files without definitions save exactly as before.
+        ...(this.#meta.styles?.length ? { styles: clone(this.#meta.styles) as Style[] } : {}),
+        ...(this.#meta.variables && (this.#meta.variables.collections.length || this.#meta.variables.variables.length)
+          ? { variables: clone(this.#meta.variables) as VariablesData }
+          : {}),
       },
       nodes: [...this.#nodes.values()].map((n) => clone(n) as Node),
       // Every image, used or not (undo may bring a paint back); writePackage keeps only those in use. The bytes are shared, never changed.
@@ -596,6 +639,8 @@ export class Document {
     (doc as { fileId: string }).fileId = file.manifest.fileId;
     (doc as { created: string }).created = file.manifest.created;
     if (file.images) doc.#images = new Map(file.images);
+    if (file.manifest.styles) doc.#meta.styles = frozenCopy(file.manifest.styles);
+    if (file.manifest.variables) doc.#meta.variables = frozenCopy(file.manifest.variables);
     for (const n of file.nodes) {
       const node = frozenCopy(n);
       doc.#nodes.set(node.id, node);
@@ -746,6 +791,23 @@ export class Transaction {
     const prev = n[key];
     if (sameValue(prev, v)) return;
     this.#record({ op: "set", id, key, value: v, prev });
+  }
+
+  /**
+   * Replace a file-level definition list (`styles` or `variables`) as a
+   * whole. The value is checked (variable alias loops are refused);
+   * `undefined` removes it. Does nothing if unchanged.
+   */
+  setMeta(key: MetaKey, value: unknown): void {
+    if (!META_KEYS.includes(key)) throw new DocumentError(`"${String(key)}" is not a file definition.`);
+    const v = copyIn(value);
+    if (v !== undefined) {
+      const problem = validateMeta(key, v);
+      if (problem) throw new DocumentError(`Can't set ${key}: ${problem}.`);
+    }
+    const prev = this.#doc.meta(key);
+    if (sameValue(prev, v)) return;
+    this.#record({ op: "meta", key, value: v, prev });
   }
 
   /** Move `id` under `parentId` at `position`. */

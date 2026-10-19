@@ -324,6 +324,7 @@ export function normalizeComponents(doc: Document, tx: Transaction, ops: readonl
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const components = new Set<NodeId>();
     for (const o of batch) {
+      if (o.op === "meta") continue;
       if (o.op === "set") {
         componentAncestors(doc, o.id, components);
         if (o.key === "parentId") componentAncestors(doc, o.prev as NodeId | null, components);

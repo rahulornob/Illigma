@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { StyleButton } from "../styles/StyleButton";
 import type { Document, ReadonlyNode } from "@illigma/core";
 import type { Effect, EffectType, Paint, ShadowEffect } from "@illigma/format";
 import { EFFECT_TYPES, PAINT_LIMITS } from "@illigma/format";
@@ -64,6 +65,7 @@ export function EffectsCard({ doc, nodes, readOnly, onError }: { doc: Document; 
         <h2 id="effects-heading" className="section-heading card-title">
           Effects
         </h2>
+        <StyleButton doc={doc} nodes={nodes} role="effects" readOnly={readOnly} onError={onError} />
         <button
           type="button"
           className="icon-button"

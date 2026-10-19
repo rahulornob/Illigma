@@ -406,6 +406,7 @@ export class PageRenderer {
     this.dirty = true;
     if (this.all) return;
     for (const o of change.ops) {
+      if (o.op === "meta") continue; // definitions draw through the node fields they resolve into
       if (o.op === "set") {
         const n = this.doc.get(o.id);
         // A new parent or place in the order changes which chunk draws it.

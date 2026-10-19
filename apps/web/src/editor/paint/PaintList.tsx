@@ -8,6 +8,9 @@ import { InlineField, parsePercent, pct } from "./fields";
 import { PaintIcon, type PaintIconName } from "./icons";
 import { imageFiles, imagePaint, readImageFiles, refusalMessage, whenIdle } from "./image";
 import { cssStops, isGradient, PAINT_TYPE_LABEL, paintAlpha, setSolid, solidAlpha, withPaintOpacity } from "./paints";
+import { bindVariable } from "@illigma/core";
+import { StyleButton } from "../styles/StyleButton";
+import { Icon } from "../../ui/Icon";
 
 /** The swatch's look (`--paint`, drawn over a checkerboard): the colour, the gradient, or none for an image (a glyph shows). */
 export function swatchStyle(p: Paint): Record<string, string> {
@@ -196,6 +199,7 @@ export function PaintList({
         <h2 id={headingId} className="section-heading card-title">
           {noun}
         </h2>
+        <StyleButton doc={doc} nodes={nodes} role={paintKey} readOnly={readOnly} onError={onError} />
         <button
           type="button"
           className="icon-button"
@@ -254,7 +258,12 @@ export function PaintList({
                       >
                         {p.type === "IMAGE" && <PaintIcon name="image" size={12} />}
                       </button>
-                      {p.type === "SOLID" ? (
+                      {p.type === "SOLID" && nodes.length === 1 && nodes[0]?.boundVariables?.[`${paintKey}.${i}`] ? (
+                        <span className="paint-bound" title="Bound to a variable">
+                          <Icon name="hexagon" size={12} />
+                          {doc.variables().variables.find((v) => v.id === nodes[0]?.boundVariables?.[`${paintKey}.${i}`]?.id)?.name ?? "Missing variable"}
+                        </span>
+                      ) : p.type === "SOLID" ? (
                         <InlineField
                           label={`${name} hex`}
                           className="paint-hex"
@@ -333,6 +342,22 @@ export function PaintList({
           readOnly={readOnly}
           onPaint={(next, phase, what: PickerWhat) => run(phase, `Change ${lower} ${what}`, paintAt(paintKey, open.index, () => next))}
           onError={(m) => onError(new Error(m))}
+          variables={
+            nodes.length === 1 && nodes[0] && openPaint.type === "SOLID"
+              ? {
+                  node: nodes[0],
+                  boundId: nodes[0].boundVariables?.[`${paintKey}.${open.index}`]?.id,
+                  onBind: (id) => {
+                    if (doc.live) return;
+                    try {
+                      doc.transact(id ? `Bind ${lower} to variable` : "Detach variable", (tx) => bindVariable(tx, doc, ids[0] as string, `${paintKey}.${open.index}`, id));
+                    } catch (e) {
+                      onError(e);
+                    }
+                  },
+                }
+              : undefined
+          }
           onClose={(refocus) => {
             session.settle();
             const anchor = open.anchor;

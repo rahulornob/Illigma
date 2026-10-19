@@ -21,6 +21,13 @@ After v1.0: a Tauri desktop app in v1.x, then optional multiplayer (CRDT over LA
 
 ## [Unreleased]
 
+### Added (2026-10-19, styles and variables)
+
+- **Local styles**: paint, text, effect and grid styles stored in `manifest.json` (`styles`, written only when a file has some, so older files save byte-identical). Layers link with `fillStyleId`, `strokeStyleId`, `textStyleId`, `effectStyleId` and `gridStyleId`. Editing a style updates every layer that uses it in the same undo step. Editing a linked field by hand detaches it, as in Figma.
+- **Style button** on the Fill, Stroke, Typography and Effects cards: apply a style, create one from the selection (use "/" for folders), detach, edit (name, description, update from selection) or delete. When nothing is selected, a **Local styles** card lists styles by type and folder, with rename, reorder, edit and delete.
+- **Variables**: collections with modes and COLOR, FLOAT, STRING and BOOLEAN variables, with aliases (alias loops are refused). Layers bind through `boundVariables`: fills and strokes (colour), corner radius, gap, padding, size, opacity, stroke weight and font size (number), text (string) and visibility (boolean). A frame, section or page can set a mode (`explicitVariableModes`), and children inherit it. Resolved values are written into the plain fields in the same transaction, so the renderer, layout and export need no changes.
+- **Variables manager**: it takes the canvas area. It has collections and groups, one column per mode (add, rename, duplicate, set default, delete), values typed in place (`{name}` makes an alias), and create and delete variable. The colour picker's **Variables** tab is now active. New **Variable modes** and **Variables** (bindings) cards appear in the Properties panel.
+- Core: a new `meta` operation for file-level definitions, plus `withDefinitions(normalizer)`. E2E: `apps/web/e2e/styles.mjs`.
 ### Added (2026-10-19, components, variants and instances)
 
 - Components in one file: ⌥⌘K create component, combine as variants, add variant, instances placed from the new Assets tab (search, drag to canvas, Enter), ⌥⌘B detach, reset overrides, go to main component.

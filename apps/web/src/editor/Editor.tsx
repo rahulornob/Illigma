@@ -24,6 +24,8 @@ import { autoLayoutSelection, removeAutoLayout } from "./layout-model";
 import { useDocVersion, useSaveDisplay } from "./hooks";
 import { LayersPanel } from "./LayersPanel";
 import { PropertiesPanel } from "./PropertiesPanel";
+import { OPEN_VARIABLES_EVENT } from "./styles/common";
+import { VariablesManager } from "./variables/VariablesManager";
 import { useComponents } from "./components/useComponents";
 import { openWarnings } from "./open-warnings";
 import { useImageImport } from "./paint/useImageImport";
@@ -94,6 +96,13 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
   const [zoom, setZoom] = useState(1);
   const [closing, setClosing] = useState(false);
   const canvas = useRef<CanvasHandle>(null);
+  /** The Variables manager takes the canvas area (variables.md); any panel opens it with `openVariables()`. */
+  const [variablesOpen, setVariablesOpen] = useState(false);
+  useEffect(() => {
+    const open = () => setVariablesOpen(true);
+    window.addEventListener(OPEN_VARIABLES_EVENT, open);
+    return () => window.removeEventListener(OPEN_VARIABLES_EVENT, open);
+  }, []);
 
   /** No edits: view-only tab, or Keep/Discard or a reload from disk is running (an edit then could land on the document being replaced). */
   const locked = viewOnly || recovery.busy !== null || diskBusy;
@@ -830,6 +839,7 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
           </div>
 
           <ToolDock tool={tool} onTool={(t) => !locked && setTool(t)} />
+          {variablesOpen && <VariablesManager doc={doc} readOnly={locked} onClose={() => setVariablesOpen(false)} onError={reportEditError} />}
 
           {/* Selection changes, for screen readers: "Rectangle 3 selected", "3 layers selected". */}
           <div className="sr-only selection-announcer" role="status" aria-live="polite">

@@ -90,6 +90,13 @@
     "blendMode": { "$ref": "#/$defs/blendMode", "description": "How the layer mixes with what is under it. Default PASS_THROUGH" },
     "strokeAlign": { "enum": ["CENTER", "INSIDE", "OUTSIDE"], "description": "Where strokes sit on the outline. Absent means CENTER (format 0 drew every stroke centred); lines and open paths are always centred" },
     "exportSettings": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/exportSettings" }, "description": "The files this layer or page exports to (Figma's ExportSettings), in order. Default none" },
+    "fillStyleId": { "type": "string", "description": "Local paint style the fills come from (manifest styles). The fills are also stored" },
+    "strokeStyleId": { "type": "string", "description": "Local paint style the strokes come from" },
+    "textStyleId": { "type": "string", "description": "Local text style the font fields come from" },
+    "effectStyleId": { "type": "string", "description": "Local effect style the effects come from" },
+    "gridStyleId": { "type": "string", "description": "Local grid style the layout grids come from" },
+    "boundVariables": { "type": "object", "additionalProperties": { "type": "object", "required": ["type", "id"], "properties": { "type": { "const": "VARIABLE_ALIAS" }, "id": { "type": "string" } } }, "description": "Field (\"cornerRadius\", \"fills.0\"…) bound to a variable (manifest variables). The resolved value is also stored in the field" },
+    "explicitVariableModes": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Collection id to mode id, inherited by children. Default: Auto" },
     "componentId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$", "description": "INSTANCE: its main component (a COMPONENT)" },
     "overrides": {
       "type": "object",

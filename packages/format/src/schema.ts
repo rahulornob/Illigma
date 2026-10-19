@@ -6,6 +6,7 @@
  * a node never rewrites its neighbours.
  */
 
+import type { Style, VariableAlias, VariablesData } from "./definitions.js";
 import type { ComponentFields } from "./components.js";
 import type { MaskGridFields } from "./guides-grids.js";
 
@@ -587,7 +588,23 @@ export interface ExportFields {
   exportSettings?: ExportSettings[];
 }
 
-export type Node = NodeBase & TextFields & LayoutFields & ShapeFields & EffectFields & ExportFields & ComponentFields & MaskGridFields;
+/**
+ * Links to the file's styles and variables (see definitions.ts). Optional:
+ * the resolved values are also stored in the node's own fields.
+ */
+export interface DefinitionRefFields {
+  fillStyleId?: string;
+  strokeStyleId?: string;
+  textStyleId?: string;
+  effectStyleId?: string;
+  gridStyleId?: string;
+  /** Field ("cornerRadius", "fills.0"...) to variable alias. */
+  boundVariables?: Record<string, VariableAlias>;
+  /** Collection id to mode id, inherited by children (Figma's explicitVariableModes). */
+  explicitVariableModes?: Record<string, string>;
+}
+
+export type Node = NodeBase & TextFields & LayoutFields & ShapeFields & EffectFields & ExportFields & DefinitionRefFields & ComponentFields & MaskGridFields;
 
 /** The node fields an operation may change. `id` and `type` never change. */
 export type NodeKey = Exclude<keyof Node, "id" | "type">;
@@ -608,6 +625,10 @@ export interface Manifest {
   created: string;
   /** The app that last wrote the file, e.g. "Illigma 0.0.0". */
   app: string;
+  /** Local styles, in panel order. Absent when the file has none. */
+  styles?: Style[];
+  /** Variable collections and variables. Absent when the file has none. */
+  variables?: VariablesData;
 }
 
 /** A whole file in memory: the manifest plus every node, pages included. */

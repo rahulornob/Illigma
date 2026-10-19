@@ -110,7 +110,8 @@ export function resizeMany(doc: LayoutReader, entries: Iterable<ResizeEntry>, op
 /** The shape of a `@illigma/core` operation, as far as `changedIds` needs it. */
 export type OperationLike =
   | { readonly op: "create" | "delete"; readonly node: { readonly id: NodeId; readonly parentId: NodeId | null } }
-  | { readonly op: "set"; readonly id: NodeId; readonly key: string; readonly value: unknown; readonly prev: unknown };
+  | { readonly op: "set"; readonly id: NodeId; readonly key: string; readonly value: unknown; readonly prev: unknown }
+  | { readonly op: "meta" };
 
 /** Node fields whose change can move or resize layers (text fields: auto width and auto height text). */
 export const LAYOUT_KEYS: ReadonlySet<string> = new Set([
@@ -129,6 +130,7 @@ export function changedIds(ops: Iterable<OperationLike>): NodeId[] {
     if (typeof id === "string") ids.add(id);
   };
   for (const o of ops) {
+    if (o.op === "meta") continue;
     if (o.op === "set") {
       if (!LAYOUT_KEYS.has(o.key)) continue;
       add(o.id);

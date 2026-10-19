@@ -3,7 +3,8 @@ export * from "./components.js";
 export * from "./guides-grids.js";
 export * from "./fractional-index.js";
 export * from "./package.js";
-export { compareOrder, isSafePageId, NODE_KEYS, validateFile, validateNode, validateNodeField } from "./validate.js";
+export { compareOrder, isSafePageId, NODE_KEYS, validateFile, validateMeta, validateNode, validateNodeField } from "./validate.js";
+export * from "./definitions.js";
 export { clampTextMetrics, migrate, MIGRATIONS, type RawFile } from "./migrations.js";
 export * from "./zip.js";
 export {

@@ -398,7 +398,7 @@ export function replayRecovered(base: Document, changes: readonly (readonly Oper
         created.add(o.node.id);
       } else if (o.op === "delete") {
         if (!exists(o.node.id)) continue;
-      } else {
+      } else if (o.op === "set") {
         if (!exists(o.id)) continue;
         if (o.key === "parentId" && typeof o.value === "string" && !exists(o.value)) continue;
       }

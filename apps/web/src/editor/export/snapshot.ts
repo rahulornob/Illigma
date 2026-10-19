@@ -87,6 +87,7 @@ export function changeTouches(doc: Document, ops: readonly Operation[], nodeId: 
     return false;
   };
   for (const o of ops) {
+    if (o.op === "meta") continue;
     if (o.op === "set") {
       if (reaches(o.id)) return true;
       if (o.key === "parentId" && (reaches(o.value) || reaches(o.prev))) return true;

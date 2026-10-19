@@ -13,6 +13,9 @@ import { effectiveSizing, hasConstraints, isAutoLayoutNode, setSizing, sizingOpt
 import { guard, setBoxFields, setLayoutProps, type BoxField, type OnEditError } from "./layout-props";
 import { PaintCards } from "./paint/PaintCards";
 import { VectorCards } from "./vector/VectorCards";
+import { LocalStylesCard } from "./styles/LocalStylesCard";
+import { BindingsCard } from "./variables/BindingsCard";
+import { ModesCard } from "./variables/ModesCard";
 
 const FIELDS: { key: BoxField; letter: string; label: string; min: number; max: number }[] = [
   { key: "x", letter: "X", label: "X position", min: -LIMITS.position, max: LIMITS.position },
@@ -85,6 +88,10 @@ export function PropertiesPanel({
   const inAutoLayout = nodes.length > 0 && nodes.every((n) => isAutoLayoutNode(n.parentId ? doc.get(n.parentId) : undefined));
   const absolute = inAutoLayout && nodes.every((n) => n.layoutPositioning === "ABSOLUTE");
   const constrained = nodes.length > 0 && nodes.every((n) => hasConstraints(doc, n));
+  const report = (e: unknown) => {
+    if (onError) onError(e);
+    else throw e;
+  };
 
   return (
     <aside className="panel panel-right" aria-label="Properties">
@@ -167,6 +174,8 @@ export function PropertiesPanel({
             {nodes.every((n) => n.type === "TEXT") && <TypographyCard doc={doc} nodes={nodes} readOnly={readOnly} onError={onError} />}
             <VectorCards doc={doc} nodes={nodes} readOnly={readOnly} onSelect={onSelect} onError={onError} />
             <PaintCards key={`paint-${ids.join(",")}`} doc={doc} nodes={nodes} readOnly={readOnly} onError={onError} />
+            <ModesCard doc={doc} nodes={nodes} readOnly={readOnly} onError={report} />
+            <BindingsCard key={`vars-${ids.join(",")}`} doc={doc} nodes={nodes} readOnly={readOnly} onError={report} />
           </>
         ) : (
           <section className="card" aria-labelledby="page-heading">
@@ -178,6 +187,8 @@ export function PropertiesPanel({
             <p className="muted">Select a layer to see its position and size.</p>
           </section>
         )}
+        {!ids.length && page && <ModesCard doc={doc} nodes={[page]} readOnly={readOnly} onError={report} />}
+        {!ids.length && <LocalStylesCard doc={doc} readOnly={readOnly} onError={report} />}
         {/* Export (export.md): the selection's settings, or the page's when nothing is selected. */}
         <ExportCard key={`export-${ids.join(",") || pageId}`} doc={doc} targets={ids.length ? ids : [pageId]} readOnly={readOnly} onError={onError} />
       </div>

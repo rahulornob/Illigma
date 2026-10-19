@@ -1,5 +1,13 @@
 # Phase 2 · Design systems (development log)
 
+## Styles and variables
+
+- **Format** (`packages/format/src/definitions.ts`, format 0, optional): `manifest.json` gains `styles` (PAINT, TEXT, EFFECT, GRID, kept in panel order, with folders from "/" names) and `variables` (`collections` with modes and a default mode, plus `variables` with `valuesByMode`, which may be aliases). Both are written only when the file has some, so older files stay byte-identical. Node fields: `fillStyleId`, `strokeStyleId`, `textStyleId`, `effectStyleId`, `gridStyleId`, `boundVariables` (`"cornerRadius"`, `"fills.0"`, …) and `explicitVariableModes`. Validation refuses alias loops, type mismatches and missing modes.
+- **Core**: a new operation `{ op: "meta", key: "styles" | "variables", value, prev }` replaces a definition list as a whole. `Transaction.setMeta` sets it, and undo, redo and replay handle it like any other operation. `withDefinitions(inner)` resolves links into the plain fields in the same transaction (each node's mode comes from its nearest ancestor's explicit mode, else the collection default). A field edited by hand detaches its style or binding. Helpers live in `packages/core/src/styles/api.ts`.
+- **Normalizer chain** (apps/web layout.ts): `withComponents(withDefinitions(layoutNormalizer))`.
+- **UI**: the Style button on the Fill, Stroke, Typography and Effects cards; the Local styles card (when nothing is selected); the Variable modes and Variables (bindings) cards; the Variables manager (it takes the canvas area); and the colour picker's Variables tab. E2E: `apps/web/e2e/styles.mjs`.
+- **Gaps**: no grid style button yet (grid styles exist in the format and resolve to `layoutGrids`). Number bindings go through the Variables card, not a hexagon in each field. Variable scopes and code syntax are not editable. No W3C or Tokens Studio import or export. Deleting a variable in use doesn't offer a replacement. Renaming collections and modes uses a prompt.
+
 ## Components, variants and instances (single file)
 
 - **Format** (`packages/format/src/components.ts`): `componentId`, `overrides` (keyed by the sublayer's `mainId`, `""` = the instance itself) and `componentProperties` (values) on INSTANCE; `componentPropertyDefinitions` (BOOLEAN, TEXT, INSTANCE_SWAP, VARIANT) on COMPONENT / COMPONENT_SET; `componentPropertyReferences` (`visible`, `characters`, `mainComponent`) on layers inside a component; `mainId` on instance sublayers. Validated in `validate.ts`, described in `schema/node.v0.schema.json`. Optional fields: older files read unchanged.

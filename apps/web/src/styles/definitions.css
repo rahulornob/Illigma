@@ -1,0 +1,344 @@
+/* Styles and variables: style button and picker, local styles list, modes, bindings, Variables manager. Tokens and the 4 px grid only. */
+
+.style-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 128px;
+  height: 28px;
+  margin-left: auto;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-button);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.style-button:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.style-button.is-linked {
+  background: var(--accent-row);
+  color: var(--accent-text);
+}
+.style-button-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--type-ui-value);
+}
+.style-button:focus-visible {
+  outline: 2px solid var(--accent-default);
+  outline-offset: 2px;
+}
+
+.style-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 320px;
+  overflow: auto;
+}
+.style-folder {
+  padding: 4px 0;
+  color: var(--text-tertiary);
+  font: var(--type-ui-body);
+}
+.style-option,
+.style-linked {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-button);
+  background: transparent;
+  color: var(--text-primary);
+  font: var(--type-ui-value);
+  text-align: left;
+  cursor: pointer;
+}
+.style-option:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.style-option[aria-current="true"],
+.style-option[aria-selected="true"] {
+  background: var(--accent-row);
+}
+.style-linked {
+  background: var(--bg-field);
+  cursor: default;
+}
+.style-linked-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.style-swatch {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-xs);
+  box-shadow: inset 0 0 0 1px var(--border-default);
+  background-color: var(--bg-field);
+  color: var(--text-secondary);
+}
+.style-swatch.paint-swatch {
+  padding: 0;
+  border: 0;
+}
+.style-text {
+  font-size: 12px;
+  line-height: 16px;
+}
+.style-create,
+.style-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.style-input {
+  padding-left: 8px;
+}
+.style-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-secondary);
+}
+.style-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.style-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.style-section-title {
+  margin: 0;
+  color: var(--text-secondary);
+  font: var(--type-ui-value);
+}
+.style-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+}
+.style-row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: var(--type-ui-value);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.style-rename {
+  flex: 1;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--radius-field);
+  background: var(--bg-field);
+}
+
+.mode-row,
+.binding-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mode-label,
+.binding-field {
+  width: 96px;
+  flex: none;
+  overflow: hidden;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mode-field {
+  flex: 1;
+}
+.mode-select {
+  padding: 0 8px;
+  appearance: auto;
+  color: var(--text-primary);
+}
+.binding-chip,
+.paint-bound {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  overflow: hidden;
+  border-radius: var(--radius-xs);
+  background: var(--accent-row);
+  color: var(--accent-text);
+  font: var(--type-ui-value);
+  white-space: nowrap;
+}
+.binding-add {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.picker-variables,
+.picker-variables-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.variables-manager {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  color: var(--text-primary);
+}
+.variables-manager:focus-visible {
+  outline: none;
+}
+.vm-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border-default);
+}
+.vm-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.vm-side {
+  width: 220px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  overflow: auto;
+  border-right: 1px solid var(--border-default);
+}
+.vm-side-title {
+  padding: 8px 0 4px;
+  color: var(--text-tertiary);
+  font: var(--type-ui-body);
+}
+.vm-collection {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--radius-button);
+}
+.vm-collection[aria-current="true"],
+.vm-side-item[aria-current="true"] {
+  background: var(--accent-row);
+}
+.vm-side-item {
+  flex: 1;
+  min-height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-button);
+  background: transparent;
+  color: var(--text-primary);
+  font: var(--type-ui-value);
+  text-align: left;
+  cursor: pointer;
+}
+.vm-main {
+  flex: 1;
+  min-width: 0;
+  padding: 12px;
+  overflow: auto;
+}
+.vm-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.vm-table th,
+.vm-table td {
+  height: 36px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border-default);
+  font: var(--type-ui-value);
+  text-align: left;
+}
+.vm-table thead th {
+  color: var(--text-secondary);
+  font-weight: inherit;
+}
+.vm-table tbody tr:hover {
+  background: var(--bg-hover);
+}
+.vm-add-col {
+  width: 36px;
+}
+.vm-mode,
+.vm-name,
+.vm-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.vm-badge {
+  padding: 0 4px;
+  border-radius: var(--radius-xs);
+  background: var(--bg-field);
+  color: var(--text-tertiary);
+  font: var(--type-ui-body);
+}
+.vm-type {
+  width: 16px;
+  flex: none;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+.vm-input {
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--radius-field);
+}
+.vm-input:hover {
+  background: var(--bg-field);
+}
+.vm-input:focus {
+  outline: 2px solid var(--accent-default);
+  background: var(--bg-field);
+}
+.vm-create {
+  margin-top: 12px;
+}
+.vm-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+}
