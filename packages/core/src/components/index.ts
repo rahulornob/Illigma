@@ -450,7 +450,10 @@ export function createComponent(doc: Document, tx: Transaction, ids: readonly No
       return [n.id];
     }
   }
-  const id = wrap(doc, tx, live, "COMPONENT", live.length === 1 ? (doc.get(live[0] as NodeId)?.name ?? "Component") : "Component");
+  const taken = new Set(listComponents(doc).map((c) => c.name));
+  let k = 1;
+  while (taken.has(`Component ${k}`)) k++;
+  const id = wrap(doc, tx, live, "COMPONENT", `Component ${k}`);
   return id ? [id] : [];
 }
 

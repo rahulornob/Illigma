@@ -58,6 +58,10 @@
   outline-offset: 2px;
 }
 
+.row-icon.type-component {
+  color: var(--type-component, #8fb4ff);
+}
+
 /* Assets tab */
 .panel-tabbar {
   display: flex;

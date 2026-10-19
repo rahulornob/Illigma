@@ -41,7 +41,7 @@ const TYPE_ICON: Partial<Record<Node["type"], IconName>> = {
 };
 
 const typeClass = (t: Node["type"]) =>
-  t === "TEXT" ? "type-text" : t === "FRAME" || t === "SECTION" || t === "COMPONENT" || t === "INSTANCE" ? "type-frame" : "type-shape";
+  t === "COMPONENT" || t === "COMPONENT_SET" || t === "INSTANCE" ? "type-component" : t === "TEXT" ? "type-text" : t === "FRAME" || t === "SECTION" ? "type-frame" : "type-shape";
 
 /** One row of the layer tree, in list order (top = front-most, as in Figma). */
 export interface LayerRowData {
