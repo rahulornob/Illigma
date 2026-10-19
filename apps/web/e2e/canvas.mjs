@@ -11,7 +11,7 @@
 // drag starts, handles on the movable layers only, ⌘D in a field, undo of
 // Delete reselects, Shift-click ranges in the Layers panel.
 // QC round 6: on macOS only ⌘ skips constraints (Ctrl doesn't); dragging an
-// auto layout child far outside its frame shows no line and drops nothing.
+// auto layout child far outside its frame shows no line and drops it out of the frame.
 // QC round 7: an image fill written into the file appears once it decodes, with no interaction; images
 // that couldn't be opened are listed in a dismissable banner.
 //
@@ -710,7 +710,7 @@ await runE2E("canvas", {}, async ({ browser, url, log, check, outDir, errors }) 
   check((await cardRows()) === "Button,Title,Image", `Escape keeps the order, got ${await cardRows()}`);
   check(await eventually(async () => !(await page.locator(".insert-line").isVisible()), 2_000), "the insertion line hides on Escape");
 
-  log("dragging a child far outside its auto layout frame shows no line, and dropping changes nothing");
+  log("dragging a child far outside its auto layout frame shows no line, and dropping moves it out (one undo puts it back)");
   await layerRow(page, "Title").click();
   const farAt = m.toScreen(900, 700); // well right of the card (120–440)
   await page.mouse.move(titleAt.x, titleAt.y);
@@ -719,8 +719,11 @@ await runE2E("canvas", {}, async ({ browser, url, log, check, outDir, errors }) 
   check(await eventually(() => page.locator(".insert-line").isVisible(), 2_000), "inside the card the line shows");
   await page.mouse.move(farAt.x, farAt.y, { steps: 8 });
   check(await eventually(async () => !(await page.locator(".insert-line").isVisible()), 2_000), "far outside the card the line hides");
+  check(await eventually(() => page.locator(".drop-target").isVisible(), 2_000), "the frame it would drop into is outlined");
   await page.mouse.up();
-  check((await cardRows()) === "Button,Title,Image", `dropping outside keeps the order, got ${await cardRows()}`);
+  check(await eventually(async () => (await cardRows()) === "Button,Image", 2_000), `dropping outside takes Title out of the card, got ${await cardRows()}`);
+  await undo();
+  check(await eventually(async () => (await cardRows()) === "Button,Title,Image", 2_000), `one undo puts Title back in its slot, got ${await cardRows()}`);
   check((await box4("Title")).y === 160, "Title stays in its slot");
 
   log("⌘D inside auto layout puts the copy right after the original");

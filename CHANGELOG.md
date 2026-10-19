@@ -25,6 +25,13 @@ After v1.0: a Tauri desktop app in v1.x, then optional multiplayer (CRDT over LA
 - Phase 0 (foundations): renderer spike (CanvasKit, 10,000 layers at 60 fps), offline web app, design tokens in code. See [docs/dev/phase-0.md](docs/dev/phase-0.md).
 - Run the real usability sessions (Phase 5) in parallel; fix what they find.
 
+### Added (2026-10-19, snapping, smart guides, drop into frames and zoom)
+- **Snapping and smart guides.** Moving, resizing and drawing snap edges and centres to sibling layers and the parent frame within 4 screen pixels, with 1 px guides; equal spacing snaps with gap pills; otherwise whole pixels. Ctrl (or ⌘) suspends snapping. Candidates are indexed once per drag, so 12,000 layers stay fast.
+- **Drop onto a frame.** Dragged layers smaller than a frame drop into it (2 px outline while hovering; page position kept; one undo step). ⌘ drops a larger layer into auto layout, with the insertion line; Space keeps the parent; dragging out of a frame puts layers on the page, auto layout children included.
+- **⌥-drag duplicates, and ⌘D repeats the offset** after duplicate-then-move.
+- **⌥ measurements** to the hovered layer or the parent's edges.
+- **Zoom:** ⇧2 zooms to the selection, ⌘+ / ⌘− step by powers of two, ⌘/Ctrl + wheel and pinch zoom around the pointer, and a plain wheel pans.
+
 ### Fixed (2026-10-19, QC round 8: text and export)
 - **Text in a font that isn't loaded keeps its size.** Layout no longer measures it in Inter: moving it or its parent, or editing a sibling in its auto layout, left its width and height rewritten (and saved). `TextEngine.measure` returns null for a family it doesn't have, so the stored box stays, as Figma keeps text in a missing font. When local font permission was granted before, the file's own fonts on this computer load as it opens (not only when a text layer is selected); sizes are not rewritten when they arrive, the next edit that reaches the text measures it.
 - **Editor shortcuts work while editing text.** ⌘S (saves now, keeping the typing first), ⇧⌘E, ⌘= ⌘- ⌘0, ⌘D and ⌘P reach the editor instead of the browser (Save Page As, bookmark, print, page zoom). The text input keeps only clipboard and word or line deletion keys (and Ctrl+letter on macOS).

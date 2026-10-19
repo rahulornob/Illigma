@@ -2334,3 +2334,37 @@ ul {
 .image-preview[data-scale="TILE"] img {
   object-fit: none;
 }
+/* Smart guides, gap and measurement pills, drop target (interactions.md §4, "Drop onto a frame"). */
+.drop-target {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: none;
+  transform-origin: 0 0;
+  outline: 2px solid var(--accent-default);
+  pointer-events: none;
+}
+.snap-guides > * {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+.snap-line {
+  background: var(--guide-smart);
+}
+.snap-line.v {
+  width: 1px;
+}
+.snap-line.h {
+  height: 1px;
+}
+.snap-pill {
+  padding: 0 4px;
+  border-radius: var(--radius-xs);
+  background: var(--guide-smart);
+  color: var(--accent-on);
+  font: var(--type-ui-value);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

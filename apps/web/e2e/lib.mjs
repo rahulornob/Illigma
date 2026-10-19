@@ -148,11 +148,14 @@ export async function webglRenderer(browser) {
 /**
  * A fresh browser profile (its own OPFS, caches and service worker), at the
  * editor's design size. With E2E_SLOW, every page opened with
- * context.newPage() is CPU-throttled before the test gets it.
+ * context.newPage() is CPU-throttled before the test gets it. Snapping to
+ * layers is off unless `snap` is true.
  */
-export async function newContext(browser) {
+export async function newContext(browser, { snap = false } = {}) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
   context.setDefaultTimeout(T(30_000));
+  // Snapping to other layers moves drags by a few pixels: scripts that check exact positions turn it off (snap.mjs keeps it).
+  if (!snap) await context.addInitScript(() => localStorage.setItem("illigma.snapToObjects", "off"));
   if (cpuSlowdown) {
     const newPage = context.newPage.bind(context);
     context.newPage = async () => {
