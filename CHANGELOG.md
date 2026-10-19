@@ -21,6 +21,14 @@ After v1.0: a Tauri desktop app in v1.x, then optional multiplayer (CRDT over LA
 
 ## [Unreleased]
 
+### Added (2026-10-19, pages, groups, layer operations and clipboard)
+
+- Pages list: add (+), rename (double-click, Enter, F2), duplicate, delete with a confirmation (never the last page), reorder by drag or ⌥↑ ⌥↓; each page keeps its own camera and selection. Core: `Transaction.movePage`.
+- Groups: ⌘G group (sized to its layers, places kept, one undo step), ⇧⌘G ungroup, ⌥⌘G frame selection; Escape selects the parent, Enter the children, double-click enters a group or frame.
+- Layers panel: inline rename (double-click, ⌘R, F2), hide and lock buttons on hover (⇧⌘H, ⇧⌘L), collapse and expand (aria-expanded, ← →), drag to reorder or move into frames and groups (multi-row, auto layout order kept), ⌘] ⌘[ ⌥⌘] ⌥⌘[.
+- Clipboard: ⌘C ⌘X ⌘V ⇧⌘V for layers within and across files and tabs (`application/x-illigma+json` with images, names as text/plain); a paste goes into the selected frame, or in view.
+- Context menus on the canvas, layer rows and pages, keyboard accessible (Shift+F10, menu key).
+
 ### Next
 - Phase 0 (foundations): renderer spike (CanvasKit, 10,000 layers at 60 fps), offline web app, design tokens in code. See [docs/dev/phase-0.md](docs/dev/phase-0.md).
 - Run the real usability sessions (Phase 5) in parallel; fix what they find.

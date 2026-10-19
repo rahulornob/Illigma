@@ -230,7 +230,11 @@ export function useLayerCommands({ doc, pageId, selection, setSelection, locked,
       const code = e.code;
       let cmd: LayerCommand | null = null;
       if (code === "KeyV" && e.shiftKey && !e.altKey) {
-        inPlace.current = true; // the paste event follows
+        // Browsers don't all send a paste event for ⇧⌘V outside a text field: paste the layers copied in this
+        // browser instead (the system clipboard can't be read without one).
+        e.preventDefault();
+        if (recalled()) run("paste-in-place");
+        else inPlace.current = true; // a paste event may still follow
         return;
       }
       if (code === "KeyG") cmd = e.altKey ? "frame" : e.shiftKey ? "ungroup" : "group";
