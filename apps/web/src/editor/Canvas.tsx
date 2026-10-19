@@ -1,6 +1,6 @@
 import { useEffect, useImperativeHandle, useRef, useState, type PointerEvent as ReactPointerEvent, type Ref } from "react";
 import type { CanvasKit } from "canvaskit-wasm";
-import { newId, type Document, type LiveEdit } from "@illigma/core";
+import { newId, type Document, type LiveEdit, type Transaction } from "@illigma/core";
 import type { NodeId, NodeType } from "@illigma/format";
 import { GpuCanvas, PageRenderer, type Camera, type TextEngine } from "@illigma/renderer";
 import { loadCanvasKit, loadTextEngine } from "./text/engine";
@@ -8,7 +8,15 @@ import { newTextFields, textPlacement } from "./text/create";
 import { TextEditor } from "./text/TextEditor";
 import { useFileFonts } from "./text/file-fonts";
 import { inLayer, keyboardFocused, onControl } from "./focus";
+import { EdgeAssist, MoveAssist, type Mods } from "./snap/assist";
+import { renderGuides, type GuideLayer } from "./snap/overlay";
+import { measureBetween } from "./snap/measure";
+import { droppable, reparent } from "./snap/drop";
+import { rememberDuplicate } from "./snap/repeat";
+import { SNAP_PX } from "./snap/snap";
+import { fitRect, zoomStep } from "./camera/zoom";
 import {
+  duplicateLayers,
   freeLayers,
   movable,
   moveBy,
@@ -17,7 +25,6 @@ import {
   resizeBy,
   selectionFrame,
   sharedFlowParent,
-  snapDelta,
   snapshot,
   startBounds,
   type ReorderSlot,
@@ -28,6 +35,7 @@ import {
   boundsOf,
   constrainToAxis,
   frameAt,
+  HANDLES,
   fromSpace,
   handleAt,
   handleCursor,
@@ -37,6 +45,7 @@ import {
   rectFromPoints,
   rectInSpace,
   SMALL_SELECTION,
+  unionRects,
   toSpace,
   worldBounds,
   worldCorners,
@@ -58,6 +67,8 @@ export interface CanvasHandle {
   zoomOut(): void;
   zoomTo(zoom: number): void;
   fit(): void;
+  /** Zoom to fit the selection (Shift+2). */
+  zoomToSelection(): void;
   /** A point in the window (client pixels) in page (world) coordinates. */
   toWorld(clientX: number, clientY: number): { x: number; y: number };
   /** The part of the page the canvas shows, in world coordinates. */
@@ -103,7 +114,14 @@ const sameIds = (a: readonly NodeId[], b: readonly NodeId[]) => a.length === b.l
 const plural = (n: number, verb: string) => (n === 1 ? `${verb} layer` : `${verb} ${n} layers`);
 
 /** Where the pointer is during a drag, and which modifiers are held (they can change without the pointer moving). */
-type Pointer = { sx: number; sy: number; shift: boolean; alt: boolean; /** ⌘ on macOS, Ctrl elsewhere: resize without constraints. */ meta: boolean };
+type Pointer = {
+  sx: number;
+  sy: number;
+  shift: boolean;
+  alt: boolean;
+  /** ⌘ on macOS, Ctrl elsewhere: resize without constraints, drop a larger layer into auto layout. */ meta: boolean;
+  /** Ctrl (or ⌘) held: snapping suspended (interactions.md §4). */ free: boolean;
+};
 
 /** macOS: ⌘ is the command key, and Ctrl is kept for suspending snapping (interactions.md §4). */
 const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
@@ -114,6 +132,7 @@ const pointerOf = (sx: number, sy: number, e: { shiftKey: boolean; altKey: boole
   shift: e.shiftKey,
   alt: e.altKey,
   meta: IS_MAC ? e.metaKey : e.ctrlKey,
+  free: e.ctrlKey || e.metaKey,
 });
 
 /** How far outside an auto layout frame (screen pixels) a dragged child still reorders; further out, dropping does nothing. */
@@ -145,15 +164,42 @@ type Gesture =
       /** The selection after a click (no drag), or null to leave it as is. */
       click: NodeId[] | null;
     }
-  | { kind: "move"; wx: number; wy: number; starts: Start[]; box: Rect; edit: LiveEdit; last: Pointer }
-  | { kind: "resize"; wx: number; wy: number; starts: Start[]; handle: Handle; edit: LiveEdit; last: Pointer }
+  | {
+      kind: "move";
+      wx: number;
+      wy: number;
+      starts: Start[];
+      box: Rect;
+      edit: LiveEdit;
+      last: Pointer;
+      /** Snapping, guides and the drop target. */
+      assist: MoveAssist;
+      /** ⌥-drag: the copies' ids by original (the originals stay). */
+      dup: Map<NodeId, NodeId> | null;
+      /** The last change applied, so a release can add the reparenting to it. */
+      apply: ((tx: Transaction) => void) | null;
+    }
+  | { kind: "resize"; wx: number; wy: number; starts: Start[]; handle: Handle; edit: LiveEdit; last: Pointer; assist: EdgeAssist }
   /**
    * Dragging layers in an auto layout flow reorders them (interactions.md §5): the selection box
    * follows the pointer, an insertion line shows the slot, and the order changes on release.
    */
-  | { kind: "reorder"; wx: number; wy: number; parent: NodeId; ids: NodeId[]; edit: LiveEdit; last: Pointer; dx: number; dy: number; slot: ReorderSlot | null }
+  | {
+      kind: "reorder";
+      wx: number;
+      wy: number;
+      parent: NodeId;
+      ids: NodeId[];
+      edit: LiveEdit;
+      last: Pointer;
+      dx: number;
+      dy: number;
+      slot: ReorderSlot | null;
+      /** Dragged out of the frame: where the layers would drop. */
+      assist: MoveAssist;
+    }
   | { kind: "marquee"; wx: number; wy: number; scope: NodeId; additive: boolean; base: NodeId[]; rect: Rect | null }
-  | { kind: "draw"; tool: Exclude<Tool, "move">; wx: number; wy: number; sx: number; sy: number }
+  | { kind: "draw"; tool: Exclude<Tool, "move">; wx: number; wy: number; sx: number; sy: number; assist: EdgeAssist }
   /** Placing the caret or selecting in the text being edited. */
   | { kind: "text" };
 
@@ -173,6 +219,8 @@ export function Canvas(props: CanvasProps) {
   const outlinesRef = useRef<HTMLDivElement>(null);
   const marqueeRef = useRef<HTMLDivElement>(null);
   const insertRef = useRef<HTMLDivElement>(null);
+  const guidesRef = useRef<HTMLDivElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [errorText, setErrorText] = useState("");
   const [spaceHeld, setSpaceHeld] = useState(false);
@@ -205,6 +253,11 @@ export function Canvas(props: CanvasProps) {
     lastPress: { t: 0, sx: 0, sy: 0, count: 0 },
     /** The press went to the text being edited: keep focus in its input (no mousedown focus change). */
     keepFocus: false,
+    /** Smart guides of the running drag, and ⌥ hover measurements. */
+    guides: null as GuideLayer | null,
+    measure: null as GuideLayer | null,
+    /** Where the pointer last hovered (⌥ pressed without moving measures there). */
+    lastHover: null as { sx: number; sy: number } | null,
   });
   live.current.props = props;
 
@@ -319,10 +372,21 @@ export function Canvas(props: CanvasProps) {
         place(el, f);
       });
     }
+    const gl = guidesRef.current;
+    if (gl) renderGuides(gl, gesture ? live.current.guides : live.current.measure, toScreen);
+    const assist = gesture?.kind === "move" || gesture?.kind === "reorder" ? gesture.assist : null;
+    const drop = dropRef.current;
+    if (drop) {
+      const t = assist?.target;
+      const f = t && t !== p.pageId ? layerFrame(t) : null;
+      if (f) place(drop, f);
+      else drop.style.display = "none";
+    }
+    const slot = gesture?.kind === "reorder" ? (gesture.slot ?? assist?.slot) : assist?.slot;
     const line = insertRef.current;
     if (line) {
-      if (gesture?.kind === "reorder" && gesture.slot) {
-        place(line, gesture.slot.line);
+      if (slot) {
+        place(line, slot.line);
         line.style.height = ""; // its thickness comes from CSS: 2 px at any zoom
       } else line.style.display = "none";
     }
@@ -380,11 +444,18 @@ export function Canvas(props: CanvasProps) {
   useImperativeHandle(handle, () => ({
     zoomIn: () => {
       const { w, h } = size();
-      zoomAround(live.current.camera.zoom * 2, w / 2, h / 2);
+      zoomAround(zoomStep(live.current.camera.zoom, 1), w / 2, h / 2);
     },
     zoomOut: () => {
       const { w, h } = size();
-      zoomAround(live.current.camera.zoom / 2, w / 2, h / 2);
+      zoomAround(zoomStep(live.current.camera.zoom, -1), w / 2, h / 2);
+    },
+    zoomToSelection: () => {
+      const d = live.current.props.doc;
+      const r = unionRects(pageSelection().map((id) => worldBounds(d, id)).filter((b): b is Rect => b !== null));
+      if (!r) return;
+      const { w, h } = size();
+      setCamera(fitRect(r, w, h, FIT_PADDING));
     },
     zoomTo: (z: number) => {
       const { w, h } = size();
@@ -600,8 +671,16 @@ export function Canvas(props: CanvasProps) {
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const rect = el.getBoundingClientRect();
-      const speed = e.deltaMode === 1 ? 0.05 : e.ctrlKey ? 0.01 : 0.0015;
-      zoomAround(live.current.camera.zoom * Math.exp(-e.deltaY * speed), e.clientX - rect.left, e.clientY - rect.top);
+      // ⌘/Ctrl + scroll and pinch (a wheel with ctrlKey) zoom around the pointer; plain scrolling pans (Shift: sideways).
+      if (e.ctrlKey || e.metaKey) {
+        const speed = e.deltaMode === 1 ? 0.05 : e.ctrlKey && !e.metaKey ? 0.01 : 0.0015;
+        zoomAround(live.current.camera.zoom * Math.exp(-e.deltaY * speed), e.clientX - rect.left, e.clientY - rect.top);
+        return;
+      }
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? rect.height : 1;
+      const [ddx, ddy] = e.shiftKey && !e.deltaX ? [e.deltaY, 0] : [e.deltaX, e.deltaY];
+      const { camera } = live.current;
+      setCamera({ ...camera, x: camera.x + (ddx * unit) / camera.zoom, y: camera.y + (ddy * unit) / camera.zoom });
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
@@ -694,14 +773,47 @@ export function Canvas(props: CanvasProps) {
     if (g.kind === "move") {
       g.last = p;
       if (p.shift) ({ x: dx, y: dy } = constrainToAxis(dx, dy));
-      const snapped = snapDelta(g.box, dx, dy);
+      const d = l.props.doc;
+      const dup = g.dup;
+      const moving = dup ? g.starts.map((s) => dup.get(s.id) ?? s.id) : g.starts.map((s) => s.id);
+      const snapped = g.assist.move(dx, dy, w.x, w.y, SNAP_PX / l.camera.zoom, { ...mods(p), keep: l.space }, moving);
+      l.guides = g.assist.layer;
       // A held axis stays exactly where it was, even if the box started off the pixel grid.
-      const mx = dx === 0 ? 0 : snapped.x;
-      const my = dy === 0 ? 0 : snapped.y;
-      g.edit.update((tx) => moveBy(tx, g.starts, mx, my));
+      const mx = dx === 0 ? 0 : snapped.dx;
+      const my = dy === 0 ? 0 : snapped.dy;
+      const sources = g.starts.map((s) => s.id);
+      const starts = dup ? g.starts.map((s) => ({ ...s, id: idFor(dup, s.id) })) : g.starts;
+      g.apply = (tx) => {
+        if (dup) duplicateLayers(tx, d, sources, { inPlace: true, idFor: (id) => idFor(dup, id) });
+        moveBy(tx, starts, mx, my);
+      };
+      g.edit.update(g.apply);
+      const copies = starts.map((s) => s.id);
+      if (dup && !sameIds(copies, l.props.selection)) select(copies);
     } else if (g.kind === "resize") {
       g.last = p;
       const d = l.props.doc;
+      // Snap the moving edges (upright layers; not when resizing from the centre).
+      const box = startBounds(g.starts);
+      const upright = g.starts.every((s) => s.rotation + s.parent.rotation === 0);
+      if (box && upright && !p.alt) {
+        const { hx, hy } = HANDLES[g.handle];
+        const t = SNAP_PX / l.camera.zoom;
+        if (hx) {
+          const edge = hx > 0 ? box.x + box.width : box.x;
+          dx = g.assist.coordinate("x", edge + dx, t, !p.free) - edge;
+        }
+        if (hy) {
+          const edge = hy > 0 ? box.y + box.height : box.y;
+          dy = g.assist.coordinate("y", edge + dy, t, !p.free) - edge;
+        }
+        const x1 = hx < 0 ? box.x + dx : box.x;
+        const x2 = hx > 0 ? box.x + box.width + dx : box.x + box.width;
+        const y1 = hy < 0 ? box.y + dy : box.y;
+        const y2 = hy > 0 ? box.y + box.height + dy : box.y + box.height;
+        g.assist.showFor(rectFromPoints(x1, y1, x2, y2), !p.free && !p.shift);
+        l.guides = g.assist.layer;
+      } else l.guides = null;
       g.edit.update((tx) => resizeBy(tx, d, g.starts, g.handle, dx, dy, { keepRatio: p.shift, fromCenter: p.alt, constraints: !p.meta }));
     } else if (g.kind === "reorder") {
       g.last = p;
@@ -709,6 +821,12 @@ export function Canvas(props: CanvasProps) {
       g.dy = dy;
       // Far outside the frame there is no slot (no line), and letting go puts the layers back.
       g.slot = reorderSlot(l.props.doc, g.parent, g.ids, w.x, w.y, REORDER_REACH / l.camera.zoom);
+      // Dragged out of the frame: it drops onto the page or another frame.
+      if (g.slot) {
+        g.assist.target = null;
+        g.assist.slot = null;
+      } else g.assist.move(dx, dy, w.x, w.y, SNAP_PX / l.camera.zoom, { ...mods(p), keep: l.space }, g.ids);
+      l.guides = null;
       requestDraw();
     } else if (g.kind === "marquee") {
       g.rect = rectFromPoints(g.wx, g.wy, w.x, w.y);
@@ -729,8 +847,10 @@ export function Canvas(props: CanvasProps) {
     const l = live.current;
     const g = l.gesture;
     if (!g) return false;
+    l.guides = null;
     if (g.kind === "move" || g.kind === "resize" || g.kind === "reorder") {
       if (g.edit.open) g.edit.cancel();
+      if (g.kind === "move" && g.dup) select(g.starts.map((s) => s.id));
     } else if (g.kind === "marquee") {
       select(g.base);
     } else if (g.kind === "draw") {
@@ -744,7 +864,7 @@ export function Canvas(props: CanvasProps) {
   };
 
   /** The press became a drag: start the move, resize or marquee it was waiting for. */
-  const startDrag = (g: Extract<Gesture, { kind: "press" }>) => {
+  const startDrag = (g: Extract<Gesture, { kind: "press" }>, alt = false) => {
     const l = live.current;
     const d = l.props.doc;
     if (g.then === "marquee") {
@@ -755,12 +875,14 @@ export function Canvas(props: CanvasProps) {
       l.gesture = null;
       return;
     }
-    const last: Pointer = { sx: g.sx, sy: g.sy, shift: false, alt: false, meta: false };
+    const last: Pointer = { sx: g.sx, sy: g.sy, shift: false, alt: false, meta: false, free: false };
     // Layers in an auto layout flow are reordered, not moved (a mix moves only the free ones).
     const flow = g.then === "move" ? sharedFlowParent(d, g.ids) : null;
     if (flow) {
       const edit = d.beginLive(plural(g.ids.length, "Reorder"));
-      l.gesture = { kind: "reorder", wx: g.wx, wy: g.wy, parent: flow, ids: g.ids, edit, last, dx: 0, dy: 0, slot: null };
+      const box = startBounds(snapshot(d, g.ids)) ?? { x: g.wx, y: g.wy, width: 0, height: 0 };
+      const assist = new MoveAssist(d, l.props.pageId, g.ids, box);
+      l.gesture = { kind: "reorder", wx: g.wx, wy: g.wy, parent: flow, ids: g.ids, edit, last, dx: 0, dy: 0, slot: null, assist };
       return;
     }
     const starts = snapshot(d, g.then === "move" ? freeLayers(d, g.ids) : g.ids);
@@ -771,10 +893,14 @@ export function Canvas(props: CanvasProps) {
     }
     if (g.then === "resize" && g.handle) {
       const edit = d.beginLive(plural(starts.length, "Resize"));
-      l.gesture = { kind: "resize", wx: g.wx, wy: g.wy, starts, handle: g.handle, edit, last };
+      const assist = new EdgeAssist(d, starts.map((s) => s.id));
+      l.gesture = { kind: "resize", wx: g.wx, wy: g.wy, starts, handle: g.handle, edit, last, assist };
     } else {
-      const edit = d.beginLive(plural(starts.length, "Move"));
-      l.gesture = { kind: "move", wx: g.wx, wy: g.wy, starts, box, edit, last };
+      // ⌥-drag duplicates: the copies move, the originals stay (and can be snapped to).
+      const ids = starts.map((s) => s.id);
+      const edit = d.beginLive(alt ? plural(starts.length, "Duplicate") : plural(starts.length, "Move"));
+      const assist = new MoveAssist(d, l.props.pageId, ids, box, alt);
+      l.gesture = { kind: "move", wx: g.wx, wy: g.wy, starts, box, edit, last, assist, dup: alt ? new Map() : null, apply: null };
     }
   };
 
@@ -970,8 +1096,12 @@ export function Canvas(props: CanvasProps) {
       requestDraw();
       return;
     }
-    const w = toWorld(sx, sy);
-    l.gesture = { kind: "draw", tool: l.props.tool, wx: w.x, wy: w.y, sx, sy };
+    const raw = toWorld(sx, sy);
+    const { doc: d, pageId: page } = l.props;
+    const inside = frameAt(d, page, raw.x, raw.y);
+    const assist = new EdgeAssist(d, [], inside ? [page, inside] : [page]);
+    const w = assist.point(raw.x, raw.y, SNAP_PX / l.camera.zoom, !(e.ctrlKey || e.metaKey));
+    l.gesture = { kind: "draw", tool: l.props.tool, wx: w.x, wy: w.y, sx, sy, assist };
   };
 
   /** Hover with the Move tool: outline what a click would select, and show a resize cursor over handles. */
@@ -994,11 +1124,56 @@ export function Canvas(props: CanvasProps) {
     setResizeCursor(handle ? handleCursor(handle, handleFrame()?.rotation ?? 0) : null);
     const w = toWorld(sx, sy);
     const next = handle ? null : (p.hitTest?.(w.x, w.y, { deep: e.metaKey || e.ctrlKey }) ?? null);
-    if (next !== l.hoverId) {
+    l.lastHover = { sx, sy };
+    const had = l.measure;
+    l.measure = measureAt(w.x, w.y, e.altKey, e.metaKey || e.ctrlKey);
+    if (next !== l.hoverId || had || l.measure) {
       l.hoverId = next;
       requestDraw();
     }
   };
+
+  /**
+   * ⌥ held with something selected: the distances from the selection to the
+   * layer under the pointer, or to its parent's edges (interactions.md §4).
+   * ⌘⌥ measures to layers nested inside frames.
+   */
+  const measureAt = (wx: number, wy: number, alt: boolean, deep: boolean): GuideLayer | null => {
+    const { props: p, gesture, text } = live.current;
+    if (!alt || gesture || text?.editing) return null;
+    const ids = pageSelection();
+    const d = p.doc;
+    const a = unionRects(ids.map((id) => worldBounds(d, id)).filter((b): b is Rect => b !== null));
+    if (!a) return null;
+    const hit = p.hitTest?.(wx, wy, { deep }) ?? null;
+    let other: NodeId | null = hit && !ids.includes(hit) ? hit : null;
+    if (!other) {
+      const parent = ids[0] ? d.get(ids[0])?.parentId : null;
+      if (parent && d.get(parent)?.type !== "PAGE") other = parent;
+    }
+    const b = other ? worldBounds(d, other) : null;
+    const gaps = b ? measureBetween(a, b) : [];
+    return gaps.length ? { guides: [], gaps } : null;
+  };
+
+  // Pressing or letting go of ⌥ over the canvas shows or hides measurements without moving the pointer.
+  useEffect(() => {
+    const onAlt = (e: KeyboardEvent) => {
+      if (e.key !== "Alt") return;
+      const l = live.current;
+      if (!l.hover || !l.lastHover || l.gesture) return;
+      const w = toWorld(l.lastHover.sx, l.lastHover.sy);
+      l.measure = measureAt(w.x, w.y, e.type === "keydown", e.metaKey || e.ctrlKey);
+      requestDraw();
+    };
+    window.addEventListener("keydown", onAlt);
+    window.addEventListener("keyup", onAlt);
+    return () => {
+      window.removeEventListener("keydown", onAlt);
+      window.removeEventListener("keyup", onAlt);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** Events from a pointer that doesn't own the running gesture are ignored. */
   const foreign = (e: { pointerId: number }) => {
@@ -1023,7 +1198,7 @@ export function Canvas(props: CanvasProps) {
     }
     if (g.kind === "press") {
       if (Math.hypot(sx - g.sx, sy - g.sy) <= DRAG_THRESHOLD) return;
-      startDrag(g);
+      startDrag(g, e.altKey);
     }
     const cur = l.gesture;
     if (cur?.kind === "text") {
@@ -1037,7 +1212,9 @@ export function Canvas(props: CanvasProps) {
       cur.lastX = sx;
       cur.lastY = sy;
     } else if (cur?.kind === "draw") {
-      const w = toWorld(sx, sy);
+      const raw = toWorld(sx, sy);
+      const w = e.shiftKey ? raw : cur.assist.point(raw.x, raw.y, SNAP_PX / l.camera.zoom, !(e.ctrlKey || e.metaKey));
+      l.guides = e.shiftKey ? null : cur.assist.layer;
       let dx = w.x - cur.wx;
       let dy = w.y - cur.wy;
       if (e.shiftKey) {
@@ -1069,6 +1246,7 @@ export function Canvas(props: CanvasProps) {
     l.pointerId = null;
     setPanning(false);
     setResizeCursor(null);
+    l.guides = null;
     if (!g) return;
     if (g.kind === "text") {
       l.text?.pointerUp();
@@ -1080,7 +1258,28 @@ export function Canvas(props: CanvasProps) {
       requestDraw();
       return;
     }
-    if (g.kind === "move" || g.kind === "resize") {
+    if (g.kind === "move") {
+      if (g.edit.open) {
+        // Dropped onto a frame (or out onto the page): reparented in the same undo step, page position kept.
+        const { doc: d } = l.props;
+        const target = g.assist.target;
+        const apply = g.apply;
+        const dup = g.dup;
+        const moving = g.starts.map((s) => (dup ? (dup.get(s.id) ?? s.id) : s.id));
+        if (target && apply) {
+          const before = g.assist.slot?.before ?? null;
+          g.edit.update((tx) => {
+            apply(tx);
+            reparent(tx, d, droppable(d, moving), target, before);
+          });
+        }
+        g.edit.commit();
+        if (dup && apply) rememberDuplicate(d, g.starts.map((s) => s.id), moving);
+      }
+      requestDraw();
+      return;
+    }
+    if (g.kind === "resize") {
       if (g.edit.open) g.edit.commit();
       requestDraw();
       return;
@@ -1090,7 +1289,17 @@ export function Canvas(props: CanvasProps) {
         // The slot the insertion line showed (where the last pointer move put it); layout reflows inside the same step.
         const { doc: d } = l.props;
         const slot = g.slot;
+        const target = g.assist.target;
         if (slot) g.edit.update((tx) => void reorderLayers(tx, d, g.parent, g.ids, slot.before));
+        else if (target) {
+          // Dragged out of its auto layout frame onto the page or another frame.
+          const starts = snapshot(d, g.ids);
+          const before = g.assist.slot?.before ?? null;
+          g.edit.update((tx) => {
+            moveBy(tx, starts, Math.round(g.dx), Math.round(g.dy));
+            reparent(tx, d, droppable(d, g.ids), target, before);
+          });
+        }
         g.edit.commit();
       }
       requestDraw();
@@ -1196,7 +1405,7 @@ export function Canvas(props: CanvasProps) {
         tabIndex={0}
         role="application"
         aria-roledescription="design canvas"
-        aria-label="Canvas. Click to select, Shift-click to add, drag to move or to select an area, arrow keys nudge. Hold Space and drag to pan, scroll to zoom. Pick a tool in the dock and drag to draw."
+        aria-label="Canvas. Click to select, Shift-click to add, drag to move or to select an area, arrow keys nudge. Hold Space and drag to pan, scroll to pan, ⌘ or Ctrl and scroll to zoom. Pick a tool in the dock and drag to draw."
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -1229,6 +1438,8 @@ export function Canvas(props: CanvasProps) {
         <div ref={outlinesRef} />
         <div ref={marqueeRef} className="marquee-box" />
         <div ref={insertRef} className="insert-line" />
+        <div ref={dropRef} className="drop-target" />
+        <div ref={guidesRef} className="snap-guides" />
         <div ref={selRef} className="selection-box">
           {HANDLE_NAMES.map((h) => (
             <span key={h} className={`handle ${h}`} />
@@ -1244,6 +1455,21 @@ export function Canvas(props: CanvasProps) {
       )}
     </div>
   );
+}
+
+/** Modifiers for snapping and dropping. */
+function mods(p: Pointer): Mods {
+  return { snap: !p.free, keep: false, force: p.meta };
+}
+
+/** The copy's id for an original, made once per drag so live updates keep it. */
+function idFor(map: Map<NodeId, NodeId>, id: NodeId): NodeId {
+  let c = map.get(id);
+  if (!c) {
+    c = newId();
+    map.set(id, c);
+  }
+  return c;
 }
 
 function round(v: number): string {

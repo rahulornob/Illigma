@@ -185,10 +185,16 @@ export function deleteLayers(tx: Transaction, doc: Document, ids: readonly NodeI
  * original in the same parent, in place; a top-level frame's copy goes to
  * its right instead. Returns the copies' ids, to select them.
  */
-export function duplicateLayers(tx: Transaction, doc: Document, ids: readonly NodeId[]): NodeId[] {
+export function duplicateLayers(
+  tx: Transaction,
+  doc: Document,
+  ids: readonly NodeId[],
+  /** `inPlace`: no offset for top-level frames (⌥-drag); `idFor`: the copy's id for a source (stable across live updates). */
+  opts: { inPlace?: boolean; idFor?: (source: NodeId) => NodeId } = {},
+): NodeId[] {
   const copy = (n: ReadonlyNode, parent: NodeId, position: "last" | { after: NodeId }, dx: number): NodeId => {
     const { id: _id, type, parentId: _parent, index: _index, ...fields } = n;
-    const id = tx.create(type, parent, { ...fields, x: n.x + dx }, position);
+    const id = opts.idFor ? tx.create(type, parent, { ...fields, x: n.x + dx }, position, opts.idFor(n.id)) : tx.create(type, parent, { ...fields, x: n.x + dx }, position);
     for (const child of doc.children(n.id)) copy(child, id, "last", 0);
     return id;
   };
@@ -197,7 +203,7 @@ export function duplicateLayers(tx: Transaction, doc: Document, ids: readonly No
     const n = doc.get(id);
     if (!n || !n.parentId) continue;
     const topLevel = doc.get(n.parentId)?.type === "PAGE" && CONTAINERS.has(n.type);
-    out.push(copy(n, n.parentId, { after: id }, topLevel ? n.width + DUPLICATE_GAP : 0));
+    out.push(copy(n, n.parentId, { after: id }, topLevel && !opts.inPlace ? n.width + DUPLICATE_GAP : 0));
   }
   return out;
 }

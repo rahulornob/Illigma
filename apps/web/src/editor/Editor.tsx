@@ -17,7 +17,8 @@ import {
 import { onBeforeUpdate } from "../sw-update";
 import { Icon, LogoMark } from "../ui/Icon";
 import { Canvas, type CanvasHandle, type HitTest, type Tool } from "./Canvas";
-import { createdLayers, deleteLayers, duplicateLayers, freeLayers, movable, moveBy, reorderStep, sharedFlowParent, snapshot } from "./edit";
+import { createdLayers, deleteLayers, duplicateLayers, freeLayers, movable, moveBy, reorderStep, sharedFlowParent, snapshot, topmost } from "./edit";
+import { placeCopies, rememberDuplicate, repeatOffset } from "./snap/repeat";
 import { nudgeFor } from "./geometry";
 import { autoLayoutSelection, removeAutoLayout } from "./layout-model";
 import { useDocVersion, useSaveDisplay } from "./hooks";
@@ -430,7 +431,14 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
       if (mod && k === "d") {
         e.preventDefault(); // the browser's bookmark shortcut
         if (noEdits || !sel.length) return;
-        const copies = doc.transact(sel.length === 1 ? "Duplicate layer" : `Duplicate ${sel.length} layers`, (tx) => duplicateLayers(tx, doc, sel));
+        // After "duplicate then move", the next ⌘D repeats that offset (interactions.md §2).
+        const off = repeatOffset(doc, sel);
+        const copies = doc.transact(sel.length === 1 ? "Duplicate layer" : `Duplicate ${sel.length} layers`, (tx) => {
+          const made = duplicateLayers(tx, doc, sel);
+          if (off) placeCopies(tx, doc, topmost(doc, sel), made, off);
+          return made;
+        });
+        rememberDuplicate(doc, topmost(doc, sel), copies);
         setSelection(copies);
         return;
       }
@@ -464,6 +472,11 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
       if (e.shiftKey && e.code === "Digit1") {
         e.preventDefault();
         canvas.current?.fit();
+        return;
+      }
+      if (e.shiftKey && e.code === "Digit2") {
+        e.preventDefault();
+        canvas.current?.zoomToSelection();
         return;
       }
       if (e.shiftKey && e.code === "Digit0") {
