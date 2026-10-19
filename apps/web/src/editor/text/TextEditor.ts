@@ -401,8 +401,8 @@ export class TextEditor {
     const end = this.input.selectionEnd;
     this.sel = this.input.selectionDirection === "backward" ? { anchor: end, focus: start } : { anchor: start, focus: end };
     if (text !== s.text) {
-      // A burst starts with its first change (for a new layer, with its first character).
-      if (!s.pending || s.emptyNew) this.burstStart = performance.now();
+      // A burst starts with its first change (for a new or emptied layer, with its next character).
+      if (!s.pending || s.emptyNew || s.emptied) this.burstStart = performance.now();
       s.edit(text, kind);
       // Never longer than BURST_MAX_MS: kept now, the next key starts a new burst.
       if (this.burstAge() >= BURST_MAX_MS) this.settle();

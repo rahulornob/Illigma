@@ -21,11 +21,21 @@ export function inLayer(t: EventTarget | null): boolean {
   return t instanceof Element && t.closest(LAYER) !== null;
 }
 
-/** True if `t` has focus from the keyboard (it shows the focus ring), not from a click. */
+/**
+ * The control the last pointer press landed on. `:focus-visible` can't tell
+ * here: Chrome starts matching it on the focused element as soon as a key is
+ * pressed, which is exactly when this is asked.
+ */
+let pressed: Element | null = null;
+if (typeof document !== "undefined") {
+  document.addEventListener("pointerdown", (e) => (pressed = e.target instanceof Element ? e.target.closest(CONTROL) : null), true);
+  // Focus moved by the keyboard (Tab, arrows in a group): from now on the focus is the keyboard's.
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Tab" || e.key.startsWith("Arrow")) pressed = null;
+  }, true);
+}
+
+/** True if `t` has focus from the keyboard (or a script), not from a click on it. */
 export function keyboardFocused(t: EventTarget | null): boolean {
-  try {
-    return t instanceof Element && t.matches(":focus-visible");
-  } catch {
-    return true; // a browser without :focus-visible: treat focus as the keyboard's
-  }
+  return !(t instanceof Element && pressed !== null && pressed.contains(t));
 }
