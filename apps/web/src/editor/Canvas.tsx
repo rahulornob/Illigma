@@ -6,6 +6,8 @@ import { GpuCanvas, PageRenderer, type Camera, type TextEngine } from "@illigma/
 import { loadCanvasKit, loadTextEngine } from "./text/engine";
 import { newTextFields, textPlacement } from "./text/create";
 import { TextEditor } from "./text/TextEditor";
+import { useFileFonts } from "./text/file-fonts";
+import { inLayer, keyboardFocused, onControl } from "./focus";
 import {
   freeLayers,
   movable,
@@ -161,6 +163,8 @@ const MULTI_CLICK_PX = 4;
 
 export function Canvas(props: CanvasProps) {
   const { doc, pageId, selection, tool, handle } = props;
+  // The file's fonts on this computer, loaded as it opens (when permission was granted before).
+  useFileFonts(doc);
   const hostRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const selRef = useRef<HTMLDivElement>(null);
@@ -607,13 +611,15 @@ export function Canvas(props: CanvasProps) {
   // Hold Space to pan with any tool, wherever focus is (except text fields).
   useEffect(() => {
     const typing = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
-    const isButton = (t: EventTarget | null) => t instanceof HTMLElement && t.closest("button") !== null;
     let swallowed = false;
     const down = (e: KeyboardEvent) => {
-      if (e.code !== "Space" || typing(e.target)) return;
-      // On a focused button, Space still presses the button for keyboard users, unless the pointer is
-      // over the canvas (then it's a pan). Pressing on the canvas moves focus there, so the button isn't pressed.
-      if (!isButton(e.target) || live.current.hover) {
+      if (e.code !== "Space" || typing(e.target) || inLayer(e.target)) return;
+      // A control focused from the keyboard (focus ring shown): Space presses it, wherever the pointer is.
+      const control = onControl(e.target);
+      if (control && keyboardFocused(e.target)) return;
+      // A button focused by a click (a tool in the dock) keeps Space unless the pointer is over the canvas:
+      // then it's a pan. Pressing on the canvas moves focus there, so the button isn't pressed.
+      if (!control || live.current.hover) {
         e.preventDefault();
         swallowed = true;
       }

@@ -39,6 +39,9 @@ describe("text in layout", () => {
     doc.add("TEXT", "A", { characters: "hello", textAutoResize: "WIDTH_AND_HEIGHT", width: 3, height: 4 });
     expect(relayout(doc, ["A"])).toEqual([]);
     expect(relayout(doc, ["A"], { measureText: () => null })).toEqual([]);
+    // A size that isn't a finite number is never stored (QC round 8).
+    expect(relayout(doc, ["A"], { measureText: () => ({ width: Number.NaN, height: 20 }) })).toEqual([]);
+    expect(relayout(doc, ["A"], { measureText: () => ({ width: 20, height: Number.POSITIVE_INFINITY }) })).toEqual([]);
   });
 
   it("Hug text in an auto layout frame reflows the frame; Fill width wraps the text", () => {

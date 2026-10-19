@@ -200,11 +200,13 @@ const letterSpacing: Rule = (v) => {
 };
 const lineHeight: Rule = (v) => {
   // Format 0: a number of pixels.
-  if (typeof v === "number") return isFinite(v) ? null : "must be a number (not NaN or Infinity)";
+  if (typeof v === "number") return isFinite(v) && v >= 0 && v <= MAX_TEXT_METRIC ? null : `must be a number of pixels from 0 to ${MAX_METRIC}`;
   if (isObject(v) && Object.keys(v).length === 1 && v.unit === "AUTO") return null;
   if (isObject(v) && Object.keys(v).length === 2 && !metricUnit(v.unit) && isFinite(v.value) && v.value >= 0 && v.value <= MAX_TEXT_METRIC) return null;
   return `must be a number of pixels, { unit: "AUTO" }, or { value, unit } with a value from 0 to ${MAX_METRIC} and a unit "PIXELS" or "PERCENT"`;
 };
+/** Font size: above 0 and at most `MAX_TEXT_METRIC` (a huge size made layout NaN, so the text could never be edited). */
+const fontSize: Rule = (v) => (isFinite(v) && v > 0 && v <= MAX_TEXT_METRIC ? null : `must be a number above 0 and at most ${MAX_METRIC}`);
 // ---- export settings ----
 
 const suffix: Rule = (v) =>
@@ -267,7 +269,7 @@ const RULES: { [K in keyof Node]-?: Rule } = {
   characters: optional(text),
   fontFamily: optional(text),
   fontStyle: optional(text),
-  fontSize: optional(number),
+  fontSize: optional(fontSize),
   lineHeight: optional(lineHeight),
   letterSpacing: optional(letterSpacing),
   textAutoResize: optional(oneOf(TEXT_AUTO_RESIZES)),

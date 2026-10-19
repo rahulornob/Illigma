@@ -31,10 +31,10 @@
     "characters": { "type": "string" },
     "fontFamily": { "type": "string" },
     "fontStyle": { "type": "string" },
-    "fontSize": { "type": "number" },
+    "fontSize": { "type": "number", "exclusiveMinimum": 0, "maximum": 10000 },
     "lineHeight": {
       "oneOf": [
-        { "type": "number", "description": "Pixels (format 0)" },
+        { "type": "number", "minimum": 0, "maximum": 10000, "description": "Pixels (format 0)" },
         { "type": "object", "required": ["unit"], "additionalProperties": false, "properties": { "unit": { "const": "AUTO" } } },
         { "type": "object", "required": ["value", "unit"], "additionalProperties": false, "properties": { "value": { "type": "number", "minimum": 0, "maximum": 10000 }, "unit": { "enum": ["PIXELS", "PERCENT"] } } }
       ],

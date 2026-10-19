@@ -40,6 +40,21 @@ import {
 
 /** A typing burst ends after this long without a key (one undo step per burst). */
 export const BURST_IDLE_MS = 1000;
+/**
+ * …and after this long in any case: continuous typing, or an IME composition
+ * left open, is kept (saved and journaled) at least this often. The caret
+ * stays; the next key starts a new burst.
+ */
+export const BURST_MAX_MS = 2000;
+
+/**
+ * Keys with ⌘ (Ctrl elsewhere) that the text input needs itself: clipboard
+ * and word or line deletion. Every other ⌘ shortcut (⌘S, ⌘D, ⌘P, ⌘= ⌘- ⌘0,
+ * ⇧⌘E…) goes on to the editor, which keeps the browser's action from running.
+ */
+const INPUT_COMMANDS = new Set(["c", "x", "v", "backspace", "delete", "insert"]);
+/** Pressing ⌘ itself (before the letter) is no shortcut yet. */
+const MODIFIER_KEYS = new Set(["Meta", "Control", "Shift", "Alt", "OS"]);
 
 const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
@@ -71,6 +86,8 @@ export class TextEditor {
   private goalX: number | null = null;
   private composing = false;
   private idle = 0;
+  /** When the open typing burst began (performance.now), or null when none is open. */
+  private burstStart: number | null = null;
   private dragAnchor: [number, number] | null = null;
   private cached: { node: ReadonlyNode; layout: TextLayout } | null = null;
   private unsubscribe: (() => void) | null = null;
@@ -141,6 +158,7 @@ export class TextEditor {
     const s = this.session;
     if (!s) return;
     this.endBurstTimer();
+    this.burstStart = null;
     this.session = null;
     this.unsubscribe?.();
     this.unsubscribe = null;
@@ -160,10 +178,14 @@ export class TextEditor {
     }
   }
 
-  /** End the current typing burst now (before something else edits the document). */
+  /**
+   * End the current typing burst now (before something else edits the
+   * document). A new layer with no text yet stays open: it is never kept empty.
+   */
   settle(): void {
     this.endBurstTimer();
-    this.session?.commit(true);
+    this.session?.commit();
+    if (!this.session?.pending) this.burstStart = null;
   }
 
   /** True if the world point (wx, wy) is inside the layer being edited. */
@@ -349,12 +371,26 @@ export class TextEditor {
     this.idle = 0;
   }
 
+  /** How long the open burst has run (0 when none is open). */
+  private burstAge(): number {
+    return this.burstStart === null ? 0 : performance.now() - this.burstStart;
+  }
+
+  /** End the burst after a pause (1 s), or once it is `BURST_MAX_MS` old, even mid-composition. */
   private restartBurstTimer(): void {
     this.endBurstTimer();
-    this.idle = window.setTimeout(() => {
-      this.idle = 0;
-      if (!this.composing) this.session?.commit();
-    }, BURST_IDLE_MS);
+    const left = Math.max(0, BURST_MAX_MS - this.burstAge());
+    this.idle = window.setTimeout(
+      () => {
+        this.idle = 0;
+        if (this.composing && this.burstAge() < BURST_MAX_MS) {
+          this.restartBurstTimer();
+          return;
+        }
+        this.settle();
+      },
+      this.composing ? left : Math.min(BURST_IDLE_MS, left),
+    );
   }
 
   private apply(kind: EditKind): void {
@@ -365,8 +401,12 @@ export class TextEditor {
     const end = this.input.selectionEnd;
     this.sel = this.input.selectionDirection === "backward" ? { anchor: end, focus: start } : { anchor: start, focus: end };
     if (text !== s.text) {
+      // A burst starts with its first change (for a new or emptied layer, with its next character).
+      if (!s.pending || s.emptyNew || s.emptied) this.burstStart = performance.now();
       s.edit(text, kind);
-      this.restartBurstTimer();
+      // Never longer than BURST_MAX_MS: kept now, the next key starts a new burst.
+      if (this.burstAge() >= BURST_MAX_MS) this.settle();
+      else this.restartBurstTimer();
     }
     this.goalX = null;
     this.restartBlink();
@@ -377,6 +417,7 @@ export class TextEditor {
     const s = this.session;
     if (!s) return;
     this.endBurstTimer();
+    this.burstStart = null;
     const exists = s.step(which);
     if (!exists) {
       this.stop();
@@ -468,6 +509,12 @@ export class TextEditor {
       else this.move(start ? lineStart(layout, focus) : lineEnd(layout, focus), extend);
       return;
     }
+    // ⌘ shortcuts the input doesn't need are the editor's (save, export, zoom…): the burst is kept first,
+    // so they see the text as typed. On macOS, Ctrl+letter stays with the input (its text editing keys).
+    if (mod && !INPUT_COMMANDS.has(k.toLowerCase()) && !MODIFIER_KEYS.has(k)) {
+      this.settle();
+      return;
+    }
     // Everything else (typing, Enter, Backspace, Delete, clipboard) is the textarea's: see onInput. Keep it from the editor's shortcuts.
     e.stopPropagation();
   };
@@ -503,8 +550,8 @@ export class TextEditor {
 
   private readonly onBlur = (): void => {
     // Focus went to a panel or another app: keep what was typed, so other edits can run. Editing goes on.
-    this.endBurstTimer();
-    this.session?.commit(true);
+    // A new layer with no text isn't kept (nothing to save); Typography changes go into it (`patchNew`).
+    this.settle();
   };
 
   private readonly onSelectionChange = (): void => {

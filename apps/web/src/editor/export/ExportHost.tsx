@@ -34,7 +34,8 @@ export function ExportHost({ doc, pageId }: { doc: Document; pageId: NodeId }) {
 
   const fileId = doc.fileId;
   let toast = null;
-  if (shown && !shown.cancelled) {
+  // A cancel that left nothing written says nothing; one that stopped partway says what was written.
+  if (shown && (!shown.cancelled || !!shown.written?.length)) {
     if (shown.phase !== "done") {
       const text = shown.phase === "writing" ? `Writing ${shown.done} of ${shown.total} files…` : `Exporting ${shown.done} of ${shown.total} files…`;
       toast = (
@@ -50,6 +51,22 @@ export function ExportHost({ doc, pageId }: { doc: Document; pageId: NodeId }) {
         <div className="export-toast export-toast-success" role="status">
           <Icon name="check" />
           <span className="export-toast-text">{successText(shown)}</span>
+          <button type="button" className="icon-button" aria-label="Dismiss" title="Dismiss" onClick={dismissJob}>
+            <ExportIcon name="x" />
+          </button>
+        </div>
+      );
+    } else if (shown.cancelled) {
+      // Stopped partway by the person: not a failure. Says what was written; the rest can still go.
+      const rest = shown.failures?.length ?? 0;
+      toast = (
+        <div className="export-toast" role="status">
+          <span className="export-toast-text">{shown.error}</span>
+          {rest > 0 && (
+            <button type="button" className="btn btn-secondary" onClick={() => void retryFailed(doc, fileId, doc.name)}>
+              {rest === 1 ? "Export the other file" : `Export the other ${rest} files`}
+            </button>
+          )}
           <button type="button" className="icon-button" aria-label="Dismiss" title="Dismiss" onClick={dismissJob}>
             <ExportIcon name="x" />
           </button>

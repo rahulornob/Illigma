@@ -12,6 +12,7 @@ import interUrl from "@fontsource-variable/inter/files/inter-latin-wght-normal.w
 import interExtUrl from "@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2?url";
 import wasmUrl from "canvaskit-wasm/bin/canvaskit.wasm?url";
 import { TextEngine, type FontSource, type TextNode } from "@illigma/renderer";
+import type { TextMeasure } from "@illigma/layout";
 import { setTextMeasure } from "../layout";
 
 /** The bundled family: always available, and what text in a missing font is drawn with. */
@@ -45,11 +46,24 @@ export function loadTextEngine(): Promise<TextEngine> {
     engine = new TextEngine(ck, fonts);
     const e = engine;
     // From now on layout measures auto width and auto height text with the engine that draws it.
-    setTextMeasure((n, width) => e.measure(n as TextNode, width));
+    setTextMeasure(layoutMeasure(e));
     for (const l of [...readyListeners]) l(engine);
     readyListeners.clear();
     return engine;
   }));
+}
+
+/**
+ * How layout measures text with `engine`. Text in a font the engine doesn't
+ * have (not installed, or not loaded yet) is not measured: it keeps the size
+ * stored in the file, as Figma keeps text in a missing font. Measuring it in
+ * the fallback (Inter) would rewrite its width and height on any edit that
+ * reaches it (moving it or its parent, editing a sibling in its auto layout).
+ * Once the font loads, the next edit that reaches the text measures it in
+ * that font; sizes are not rewritten on their own when a font loads.
+ */
+export function layoutMeasure(engine: Pick<TextEngine, "hasFamily" | "measure">): TextMeasure {
+  return (n, width) => (n.fontFamily && !engine.hasFamily(n.fontFamily) ? null : engine.measure(n as TextNode, width));
 }
 
 /** The text engine if it has loaded, else null (layout then keeps text boxes as stored). */

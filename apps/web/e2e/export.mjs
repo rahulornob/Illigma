@@ -309,5 +309,46 @@ await runE2E("export", {}, async ({ browser, url, log, check, outDir, errors }) 
   console.log(`  · longest main-thread task during the 50-file export: ${Math.round(longest)} ms`);
   check(await fsPage.evaluate(() => performance.getEntriesByType("resource").some((e) => /export\.worker/.test(e.name))), "the export ran in its worker");
   check(await fsPage.getByRole("status").filter({ hasText: "Exported 50 files to “my-exports”" }).isVisible(), "the toast counts 50 files");
+
+  log("QC round 8: Cancel while the files are written stops between files, says what was written, and isn't a failure");
+  const filesBefore = (await listFolder()).length;
+  await fsPage.evaluate(() => {
+    // A slow disk: each file takes 150 ms to commit, so the write phase lasts long enough to cancel.
+    const proto = FileSystemFileHandle.prototype;
+    const create = proto.createWritable;
+    proto.createWritable = async function (o) {
+      const stream = await create.call(this, o);
+      const close = stream.close.bind(stream);
+      stream.close = async () => {
+        await new Promise((r) => setTimeout(r, 150));
+        return close();
+      };
+      return stream;
+    };
+  });
+  await fsPage.locator("canvas.canvas").focus();
+  await fsPage.keyboard.press("ControlOrMeta+Shift+e");
+  const fsDialog = fsPage.getByRole("dialog", { name: "Export" });
+  await fsDialog.waitFor();
+  await fsDialog.getByRole("button", { name: "Export 50 files" }).click();
+  await poll(async () => /Writing \d+ of 50 files/.test(await fsDialog.innerText()), "the dialog should reach the writing phase", 60_000, 20);
+  await poll(async () => (await listFolder()).length > filesBefore, "some files are written before Cancel", 30_000, 50);
+  await fsDialog.getByRole("button", { name: "Cancel" }).click();
+  const note = fsDialog.getByRole("status").filter({ hasText: /Export cancelled after \d+ of 50 files\. Written: / });
+  check(await eventually(() => note.isVisible(), 15_000), `a cancelled write says how many files were written:\n${await fsDialog.innerText()}`);
+  check((await fsDialog.getByRole("alert").count()) === 0, "a cancel is not shown as a failure (no alert)");
+  check(!(await fsDialog.innerText()).includes("Fix the problem"), "a cancel doesn't ask to fix a problem");
+  check(await fsDialog.getByRole("button", { name: "Export 50 files" }).isVisible(), "Export stays available after a cancel");
+  check(await fsDialog.getByRole("button", { name: /^Export the other \d+ files$/ }).isVisible(), "the files not written can be exported on their own");
+  await fsPage.waitForTimeout(400);
+  const written = Number(/after (\d+) of 50/.exec(await note.innerText())?.[1]);
+  const filesAfter = (await listFolder()).length;
+  check(written > 0 && written < 50 && filesAfter - filesBefore === written, `Cancel stops the writing: ${written} reported, ${filesAfter - filesBefore} on disk`);
+  await fsDialog.getByRole("button", { name: "Close", exact: true }).click();
+  await fsPage.keyboard.press("ControlOrMeta+Shift+e");
+  await fsDialog.waitFor();
+  check((await fsDialog.getByRole("status").filter({ hasText: "cancelled" }).count()) === 0, "reopening the dialog starts afresh after a cancel");
+  check(await fsDialog.getByRole("button", { name: "Export 50 files" }).isVisible(), "reopened: Export is there");
+  await fsDialog.getByRole("button", { name: "Close the Export dialog" }).click();
   await fsContext.close();
 });

@@ -16,7 +16,7 @@
 // Usage (from the repo root):  node apps/web/e2e/text.mjs [--headed] [--no-build]
 
 import { createRequire } from "node:module";
-import { createFile, drag, eventually, field, layerRow, layerRows, newContext, poll, runE2E, selectedRows, setField, waitSaved, watchErrors } from "./lib.mjs";
+import { createFile, drag, eventually, field, layerRow, layerRows, newContext, poll, runE2E, selectedRows, setField, T, waitSaved, watchErrors } from "./lib.mjs";
 
 const axePath = createRequire(import.meta.url).resolve("axe-core/axe.min.js");
 const MAC = process.platform === "darwin";
@@ -289,5 +289,158 @@ await runE2E("text", {}, async ({ browser, url, log, check, outDir, errors }) =>
   await waitTyped("Hello you日本", "editing after reload shows the saved text");
   await page.keyboard.press("Escape");
   await page.screenshot({ path: `${outDir}/text.png` });
+
+  log("QC round 8: editor shortcuts work while editing text, and the browser's actions never run");
+  await page.evaluate(() => {
+    window.__keys = [];
+    // Read after every handler ran (bubbling included).
+    window.addEventListener("keydown", (e) => setTimeout(() => window.__keys.push({ key: e.key.toLowerCase(), prevented: e.defaultPrevented }), 0), true);
+  });
+  const prevented = async (key) => {
+    await page.waitForTimeout(50);
+    const k = await page.evaluate((key) => window.__keys.filter((x) => x.key === key).pop(), key);
+    return k?.prevented === true;
+  };
+  const zoomText = () => page.locator(".zoom-value").innerText();
+  await layerRow(page, "Hello you日本").click();
+  await page.locator("canvas.canvas").focus();
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("End");
+  await page.keyboard.type("!");
+  await waitTyped("Hello you日本!", "typing before ⌘S");
+  await page.keyboard.press("ControlOrMeta+s");
+  check(await prevented("s"), "⌘S while editing text should never open Save Page As");
+  // ⌘S keeps the burst and saves now, well before the 1 s autosave delay would.
+  check(await eventually(async () => (await page.locator(".save-status").getAttribute("data-save-state")) === "saved", T(900)), "⌘S while editing should save at once");
+  check(await editing(), "editing goes on after ⌘S");
+  const rowsBefore = await layerRows(page).count();
+  await page.keyboard.press("ControlOrMeta+d");
+  check(await prevented("d"), "⌘D while editing text should never bookmark the page");
+  check((await layerRows(page).count()) === rowsBefore, "⌘D while editing text duplicates nothing");
+  await page.keyboard.press("ControlOrMeta+p");
+  check(await prevented("p"), "⌘P while editing text should never print the page");
+  await page.keyboard.press("ControlOrMeta+0");
+  check(await prevented("0"), "⌘0 while editing text should never reset the page zoom");
+  check((await zoomText()) === "100%", `⌘0 zooms the canvas to 100%, got ${await zoomText()}`);
+  await page.keyboard.press("ControlOrMeta+=");
+  check(await prevented("="), "⌘= while editing text should never zoom the page");
+  check((await zoomText()) === "200%", `⌘= zooms the canvas in, got ${await zoomText()}`);
+  await page.keyboard.press("ControlOrMeta+-");
+  check(await prevented("-"), "⌘- while editing text should never zoom the page out");
+  check((await zoomText()) === "100%", `⌘- zooms the canvas out, got ${await zoomText()}`);
+  check(await editing(), "editing goes on after the zoom shortcuts");
+  await page.keyboard.type("?");
+  await waitTyped("Hello you日本!?", "typing still goes into the text");
+  await page.keyboard.press("ControlOrMeta+Shift+e");
+  check(await prevented("e"), "⇧⌘E while editing text is the editor's");
+  const exportDialog = page.getByRole("dialog", { name: "Export" });
+  check(await eventually(() => exportDialog.isVisible()), "⇧⌘E while editing text opens the Export dialog");
+  await exportDialog.getByRole("button", { name: "Close the Export dialog" }).click();
+  check(await eventually(async () => !(await exportDialog.isVisible())), "the Export dialog closes");
+  await page.keyboard.press("Escape");
+
+  log("QC round 8: Enter and Space on a focused Properties button press the button, never edit the text or pan");
+  await layerRow(page, "Hello you日本!\\?").click();
+  const fontButton = props.getByRole("button", { name: /^Font: Inter/ });
+  await fontButton.focus();
+  await page.keyboard.press("Enter");
+  const fontPicker = page.getByRole("dialog", { name: /Font/ });
+  check(await eventually(() => fontPicker.isVisible()), "Enter on the focused font button opens the font picker");
+  check(!(await editing()), "Enter on the focused font button must not start editing the text");
+  await page.keyboard.press("Escape");
+  check(await eventually(async () => !(await fontPicker.isVisible())), "Escape closes the picker");
+  // Keyboard focus on a button, the pointer resting over the canvas: Space presses the button (no pan).
+  const cb = await page.locator("canvas.canvas").boundingBox();
+  await page.mouse.move(cb.x + cb.width / 2, cb.y + cb.height / 2);
+  await page.keyboard.press("Tab"); // keyboard focus from here on (focus ring)
+  const presets = props.getByRole("button", { name: "Preset sizes" });
+  await presets.focus();
+  check(await presets.evaluate((el) => el.matches(":focus-visible")), "the preset sizes button has keyboard focus");
+  await page.keyboard.press("Space");
+  check(await eventually(async () => (await presets.getAttribute("aria-expanded")) === "true"), "Space on the focused preset sizes button opens its menu, with the pointer over the canvas");
+  check(!(await editing()), "Space on a button must not start editing");
+  await page.keyboard.press("Escape");
+
+  log("QC round 8: number fields take simple maths and relative values, and refuse the rest");
+  await layerRow(page, "Hello you日本!\\?").click();
+  await setField(page, "Font size", "12+12");
+  check(await eventually(async () => (await field(page, "Font size")) === 24), `12+12 sets 24, got ${await field(page, "Font size")}`);
+  await setField(page, "Font size", "+2");
+  check(await eventually(async () => (await field(page, "Font size")) === 26), `+2 adds 2, got ${await field(page, "Font size")}`);
+  await setField(page, "Font size", "12abc");
+  check(await eventually(() => props.getByRole("alert").filter({ hasText: "isn't a number" }).isVisible()), "text that isn't a number says so");
+  check((await field(page, "Font size")) === 26, "and changes nothing");
+  await setField(page, "Font size", "24");
+  await page.locator("canvas.canvas").focus();
+  await page.keyboard.press("Escape");
+
+  log("QC round 8: a new text layer left empty is never saved (panel focus, reload; Back to files; IME)");
+  const textRows = async () => (await layerRows(page).allInnerTexts()).map((t) => t.trim());
+  await waitSaved(page);
+  const saved = await textRows();
+  await page.locator("canvas.canvas").focus();
+  await page.keyboard.press("t");
+  const e1 = toScreen(900, 420);
+  await page.mouse.click(e1.x, e1.y);
+  check(await eventually(editing), "editing a new text layer");
+  // Focus moves to the Properties panel: a font size typed there goes into the new layer.
+  await setField(page, "Font size", 30);
+  await page.waitForTimeout(1_500);
+  check((await field(page, "Font size")) === 30, "the Typography card edits the new, still empty layer");
+  await page.reload();
+  await page.locator(".title-bar").waitFor();
+  await page.waitForSelector(".canvas-status", { state: "detached" });
+  check(await eventually(async () => JSON.stringify(await textRows()) === JSON.stringify(saved)), `no empty text layer after reload:\n  before ${JSON.stringify(saved)}\n  after  ${JSON.stringify(await textRows())}`);
+  check((await page.locator(".banner").filter({ hasText: /Recovered/i }).count()) === 0, "nothing to recover after reload");
+
+  await page.locator("canvas.canvas").focus();
+  await page.keyboard.press("t");
+  await page.mouse.click(e1.x, e1.y);
+  check(await eventually(editing), "editing another new text layer");
+  await page.getByRole("button", { name: "Back to files" }).click();
+  await page.locator(".file-card").first().click();
+  await page.locator(".title-bar").waitFor();
+  await page.waitForSelector(".canvas-status", { state: "detached" });
+  check(await eventually(async () => JSON.stringify(await textRows()) === JSON.stringify(saved)), `no empty text layer after Back to files: ${JSON.stringify(await textRows())}`);
+
+  // An IME composition in a new layer: one "Add text" step, never an empty one before it.
+  await page.locator("canvas.canvas").focus();
+  await page.keyboard.press("t");
+  await page.mouse.click(e1.x, e1.y);
+  check(await eventually(editing), "editing a third new text layer");
+  const cdp2 = await context.newCDPSession(page);
+  await cdp2.send("Input.imeSetComposition", { text: "か", selectionStart: 1, selectionEnd: 1 });
+  await cdp2.send("Input.insertText", { text: "漢" });
+  await waitTyped("漢", "the composition is the new layer's text");
+  await undo();
+  check(await eventually(async () => !(await editing())), "one undo removes the layer and its composition (one Add text step)");
+  check(await eventually(async () => JSON.stringify(await textRows()) === JSON.stringify(saved)), `no empty layer left after undoing the composition: ${JSON.stringify(await textRows())}`);
+
+  log("QC round 8: continuous typing is kept at least every 2 s (not one endless burst)");
+  await page.locator("canvas.canvas").focus();
+  await page.keyboard.press("t");
+  await page.mouse.click(e1.x, e1.y);
+  check(await eventually(editing), "editing a new text layer");
+  const long = "abcdefghijklmnopqrstuvwxyz";
+  for (const ch of long) {
+    await page.keyboard.type(ch);
+    await page.waitForTimeout(180); // under the 1 s pause: one burst without the cap (26 × 180 ms ≈ 4.7 s, over two caps)
+  }
+  await waitTyped(long, "typing without a pause");
+  await undo(); // ends the open burst, then undoes it: the text before it stays
+  const after = await typed();
+  check(after !== null && after.length > 0 && after.length < long.length && long.startsWith(after), `undo after 4.7 s of typing removes only the last burst, got ${JSON.stringify(after)}`);
+
+  log("QC round 8: deleting all of a layer's text and leaving it is one undo step");
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.press("Backspace");
+  await waitTyped("", "all text deleted");
+  await pause(); // past the 1 s burst pause: the emptied layer still isn't a step of its own
+  await page.keyboard.press("Escape");
+  check(await eventually(async () => !(await textRows()).includes(after)), "the emptied layer is removed when editing ends");
+  await page.locator("canvas.canvas").focus();
+  await undo();
+  check(await eventually(async () => (await textRows()).includes(after)), `one undo brings back the layer with its text (${JSON.stringify(after)}): ${JSON.stringify(await textRows())}`);
+  await page.keyboard.press("Escape");
   await context.close();
 });

@@ -8,7 +8,8 @@
 
 import type { Document, ReadonlyNode, Transaction } from "@illigma/core";
 import type { LetterSpacing, LineHeight, NodeId, TextAlignHorizontal, TextAlignVertical, TextAutoResize, TextFields } from "@illigma/format";
-import { lineHeightPx } from "@illigma/format";
+import { lineHeightPx, MAX_TEXT_METRIC } from "@illigma/format";
+import { textSessionOf } from "./session";
 
 export type MetricUnit = "PIXELS" | "PERCENT";
 
@@ -37,7 +38,8 @@ export function lineHeightIn(n: ReadonlyNode, unit: "AUTO" | MetricUnit): LineHe
   if (unit === "AUTO") return undefined;
   const px = lineHeightPx(n) ?? Math.round(fontSizeOf(n) * AUTO_LINE * 100) / 100;
   const value = unit === "PIXELS" ? px : (px / fontSizeOf(n)) * 100;
-  return { unit, value: round2(value) };
+  // Within the format's bounds: a tiny font with a tall line can't go past 10,000%.
+  return { unit, value: round2(Math.min(value, MAX_TEXT_METRIC)) };
 }
 
 /** A typed line height: a number in the unit shown (pixels when the line height was Auto). */
@@ -75,9 +77,19 @@ export function resizePatch(n: ReadonlyNode, mode: TextAutoResize): TextPatch {
   return patch;
 }
 
-/** Apply `patch` (or a patch per layer) to the text layers `ids` as one undo step. Nothing happens while a canvas drag runs. */
-export function setTextProps(doc: Document, ids: readonly NodeId[], patch: TextPatch | ((n: ReadonlyNode) => TextPatch), label: string): void {
-  if (doc.live) return;
+/**
+ * Apply `patch` (or a patch per layer) to the text layers `ids` as one undo
+ * step. A new text layer that has no text yet takes it into its "Add text"
+ * step (it isn't kept until something is typed). Returns false when nothing
+ * could be applied because another live edit (a canvas drag, a typing burst)
+ * is running: the caller may wait for it (`whenIdle`).
+ */
+export function setTextProps(doc: Document, ids: readonly NodeId[], patch: TextPatch | ((n: ReadonlyNode) => TextPatch), label: string): boolean {
+  if (doc.live) {
+    const s = textSessionOf(doc);
+    const n = s?.emptyNew && ids.length === 1 && ids[0] === s.id ? doc.get(s.id) : undefined;
+    return !!(s && n && s.patchNew(typeof patch === "function" ? patch(n) : patch));
+  }
   doc.transact(label, (tx: Transaction) => {
     for (const id of ids) {
       const n = doc.get(id);
@@ -86,6 +98,36 @@ export function setTextProps(doc: Document, ids: readonly NodeId[], patch: TextP
       for (const [key, value] of Object.entries(p)) tx.set(id, key as keyof TextFields, value as never);
     }
   });
+  return true;
+}
+
+/**
+ * Run `fn` once no live edit is open in `doc` (now, if none is). Gives up
+ * after `timeoutMs`, calling `onTimeout`. Returns a function that cancels it.
+ */
+export function whenIdle(doc: Document, fn: () => void, onTimeout: () => void, timeoutMs = 30_000): () => void {
+  if (!doc.live) {
+    fn();
+    return () => {};
+  }
+  let done = false;
+  const finish = (run: () => void) => {
+    if (done) return;
+    done = true;
+    off();
+    clearTimeout(timer);
+    run();
+  };
+  // Changes arrive while the live edit runs and once more when it ends: check after each.
+  const off = doc.subscribe(() => {
+    if (!doc.live) queueMicrotask(() => finish(fn));
+  });
+  const timer = setTimeout(() => finish(onTimeout), timeoutMs);
+  return () => {
+    done = true;
+    off();
+    clearTimeout(timer);
+  };
 }
 
 /** Every font family the file's text layers use, sorted. */

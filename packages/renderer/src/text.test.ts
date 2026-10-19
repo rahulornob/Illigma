@@ -139,3 +139,57 @@ describe("TextEngine", () => {
     e.dispose();
   });
 });
+
+describe("TextEngine with out-of-range values and missing fonts (QC round 8)", () => {
+  it("clamps a font size or line height a file can't hold, and never measures a size that isn't finite", () => {
+    const huge = engine.measure(node({ fontSize: 1e300, textAutoResize: "WIDTH_AND_HEIGHT" }));
+    expect(huge && Number.isFinite(huge.width) && Number.isFinite(huge.height)).toBe(true);
+    const zero = engine.measure(node({ fontSize: 0, textAutoResize: "WIDTH_AND_HEIGHT" }));
+    expect(zero).toEqual(engine.measure(node({ fontSize: 12, textAutoResize: "WIDTH_AND_HEIGHT" })));
+    const tall = engine.measure(node({ lineHeight: 1e300, textAutoResize: "WIDTH_AND_HEIGHT" }));
+    expect(tall && Number.isFinite(tall.height)).toBe(true);
+    expect(engine.measure(node({}), Number.NaN)).toBeNull();
+    // Text in a family that isn't registered isn't measured in the fallback: its stored size stays.
+    expect(engine.measure(node({ fontFamily: "Not Installed", textAutoResize: "WIDTH_AND_HEIGHT" }))).toBeNull();
+    expect(engine.measure(node({ fontFamily: undefined, textAutoResize: "WIDTH_AND_HEIGHT" }))).not.toBeNull();
+    expect(engine.measure(node({}), Number.POSITIVE_INFINITY)).toBeNull();
+  });
+});
+
+describe("a variable font's weights (QC round 8)", () => {
+  it("Thin, Regular and Black of the variable Inter draw and measure differently, Black as the static Black does", () => {
+    const load = (file: string) => {
+      const b = readFileSync(createRequire(import.meta.url).resolve(file));
+      return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
+    };
+    const styles = ["Thin", "Regular", "Black"];
+    const variable = new TextEngine(ck, [{ family: "Inter", data: load("@fontsource-variable/inter/files/inter-latin-wght-normal.woff2"), styles }]);
+    const staticBlack = new TextEngine(ck, [{ family: "Inter", data: load("@fontsource/inter/files/inter-latin-900-normal.woff2"), styles: ["Black"] }]);
+    const n = (fontStyle: string): TextNode => ({ characters: "Hamb", fontFamily: "Inter", fontStyle, fontSize: 120, textAutoResize: "WIDTH_AND_HEIGHT", width: 1, height: 1 });
+    const ink = (e: TextEngine, style: string) => {
+      const placed = e.place(n(style));
+      if (!placed) throw new Error("no fonts");
+      const surface = ck.MakeSurface(500, 200);
+      if (!surface) throw new Error("no surface");
+      surface.getCanvas().clear(ck.WHITE);
+      surface.getCanvas().drawParagraph(placed.paragraph, 0, 0);
+      const px = surface.getCanvas().readPixels(0, 0, { width: 500, height: 200, colorType: ck.ColorType.RGBA_8888, alphaType: ck.AlphaType.Unpremul, colorSpace: ck.ColorSpace.SRGB }) as Uint8Array;
+      placed.paragraph.delete();
+      surface.delete();
+      let sum = 0;
+      for (let i = 0; i < px.length; i += 4) sum += 255 - (px[i] as number);
+      return sum;
+    };
+    const widths = styles.map((s) => variable.measure(n(s))?.width ?? 0);
+    expect(widths[0]).toBeLessThan(widths[1] as number);
+    expect(widths[1]).toBeLessThan(widths[2] as number);
+    const inks = styles.map((s) => ink(variable, s));
+    expect(inks[0]).toBeLessThan((inks[1] as number) * 0.5);
+    expect(inks[2]).toBeGreaterThan((inks[1] as number) * 1.5);
+    // The true Black, not Regular made bold: the same widths and pixels as the static Black file.
+    expect(variable.measure(n("Black"))).toEqual(staticBlack.measure(n("Black")));
+    expect(Math.abs(ink(variable, "Black") - ink(staticBlack, "Black"))).toBeLessThan(inks[2]! * 0.01);
+    variable.dispose();
+    staticBlack.dispose();
+  });
+});

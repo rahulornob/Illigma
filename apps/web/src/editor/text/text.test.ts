@@ -186,16 +186,41 @@ describe("typing session (undo steps)", () => {
     expect(s.step("undo")).toBe(false); // the layer itself
   });
 
-  it("text deleted to nothing is removed on exit, as its own step", () => {
+  it("text deleted to nothing is removed on exit, in the same step as the deleting (QC round 8)", () => {
     const { doc, frame } = page();
     const s = new TextSession(doc, "t5", newText(frame));
     s.edit("x", "insert");
     s.commit();
     s.edit("", "delete");
+    s.commit(); // a pause: an emptied layer's burst stays open
+    expect(s.emptied).toBe(true);
     expect(s.finish()).toBe(false);
     expect(doc.has("t5")).toBe(false);
+    expect(doc.undoLabel).toBe("Delete text");
     doc.undo();
-    expect(doc.get("t5")?.characters).toBe("");
+    expect(doc.get("t5")?.characters).toBe("x");
+  });
+
+  it("text emptied by another step (undo, a panel) is still removed on exit, as its own step", () => {
+    const { doc, frame } = page();
+    const s = new TextSession(doc, "t8", newText(frame));
+    s.edit("x", "insert");
+    s.commit();
+    doc.transact("Clear", (tx) => tx.set("t8", "characters", ""));
+    expect(s.finish()).toBe(false);
+    expect(doc.undoLabel).toBe("Delete empty text");
+  });
+
+  it("undo right after deleting all the text brings it back", () => {
+    const { doc, frame } = page();
+    const s = new TextSession(doc, "t9", newText(frame));
+    s.edit("abc", "insert");
+    s.commit();
+    s.edit("", "delete");
+    expect(s.step("undo")).toBe(true);
+    expect(doc.get("t9")?.characters).toBe("abc");
+    expect(s.step("redo")).toBe(true);
+    expect(doc.get("t9")?.characters).toBe("");
   });
 
   it("a renamed layer keeps its name", () => {

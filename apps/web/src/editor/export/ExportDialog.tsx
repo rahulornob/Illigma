@@ -47,6 +47,7 @@ function rowStatus(row: Row, job: JobState | null, requests: readonly ExportRequ
   if (job.phase === "done") {
     if (job.error && !job.failures) return null;
     const failed = (job.failures ?? []).filter((f) => mine.includes(requestKey(f.request))).length;
+    if (failed && job.cancelled) return { text: failed === idx.length ? "Cancelled" : `${idx.length - failed} of ${idx.length}`, tone: "quiet" };
     return failed ? { text: `${failed} failed`, tone: "danger" } : { text: "Done", tone: "success" };
   }
   if (job.phase === "writing") return { text: "Writing…", tone: "busy" };
@@ -84,9 +85,9 @@ export function ExportDialog({ doc, pageId, onClose }: { doc: Document; pageId: 
   useEffect(() => {
     const d = ref.current;
     if (d && !d.open) d.showModal();
-    // A clean export from before is old news here: start with plain rows.
+    // A clean or cancelled export from before is old news here: start with plain rows and the Export button.
     const last = currentJob();
-    if (last?.phase === "done" && !last.error && !last.failures?.length) dismissJob();
+    if (last?.phase === "done" && (last.cancelled || (!last.error && !last.failures?.length))) dismissJob();
   }, []);
 
   // The remembered folder, and the names already in it (only when the browser still allows reading it, without a prompt).
@@ -135,7 +136,10 @@ export function ExportDialog({ doc, pageId, onClose }: { doc: Document; pageId: 
   const total = files.length;
   const page = doc.get(pageId);
   const running = !!ours && jobRunning();
-  const failed = ours?.phase === "done" && (!!ours.failures?.length || !!ours.error) ? ours : null;
+  // A cancel is the person's choice, not a failure: it says what was written, and Export stays.
+  const cancelled = ours?.phase === "done" && ours.cancelled ? ours : null;
+  const failed = ours?.phase === "done" && !ours.cancelled && (!!ours.failures?.length || !!ours.error) ? ours : null;
+  const rest = cancelled?.written?.length ? (cancelled.failures?.length ?? 0) : 0;
   const allChecked = layers.length > 0 && rows.every((r) => r.checked);
   const noneChecked = rows.every((r) => !r.checked);
   const headBox = useRef<HTMLInputElement>(null);
@@ -215,6 +219,12 @@ export function ExportDialog({ doc, pageId, onClose }: { doc: Document; pageId: 
           </button>
         ))}
       </div>
+
+      {cancelled && (
+        <div className="banner export-dialog-banner" role="status">
+          <div className="banner-text">{cancelled.error ?? "Export cancelled."}</div>
+        </div>
+      )}
 
       {failed && (
         <div className="banner banner-error export-dialog-banner" role="alert">
@@ -363,8 +373,13 @@ export function ExportDialog({ doc, pageId, onClose }: { doc: Document; pageId: 
         ) : (
           <>
             <button type="button" className="btn btn-secondary" onClick={onClose}>
-              Cancel
+              {cancelled ? "Close" : "Cancel"}
             </button>
+            {rest > 0 && (
+              <button type="button" className="btn btn-secondary" onClick={retry}>
+                {rest === 1 ? "Export the other file" : `Export the other ${rest} files`}
+              </button>
+            )}
             <button type="button" className="btn btn-primary" disabled={!total} onClick={run}>
               <ExportIcon name="download" />
               {total === 1 ? "Export 1 file" : `Export ${total} files`}

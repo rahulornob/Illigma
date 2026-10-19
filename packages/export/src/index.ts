@@ -142,6 +142,36 @@ class Session {
     warn(`The loaded fonts don't have some of the text's characters (${shown}), so they show as empty boxes. Load a font that has them.`);
   }
 
+  /**
+   * The font families the visible text under `roots` asks for that none of
+   * the loaded fonts is: that text is drawn in the fallback (the first font
+   * given, Inter in the app). Empty without fonts (text is then drawn as bars).
+   */
+  missingFamilies(roots: readonly ReadonlyNode[]): string[] {
+    const fonts = this.deps.fonts ?? [];
+    if (!fonts.length) return [];
+    const have = new Set(fonts.map((f) => f.family));
+    const missing = new Set<string>();
+    const stack = [...roots];
+    while (stack.length) {
+      const n = stack.pop() as ReadonlyNode;
+      if (!draws(n)) continue;
+      if (n.type === "TEXT" && n.fontFamily && !have.has(n.fontFamily) && n.characters) missing.add(n.fontFamily);
+      stack.push(...this.source.children(n.id));
+    }
+    return [...missing].sort((a, b) => a.localeCompare(b));
+  }
+
+  /** "Font X isn't available to export, so Inter was used.", for text drawn by the text engine (PNG, JPG, PDF). */
+  warnMissingFamilies(roots: readonly ReadonlyNode[], warn: (message: string) => void): void {
+    const missing = this.missingFamilies(roots);
+    if (!missing.length) return;
+    const fallback = this.deps.fonts?.[0]?.family ?? "the fallback font";
+    const names = missing.slice(0, 3).map((f) => `“${f}”`);
+    const list = missing.length > 3 ? `${names.join(", ")} and ${missing.length - 3} more` : names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0];
+    warn(`${missing.length === 1 ? "Font" : "Fonts"} ${list} ${missing.length === 1 ? "isn't" : "aren't"} available to export, so ${fallback} was used.`);
+  }
+
   /** Laid-out lines by layer, for this session (the document doesn't change during an export). */
   private readonly layouts = new Map<NodeId, TextLine[] | null>();
 
@@ -252,7 +282,10 @@ function exportWith(session: Session, nodeId: NodeId, settings: ExportSettings, 
     }
   }
   // SVG text is drawn by the viewer's fonts; the others by ours.
-  if (text && settings.format !== "SVG") session.warnMissingGlyphs(scene.roots, warn);
+  if (text && settings.format !== "SVG") {
+    session.warnMissingFamilies(scene.roots, warn);
+    session.warnMissingGlyphs(scene.roots, warn);
+  }
   return { nodeId, settings, filename, mime: MIME_TYPES[settings.format], bytes, width, height, warnings: [...warnings] };
 }
 
@@ -357,6 +390,7 @@ export async function exportPdf(
     const docTitle = first.node.name;
     const warn = (m: string) => void warnings.add(m);
     const bytes = writePdf(source, scenes, session.pdfOptions(warn, docTitle));
+    session.warnMissingFamilies(scenes.flatMap((s) => s.roots), warn);
     session.warnMissingGlyphs(scenes.flatMap((s) => s.roots), warn);
     const full: ExportSettingsPDF = { ...settings, format: "PDF" };
     return {
