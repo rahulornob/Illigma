@@ -28,9 +28,11 @@ export function absoluteRect(doc: Document, id: NodeId): Rect | null {
   return { x, y, width: n.width, height: n.height };
 }
 
-const contains = (r: Rect, x: number, y: number) => x >= r.x && y >= r.y && x <= r.x + r.width && y <= r.y + r.height;
-
-/** The innermost visible frame under a world point: where a newly drawn layer goes. */
+/**
+ * The innermost visible frame under a world point: where a newly drawn layer
+ * goes. Rotated frames (and frames inside them) are tested in their own space,
+ * so the point is inside the frame as drawn, not its unrotated box.
+ */
 export function frameAt(doc: Document, pageId: NodeId, x: number, y: number): NodeId | null {
   let found: NodeId | null = null;
   const visit = (parentId: NodeId) => {
@@ -38,8 +40,8 @@ export function frameAt(doc: Document, pageId: NodeId, x: number, y: number): No
     for (let i = kids.length - 1; i >= 0; i--) {
       const n = kids[i];
       if (!n || !n.visible || n.type !== "FRAME") continue;
-      const r = absoluteRect(doc, n.id);
-      if (r && contains(r, x, y)) {
+      const p = toSpace(placementOf(doc, n.id), x, y);
+      if (p.x >= 0 && p.y >= 0 && p.x <= n.width && p.y <= n.height) {
         found = n.id;
         visit(n.id);
         return;
@@ -48,6 +50,28 @@ export function frameAt(doc: Document, pageId: NodeId, x: number, y: number): No
   };
   visit(pageId);
   return found;
+}
+
+/**
+ * Where a layer made at the world point (`x`, `y`) goes (a drawn shape, a
+ * placed image): the innermost frame there, or the page, and that point in
+ * the frame's own space (its rotation included). A layer placed at `local`
+ * in `parent` turns with the frame, as in Figma.
+ */
+export function placeAt(doc: Document, pageId: NodeId, x: number, y: number): { parent: NodeId; local: Point } {
+  const frame = frameAt(doc, pageId, x, y);
+  if (!frame) return { parent: pageId, local: { x, y } };
+  return { parent: frame, local: toSpace(placementOf(doc, frame), x, y) };
+}
+
+/**
+ * An upright world rectangle (a drawn box) in the space of `parentId`, with
+ * the same size and centre: a layer drawn inside a rotated frame lands where
+ * it was drawn and turns with the frame. The page's space is the world's.
+ */
+export function rectInSpace(doc: Document, parentId: NodeId, r: Rect): Rect {
+  const c = toSpace(placementOf(doc, parentId), r.x + r.width / 2, r.y + r.height / 2);
+  return { x: c.x - r.width / 2, y: c.y - r.height / 2, width: r.width, height: r.height };
 }
 
 // ---- placement on the page ----

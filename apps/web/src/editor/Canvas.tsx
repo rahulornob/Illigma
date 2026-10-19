@@ -23,7 +23,6 @@ import {
   type Start,
 } from "./edit";
 import {
-  absoluteRect,
   boundsOf,
   constrainToAxis,
   frameAt,
@@ -31,8 +30,10 @@ import {
   handleAt,
   handleCursor,
   marqueeHits,
+  placeAt,
   placementOf,
   rectFromPoints,
+  rectInSpace,
   SMALL_SELECTION,
   toSpace,
   worldBounds,
@@ -1113,14 +1114,15 @@ export function Canvas(props: CanvasProps) {
     const spec = DRAW[g.tool];
     const { doc: d, pageId: page } = l.props;
     const parent = frameAt(d, page, g.wx, g.wy) ?? page;
-    const origin = parent === page ? { x: 0, y: 0 } : (absoluteRect(d, parent) ?? { x: 0, y: 0 });
+    // In the frame's own space (its rotation too): the shape lands where it was drawn.
+    const inFrame = rectInSpace(d, parent, rect);
     const count = d.subtree(page).filter((n) => n.type === spec.type).length + 1;
     const [r, gr, b] = spec.fill;
     const id = d.transact(`Draw ${spec.label.toLowerCase()}`, (tx) =>
       tx.create(spec.type, parent, {
         name: `${spec.label} ${count}`,
-        x: Math.round(rect.x - origin.x),
-        y: Math.round(rect.y - origin.y),
+        x: Math.round(inFrame.x),
+        y: Math.round(inFrame.y),
         width: Math.max(1, Math.round(rect.width)),
         height: Math.max(1, Math.round(rect.height)),
         fills: [{ type: "SOLID", visible: true, color: { r, g: gr, b, a: 1 } }],
@@ -1147,10 +1149,10 @@ export function Canvas(props: CanvasProps) {
         return;
       }
     }
-    const parent = frameAt(d, page, wx, wy) ?? page;
-    const origin = parent === page ? { x: 0, y: 0 } : (absoluteRect(d, parent) ?? { x: 0, y: 0 });
+    // In the frame's own space (its rotation too): the text lands where it was clicked or dragged.
+    const { parent, local: point } = placeAt(d, page, wx, wy);
     const id = newId();
-    const at = textPlacement(wx - origin.x, wy - origin.y, box && { ...box, x: box.x - origin.x, y: box.y - origin.y });
+    const at = textPlacement(point.x, point.y, box && rectInSpace(d, parent, box));
     text.create(id, { parent, fields: newTextFields(at, box !== null) });
     live.current.props.onCreated(id);
   };

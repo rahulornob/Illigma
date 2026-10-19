@@ -148,6 +148,14 @@ export const movePaint =
     return { [key]: list };
   };
 
+/** Where the paint at `index` is after `movePaint(…, from, to)`: an open picker follows its paint. */
+export function movedIndex(index: number, from: number, to: number): number {
+  if (index === from) return to;
+  if (from < index && index <= to) return index - 1;
+  if (to <= index && index < from) return index + 1;
+  return index;
+}
+
 /** Set paints to exactly `paints` (a paste of paints, or a whole replacement). */
 export const setPaints =
   (key: PaintKey, paints: readonly Paint[]): Patcher =>

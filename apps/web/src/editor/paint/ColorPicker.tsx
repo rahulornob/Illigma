@@ -11,6 +11,7 @@ import {
   formatChannels,
   fromChannels,
   hsvFor,
+  hexHasAlpha,
   hsvToRgb,
   parseHex,
   toHex,
@@ -23,7 +24,7 @@ import { InlineField, parsePercent, pct } from "./fields";
 import { GradientEditor } from "./GradientEditor";
 import { PaintIcon } from "./icons";
 import { ImageFill } from "./ImageFill";
-import { BLEND_LABEL, BLEND_MENU, convertPaint, documentColors, isGradient, PAINT_TYPE_LABEL, recolorStop } from "./paints";
+import { BLEND_LABEL, BLEND_MENU, convertPaint, documentColors, isGradient, PAINT_TYPE_LABEL, recolorStop, setSolid, solidAlpha } from "./paints";
 import { Popover } from "./Popover";
 
 /** What a picker change edits, for the undo label ("Change fill colour"). */
@@ -37,14 +38,6 @@ interface EyeDropperResult {
 }
 type EyeDropperCtor = new () => { open(): Promise<EyeDropperResult> };
 const eyeDropper = (): EyeDropperCtor | null => (typeof window !== "undefined" && "EyeDropper" in window ? (window as unknown as { EyeDropper: EyeDropperCtor }).EyeDropper : null);
-
-/** A paint's colour, written back: a solid's colour keeps its own alpha and its opacity takes the picker's alpha. */
-function withOpacity<P extends Paint>(p: P, alpha: number): P {
-  const next = { ...p };
-  if (alpha >= 1) delete next.opacity;
-  else next.opacity = Math.max(0, alpha);
-  return next;
-}
 
 export interface ColorPickerProps {
   doc: Document;
@@ -94,7 +87,7 @@ export function ColorPicker({ doc, anchor, label, paint, kind, box, readOnly, on
   const current: Color | null =
     paint.type === "SOLID"
       ? kind === "paint"
-        ? { ...paint.color, a: paint.opacity ?? 1 }
+        ? { ...paint.color, a: solidAlpha(paint) }
         : paint.color
       : gradient
         ? (gradient.gradientStops[stop]?.color ?? null)
@@ -104,7 +97,8 @@ export function ColorPicker({ doc, anchor, label, paint, kind, box, readOnly, on
   const setColor = (c: Color, phase: Phase) => {
     if (readOnly) return;
     if (paint.type === "SOLID") {
-      if (kind === "paint") onPaint(withOpacity({ ...paint, color: { r: c.r, g: c.g, b: c.b, a: paint.color.a } }, c.a), phase, "colour");
+      // A solid's alpha is its opacity; alpha a colour carried (older files) is folded into it by the same step.
+      if (kind === "paint") onPaint(setSolid(paint, c, c.a), phase, "colour");
       else onPaint({ ...paint, color: { ...c } }, phase, "colour");
     } else if (gradient) {
       onPaint({ ...gradient, gradientStops: recolorStop(gradient.gradientStops as GradientPaint["gradientStops"], stop, c) }, phase, "colour");
@@ -327,8 +321,8 @@ export function ColorPicker({ doc, anchor, label, paint, kind, box, readOnly, on
                   const c = parseHex(String(t));
                   if (!c) return;
                   setHsv(null);
-                  // Eight digits carry their own alpha; otherwise the alpha stays.
-                  setColor({ ...c, a: String(t).replace("#", "").trim().length === 8 ? c.a : alpha }, "once");
+                  // Four or eight digits carry their own alpha; otherwise the alpha stays.
+                  setColor({ ...c, a: hexHasAlpha(String(t)) ? c.a : alpha }, "once");
                 }}
               />
             )}
