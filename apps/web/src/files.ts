@@ -386,18 +386,24 @@ export function replayRecovered(base: Document, changes: readonly (readonly Oper
   const skippedChanges: number[] = [];
   changes.forEach((change, i) => {
     const created = new Set<NodeId>();
-    const exists = (id: NodeId) => !dropped.has(id) && (created.has(id) || doc.has(id));
+    // Deleted earlier in this edit: a node's type changes by delete + create with the same id
+    // (frame → component, detach instance), so a create may reuse an id the file still has.
+    const gone = new Set<NodeId>();
+    const exists = (id: NodeId) => !dropped.has(id) && (created.has(id) || (doc.has(id) && !gone.has(id)));
     const kept: Operation[] = [];
     for (const o of change) {
       if (o.op === "create") {
         const parent = o.node.parentId;
-        if ((parent !== null && !exists(parent)) || doc.has(o.node.id)) {
+        if ((parent !== null && !exists(parent)) || (doc.has(o.node.id) && !gone.has(o.node.id))) {
           dropped.add(o.node.id);
           continue;
         }
+        gone.delete(o.node.id);
         created.add(o.node.id);
       } else if (o.op === "delete") {
         if (!exists(o.node.id)) continue;
+        created.delete(o.node.id);
+        gone.add(o.node.id);
       } else if (o.op === "set") {
         if (!exists(o.id)) continue;
         if (o.key === "parentId" && typeof o.value === "string" && !exists(o.value)) continue;
@@ -405,6 +411,11 @@ export function replayRecovered(base: Document, changes: readonly (readonly Oper
       kept.push(o);
     }
     let whole = kept.length === change.length;
+    // Keep never deletes content: an edit that deletes and can't apply in full is skipped as a whole.
+    if (!whole && kept.some((o) => o.op === "delete")) {
+      kept.length = 0;
+      for (const id of created) dropped.add(id);
+    }
     if (kept.length) {
       try {
         replayOps(doc, reposition(doc, kept));

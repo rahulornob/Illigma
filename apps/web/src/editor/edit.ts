@@ -1,4 +1,4 @@
-import type { Document, Operation, ReadonlyNode, Transaction } from "@illigma/core";
+import { DocumentError, isInsideInstance, type Document, type Operation, type ReadonlyNode, type Transaction } from "@illigma/core";
 import type { NodeId } from "@illigma/format";
 import { isInFlow, padding, rotatedBounds, type ResizeEntry } from "@illigma/layout";
 import { flowParent, inFlow, resizeLayers } from "./layout";
@@ -177,7 +177,16 @@ export function resizeBy(tx: Transaction, doc: Document, starts: readonly Start[
 
 /** Delete the layers (and everything inside them). */
 export function deleteLayers(tx: Transaction, doc: Document, ids: readonly NodeId[]): void {
+  refuseInsideInstance(doc, topmost(doc, ids), "deleted");
   for (const id of topmost(doc, ids)) tx.delete(id);
+}
+
+/**
+ * An instance's layers come from its main component, so (as in Figma) they
+ * can't be deleted, duplicated or grouped: hide them, or detach the instance.
+ */
+export function refuseInsideInstance(doc: Document, ids: readonly NodeId[], verb: string): void {
+  if (ids.some((id) => isInsideInstance(doc, id))) throw new DocumentError(`Layers inside an instance can't be ${verb}. Hide them, or detach the instance first.`);
 }
 
 /**
@@ -192,6 +201,7 @@ export function duplicateLayers(
   /** `inPlace`: no offset for top-level frames (⌥-drag); `idFor`: the copy's id for a source (stable across live updates). */
   opts: { inPlace?: boolean; idFor?: (source: NodeId) => NodeId } = {},
 ): NodeId[] {
+  refuseInsideInstance(doc, topmost(doc, ids), "duplicated");
   const copy = (n: ReadonlyNode, parent: NodeId, position: "last" | { after: NodeId }, dx: number): NodeId => {
     const { id: _id, type, parentId: _parent, index: _index, ...fields } = n;
     const id = opts.idFor ? tx.create(type, parent, { ...fields, x: n.x + dx }, position, opts.idFor(n.id)) : tx.create(type, parent, { ...fields, x: n.x + dx }, position);

@@ -21,6 +21,14 @@ After v1.0: a Tauri desktop app in v1.x, then optional multiplayer (CRDT over LA
 
 ## [Unreleased]
 
+### Fixed (2026-10-19, QC round 9: components, recovery and paste)
+
+- **Crash recovery deleted a frame turned into a component.** ⌥⌘K on a frame changes its type by deleting and re-creating it with the same ids; recovery's Keep applied the delete but skipped the re-create (the id still existed when it was checked), so the frame and its layers were lost and autosaved. `replayRecovered` now tracks ids deleted earlier in the same edit, and an edit that deletes but can't apply in full is skipped as a whole: Keep never deletes content. Test in `files.test.ts`, e2e in `recovery.mjs`.
+- **Components containing each other grew without limit.** New `wouldCreateCycle` and `componentsUsed` in core (instances, other variants of their sets, instance-swap properties and overrides, transitively). Refused with "A component can't contain an instance of itself.": `createInstance`, `setVariant`, instance swap, Layers panel drops, canvas drops, and paste. Files that already have a cycle stop syncing that instance (with a console warning) instead of growing.
+- **Copies of layers inside an instance shared overrides with the original.** As in Figma, layers inside an instance can't be deleted, duplicated (⌘D, ⌥-drag) or grouped (a short message says so), dragged out, or receive drops; a paste with an instance (or its layer) selected goes beside the instance. Pasted copies keep `mainId` only inside a pasted instance in the same file.
+- **Paste of a main component** now pastes an instance of it in the same file, as in Figma (⌘D still makes a new main). In another file (no libraries yet) it pastes as a new local component, and instances become frames.
+- **Paste into another file left dangling style and variable links.** Copies carry the styles, variables (with their aliases) and collections their layers use. A paste in another file reuses equal ones (same name and value), adds missing ones, and detaches a link whose name is taken by a different value (the values stay). Links to anything the file doesn't have are removed. Paste with nothing selected still lands on the page, as in Figma; with a frame selected, inside it.
+
 ### Added (2026-10-19, styles and variables)
 
 - **Local styles**: paint, text, effect and grid styles stored in `manifest.json` (`styles`, written only when a file has some, so older files save byte-identical). Layers link with `fillStyleId`, `strokeStyleId`, `textStyleId`, `effectStyleId` and `gridStyleId`. Editing a style updates every layer that uses it in the same undo step. Editing a linked field by hand detaches it, as in Figma.

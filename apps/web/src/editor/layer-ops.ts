@@ -5,10 +5,10 @@
  * delete, rename, reorder). Every function writes into a transaction, so the
  * caller decides the undo step; layers always keep their place on the page.
  */
-import type { Document, ReadonlyNode, Transaction } from "@illigma/core";
+import { isInsideInstance, ownerInstance, wouldCreateCycle, type Document, type ReadonlyNode, type Transaction } from "@illigma/core";
 import type { NodeId, NodeType } from "@illigma/format";
 import { isAutoLayout, isInFlow, rotatedBounds } from "@illigma/layout";
-import { topmost } from "./edit";
+import { refuseInsideInstance, topmost } from "./edit";
 import { placementOf, rotate, toSpace, type Rect } from "./geometry";
 
 const tidy = (v: number) => Math.round(v * 100) / 100;
@@ -104,6 +104,7 @@ function boxInParent(n: ReadonlyNode): Rect {
 export function wrapLayers(tx: Transaction, doc: Document, ids: readonly NodeId[], type: "GROUP" | "FRAME"): NodeId | null {
   const layers = documentOrder(doc, topmost(doc, ids));
   if (!layers.length) return null;
+  refuseInsideInstance(doc, layers, "grouped");
   const parentId = commonParent(doc, layers);
   if (!parentId) return null;
   const parent = doc.get(parentId);
@@ -238,6 +239,9 @@ export type DropPlace = { parentId: NodeId; position: "first" | "last" | { befor
 export function canDrop(doc: Document, ids: readonly NodeId[], place: DropPlace): boolean {
   const target = doc.get(place.parentId);
   if (!isContainer(target)) return false;
+  // An instance's layers come from its main component: nothing goes in or out (as in Figma), and no component goes in itself.
+  if (ownerInstance(doc, place.parentId) || ids.some((id) => isInsideInstance(doc, id))) return false;
+  if (wouldCreateCycle(doc, ids, place.parentId)) return false;
   const chain = new Set([place.parentId, ...ancestors(doc, place.parentId)]);
   if (ids.some((id) => chain.has(id))) return false;
   const pos = place.position;

@@ -246,4 +246,40 @@ await runE2E("recovery", {}, async ({ browser, url, log, check, outDir, errors }
     check(x === 80, `after a reload right after 20 nudges, Hero should be at X 80 (saved, or offered for recovery), got ${x}`);
     await context.close();
   }
+  // ---------- A frame turned into a component (QC round 9: Keep deleted it) ----------
+  {
+    const context = await newContext(browser);
+    const page = await context.newPage();
+    watchErrors(page, errors);
+    await page.addInitScript(failWritesInit);
+    log("frame to component: ⌥⌘K on the Card frame, then crash before it is saved");
+    const fileId = await createFile(page, url);
+    await waitSaved(page);
+    await page.evaluate(() => (globalThis.__e2eFail = "package"));
+    await layerRow(page, "Card").click();
+    await page.locator("canvas.canvas").focus();
+    await page.keyboard.press("Alt+ControlOrMeta+k");
+    await page.locator(".layer-list .layer-row", { hasText: /^Card$/ }).first().waitFor();
+    await poll(async () => (await readJournal(page, fileId)).includes('"COMPONENT"'), "the journal should record the new component");
+    await page.close();
+
+    const next = await context.newPage();
+    watchErrors(next, errors);
+    await next.goto(`${url}#/file/${fileId}`);
+    await canvasReady(next);
+    await banner(next).waitFor({ timeout: T(5_000) });
+    await banner(next).getByRole("button", { name: "Keep" }).click();
+    await banner(next).waitFor({ state: "detached", timeout: T(5_000) });
+    await canvasReady(next);
+    const notice = await next.locator(".banner", { hasText: "no longer fit" }).count();
+    check(notice === 0, "Keep should apply the frame-to-component edit in full, not skip it");
+    check((await layerRows(next).count()) === 7, `Keep must not delete the frame or its layers (7 layers), found ${await layerRows(next).count()}`);
+    const label = await layerRow(next, "Card").first().getAttribute("aria-label");
+    check(/component/i.test(label ?? ""), `Card should be a component after Keep, got "${label}"`);
+    await waitSaved(next);
+    await next.reload();
+    await canvasReady(next);
+    check((await layerRows(next).count()) === 7, "the recovered component and its layers should be saved in the file");
+    await context.close();
+  }
 });

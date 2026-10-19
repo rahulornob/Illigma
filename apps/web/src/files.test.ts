@@ -1,6 +1,6 @@
 // Regression tests for opening files and crash recovery in the web app (QC review).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Document, type Operation } from "@illigma/core";
+import { createComponent, Document, type Operation } from "@illigma/core";
 import { importPrototypeJson, readPackage, writePackage } from "@illigma/format";
 import { Autosaver, opfsBackend, RecoveryJournal } from "@illigma/host-web";
 import { FakeFileSystem, installFakeOpfs } from "@illigma/host-web/testing";
@@ -90,6 +90,30 @@ describe("recovery in the web app", () => {
     const again = await reopen(doc.fileId);
     expect(again.recovered).toHaveLength(1);
     expect(again.recovered[0]!.map((o) => o.op)).toEqual(["create", "create"]);
+  });
+
+  it("Keep recovers a frame turned into a component (delete + create with the same ids) (QC9)", async () => {
+    const { doc, f, r } = base();
+    await crashAfter(doc, () => doc.transact("component", (tx) => createComponent(doc, tx, [f])));
+    const s = await openStoredFile(doc.fileId, "T");
+    const kept = await keepRecovered(s);
+    expect(kept.notice).toBeUndefined();
+    expect(kept.doc.get(f)?.type).toBe("COMPONENT");
+    expect(kept.doc.get(r)?.parentId).toBe(f);
+    closeSession(kept);
+  });
+
+  it("an edit that deletes and can't apply in full is skipped whole: Keep never deletes content (QC9)", () => {
+    const { doc, f, r } = base();
+    const del = [
+      { op: "delete", node: doc.get(r)! },
+      { op: "delete", node: doc.get(f)! },
+      { op: "create", node: { ...doc.get(f)!, parentId: "missing" } },
+    ] as never;
+    const { doc: out, skipped } = replayRecovered(doc, [del]);
+    expect(skipped).toBe(1);
+    expect(out.has(f)).toBe(true);
+    expect(out.has(r)).toBe(true);
   });
 
   it("replayRecovered skips the subtree of a skipped create across later edits", () => {

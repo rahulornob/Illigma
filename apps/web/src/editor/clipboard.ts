@@ -4,12 +4,13 @@
  * page position and the images they use) under CLIPBOARD_TYPE, and the layer
  * names as text/plain for other apps.
  */
-import type { Document, ReadonlyNode, Transaction } from "@illigma/core";
-import type { Node, NodeId } from "@illigma/format";
+import { CYCLE_MESSAGE, DocumentError, ownerInstance, wouldCreateCycle, type Document, type ReadonlyNode, type Transaction } from "@illigma/core";
+import { COMPONENT_KEYS, type Node, type NodeId } from "@illigma/format";
 import { isAutoLayout } from "@illigma/layout";
 import { topmost } from "./edit";
 import { placementOf, rotate, toSpace, worldBounds, unionRects, type Rect } from "./geometry";
 import { documentOrder, isContainer } from "./layer-ops";
+import { collectDefinitions, identityMap, importDefinitions, remapDefinitions, type ClipDefinitions, type DefinitionMap } from "./clip-defs";
 
 export const CLIPBOARD_TYPE = "application/x-illigma+json";
 const KIND = "illigma/layers";
@@ -37,6 +38,8 @@ export interface ClipData {
   layers: ClipTop[];
   /** Image bytes (base64) by hash, for every image the layers use. */
   images: Record<string, string>;
+  /** The styles and variables the layers use, for a paste in another file. */
+  definitions?: ClipDefinitions;
 }
 
 function clip(doc: Document, n: ReadonlyNode): ClipNode {
@@ -82,7 +85,8 @@ export function serializeLayers(doc: Document, ids: readonly NodeId[]): ClipData
     if (bytes) images[h] = toBase64(bytes);
   }
   const bounds = unionRects(layers.map((id) => worldBounds(doc, id)).filter((r): r is Rect => r !== null)) ?? { x: 0, y: 0, width: 0, height: 0 };
-  return { kind: KIND, version: 1, fileId: doc.fileId, sourceIds: layers, bounds, layers: out, images };
+  const definitions = collectDefinitions(doc, out);
+  return { kind: KIND, version: 1, fileId: doc.fileId, sourceIds: layers, bounds, layers: out, images, ...(definitions.styles || definitions.variables ? { definitions } : {}) };
 }
 
 /** The names of the copied layers, one per line (text/plain). */
@@ -118,7 +122,10 @@ export interface PasteOptions {
 export function pasteTarget(doc: Document, data: ClipData, opts: PasteOptions): { parentId: NodeId; after: NodeId | null } {
   const sel = opts.selection.filter((id) => doc.has(id));
   if (sel.length === 1) {
-    const n = doc.get(sel[0] as NodeId) as ReadonlyNode;
+    // Nothing is pasted into an instance (its layers come from its main component): it goes beside the instance.
+    const owner = ownerInstance(doc, sel[0] as NodeId);
+    const n = (owner ?? doc.get(sel[0] as NodeId)) as ReadonlyNode;
+    if (owner) return { parentId: owner.parentId as NodeId, after: owner.id };
     const copiedHere = data.fileId === doc.fileId && data.sourceIds.includes(n.id);
     if (!copiedHere && isContainer(n) && n.type !== "PAGE") return { parentId: n.id, after: null };
     if (n.parentId) return { parentId: n.parentId, after: n.id };
@@ -156,25 +163,68 @@ export function pasteLayers(tx: Transaction, doc: Document, data: ClipData, opts
       dy = Math.round(area.y + area.height / 2 - (b.y + b.height / 2));
     }
   }
+  const sameFile = data.fileId === doc.fileId;
+  // A copied main component pastes as an instance of it in the same file (as in Figma; ⌘D still makes a new main).
+  const asInstance = data.layers.map((top, k) => {
+    const src = data.sourceIds[k];
+    return sameFile && top.node.type === "COMPONENT" && src && doc.get(src)?.type === "COMPONENT" ? src : null;
+  });
+  if (sameFile) {
+    const used = new Set<NodeId>(asInstance.filter((c): c is NodeId => !!c));
+    for (const top of data.layers) for (const n of walk(top)) if (n.node.type === "INSTANCE" && n.node.componentId && doc.get(n.node.componentId)?.type === "COMPONENT") used.add(n.node.componentId);
+    if (used.size && wouldCreateCycle(doc, [...used], parentId)) throw new DocumentError(CYCLE_MESSAGE);
+  }
+  const ctx: Ctx = { tx, hashes: hashMap, sameFile, defs: sameFile ? identityMap(doc) : importDefinitions(tx, doc, data.definitions ?? {}) };
   const out: NodeId[] = [];
   let pos: { after: NodeId } | "last" = after ? { after } : "last";
   const flow = parent && isAutoLayout(parent);
-  for (const top of data.layers) {
+  data.layers.forEach((top, k) => {
     const local = toSpace(space, top.world.x + dx, top.world.y + dy);
     const rotation = Math.round((top.world.rotation - space.rotation) * 100) / 100;
-    const id = create(tx, top, parentId, pos, hashMap, { x: Math.round(local.x * 100) / 100, y: Math.round(local.y * 100) / 100, rotation });
+    const at = { x: Math.round(local.x * 100) / 100, y: Math.round(local.y * 100) / 100, rotation };
+    const main = asInstance[k];
+    const id = main
+      ? tx.create("INSTANCE", parentId, { name: top.node.name, ...at, width: top.node.width, height: top.node.height, componentId: main }, pos)
+      : create(ctx, top, parentId, pos, false, at);
     if (!flow && top.node.layoutPositioning === "ABSOLUTE") tx.set(id, "layoutPositioning", undefined);
     out.push(id);
     pos = { after: id };
-  }
+  });
   return out;
 }
 
-function create(tx: Transaction, c: ClipNode, parentId: NodeId, position: { after: NodeId } | "last", hashes: Map<string, string>, over: Partial<Node> = {}): NodeId {
-  const fields = remapImages({ ...c.node, ...over }, hashes) as Node;
-  const { type, ...rest } = fields;
-  const id = tx.create(type, parentId, rest as never, position);
-  for (const k of c.children ?? []) create(tx, k, id, "last", hashes);
+function* walk(c: ClipNode): Generator<ClipNode> {
+  yield c;
+  for (const k of c.children ?? []) yield* walk(k);
+}
+
+interface Ctx {
+  tx: Transaction;
+  hashes: Map<string, string>;
+  sameFile: boolean;
+  defs: DefinitionMap;
+}
+
+/**
+ * Create a copied layer. `mainId` (which layer of a main component a layer
+ * copies) is kept only inside a pasted instance in the same file, so a copy
+ * never shares overrides with the layer it came from. In another file,
+ * instances become frames (there are no libraries: their main component isn't
+ * there); a copied main component becomes a new local component.
+ */
+function create(ctx: Ctx, c: ClipNode, parentId: NodeId, position: { after: NodeId } | "last", inInstance: boolean, over: Partial<Node> = {}): NodeId {
+  const fields = remapDefinitions(remapImages({ ...c.node, ...over }, ctx.hashes) as unknown as Record<string, unknown>, ctx.defs) as unknown as Node;
+  let { type, ...rest } = fields;
+  const r = rest as Record<string, unknown>;
+  if (!ctx.sameFile && type === "INSTANCE") {
+    type = "FRAME";
+    for (const k of COMPONENT_KEYS) delete r[k];
+  }
+  const keepMain = ctx.sameFile && inInstance;
+  if (!keepMain) delete r.mainId;
+  const id = ctx.tx.create(type, parentId, rest as never, position);
+  const inside = inInstance || (ctx.sameFile && type === "INSTANCE");
+  for (const k of c.children ?? []) create(ctx, k, id, "last", inside);
   return id;
 }
 

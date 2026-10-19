@@ -1,6 +1,6 @@
 import { useEffect, useImperativeHandle, useRef, useState, type PointerEvent as ReactPointerEvent, type Ref } from "react";
 import type { CanvasKit } from "canvaskit-wasm";
-import { newId, type Document, type LiveEdit, type Transaction } from "@illigma/core";
+import { isInsideInstance, newId, type Document, type LiveEdit, type Transaction } from "@illigma/core";
 import type { NodeId, NodeType } from "@illigma/format";
 import { GpuCanvas, PageRenderer, type Camera, type TextEngine } from "@illigma/renderer";
 import { loadCanvasKit, loadTextEngine } from "./text/engine";
@@ -960,11 +960,12 @@ export function Canvas(props: CanvasProps) {
       const assist = new EdgeAssist(d, starts.map((s) => s.id));
       l.gesture = { kind: "resize", wx: g.wx, wy: g.wy, starts, handle: g.handle, edit, last, assist };
     } else {
-      // ⌥-drag duplicates: the copies move, the originals stay (and can be snapped to).
+      // ⌥-drag duplicates: the copies move, the originals stay (and can be snapped to). Not layers inside an instance: they just move.
+      const dupOk = alt && !starts.some((s) => isInsideInstance(d, s.id));
       const ids = starts.map((s) => s.id);
-      const edit = d.beginLive(alt ? plural(starts.length, "Duplicate") : plural(starts.length, "Move"));
-      const assist = new MoveAssist(d, l.props.pageId, ids, box, alt);
-      l.gesture = { kind: "move", wx: g.wx, wy: g.wy, starts, box, edit, last, assist, dup: alt ? new Map() : null, apply: null };
+      const edit = d.beginLive(dupOk ? plural(starts.length, "Duplicate") : plural(starts.length, "Move"));
+      const assist = new MoveAssist(d, l.props.pageId, ids, box, dupOk);
+      l.gesture = { kind: "move", wx: g.wx, wy: g.wy, starts, box, edit, last, assist, dup: dupOk ? new Map() : null, apply: null };
     }
   };
 

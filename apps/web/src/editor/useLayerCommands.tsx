@@ -83,12 +83,18 @@ export function useLayerCommands({ doc, pageId, selection, setSelection, locked,
       const { doc, pageId, selection, locked } = state.current;
       if (locked) return;
       const viewport = canvas.current?.viewport();
-      const ids = layoutTransact(doc, data.layers.length === 1 ? "Paste layer" : `Paste ${data.layers.length} layers`, (tx) =>
-        pasteLayers(tx, doc, data, { selection, pageId, inPlace: here, viewport }),
-      );
+      let ids: NodeId[] | null | undefined;
+      try {
+        ids = layoutTransact(doc, data.layers.length === 1 ? "Paste layer" : `Paste ${data.layers.length} layers`, (tx) =>
+          pasteLayers(tx, doc, data, { selection, pageId, inPlace: here, viewport }),
+        );
+      } catch (e) {
+        onError(e); // e.g. a component pasted into itself: refused, nothing changed
+        return;
+      }
       if (ids?.length) setSelection(ids);
     },
-    [canvas, setSelection],
+    [canvas, setSelection, onError],
   );
 
   const run = useCallback(

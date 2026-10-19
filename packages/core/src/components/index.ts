@@ -26,7 +26,7 @@
 
 import type { Node, NodeId, NodeKey, NodeType, OverrideFields } from "@illigma/format";
 import { COMPONENT_KEYS, parseVariantName, variantName } from "@illigma/format";
-import type { Document, Normalizer, Transaction } from "../document.js";
+import { DocumentError, type Document, type Normalizer, type Transaction } from "../document.js";
 import { clone, sameValue, type Operation, type ReadonlyNode } from "../operations.js";
 
 const STRUCTURE = new Set<string>(["id", "type", "parentId", "index"]);
@@ -110,6 +110,64 @@ function componentAncestors(doc: Document, id: NodeId | null, out: Set<NodeId>):
   }
 }
 
+/**
+ * Every COMPONENT that the layers `ids` use, directly or through each other:
+ * the COMPONENTs among them, the main components of instances inside them,
+ * the other variants of those components' sets (an instance can switch to
+ * them), and components named by instance-swap properties and overrides.
+ */
+export function componentsUsed(doc: Document, ids: readonly NodeId[]): Set<NodeId> {
+  const used = new Set<NodeId>();
+  const scanned = new Set<NodeId>();
+  const queue: NodeId[] = [...ids];
+  const addComponent = (id: unknown) => {
+    if (typeof id !== "string" || used.has(id)) return;
+    const c = doc.get(id);
+    if (c?.type !== "COMPONENT") return;
+    used.add(id);
+    queue.push(id);
+    const set = c.parentId ? doc.get(c.parentId) : undefined;
+    if (set?.type === "COMPONENT_SET") for (const v of doc.children(set.id)) if (v.type === "COMPONENT") addComponent(v.id);
+  };
+  while (queue.length) {
+    const root = queue.pop() as NodeId;
+    if (scanned.has(root)) continue;
+    scanned.add(root);
+    for (const n of doc.subtree(root)) {
+      if (n.type === "COMPONENT") addComponent(n.id);
+      for (const d of Object.values(n.componentPropertyDefinitions ?? {})) if (d.type === "INSTANCE_SWAP") addComponent(d.defaultValue);
+      if (n.type !== "INSTANCE") continue;
+      addComponent(n.componentId);
+      for (const v of Object.values(n.componentProperties ?? {})) addComponent(v);
+      for (const o of Object.values(n.overrides ?? {})) addComponent((o as Fields).componentId);
+    }
+  }
+  return used;
+}
+
+/** The COMPONENTs `id` is in (itself included). */
+function enclosingComponents(doc: Document, id: NodeId | null): Set<NodeId> {
+  const out = new Set<NodeId>();
+  componentAncestors(doc, id, out);
+  return out;
+}
+
+/**
+ * True if putting the layers `ids` (or an instance of component `ids`) inside
+ * `targetParent` would make a component contain itself, directly or through
+ * instances of other components (A has an instance of B, B one of A). Such a
+ * component would grow without limit, so every command refuses it.
+ */
+export function wouldCreateCycle(doc: Document, ids: NodeId | readonly NodeId[], targetParent: NodeId | null): boolean {
+  const around = enclosingComponents(doc, targetParent);
+  if (!around.size) return false;
+  for (const c of componentsUsed(doc, typeof ids === "string" ? [ids] : ids)) if (around.has(c)) return true;
+  return false;
+}
+
+/** The message shown when a command would nest a component in itself. */
+export const CYCLE_MESSAGE = "A component can't contain an instance of itself.";
+
 /** The VARIANT properties of a COMPONENT_SET, from its variants' names: property → values in order. */
 export function variantProperties(doc: Document, setId: NodeId): Record<string, string[]> {
   const out: Record<string, string[]> = {};
@@ -156,6 +214,16 @@ export function syncInstance(doc: Document, tx: Transaction, id: NodeId): void {
   if (!inst || !main) return;
   // A component can't contain an instance of itself.
   for (let n: ReadonlyNode | undefined = inst; n; n = n.parentId ? doc.get(n.parentId) : undefined) if (n.id === main.id) return;
+  // Nor, through other components, one of a component it is in (a file made before this check): stop, never grow.
+  const around = enclosingComponents(doc, inst.parentId);
+  if (around.size) {
+    for (const c of componentsUsed(doc, [main.id])) {
+      if (around.has(c)) {
+        warnCycle(inst.id);
+        return;
+      }
+    }
+  }
   const ov = (inst.overrides ?? {}) as Readonly<Record<string, OverrideFields>>;
   const props = (inst.componentProperties ?? {}) as Readonly<Record<string, boolean | string>>;
 
@@ -166,6 +234,13 @@ export function syncInstance(doc: Document, tx: Transaction, id: NodeId): void {
     if (!sameValue(inst[k as keyof ReadonlyNode], rootWant[k])) tx.set(id, k as NodeKey, rootWant[k] as never);
   }
   syncChildren(doc, tx, main.id, id, ov, props, new Set([main.id]));
+}
+
+const warned = new Set<NodeId>();
+function warnCycle(id: NodeId): void {
+  if (warned.has(id)) return;
+  warned.add(id);
+  console.warn(`Instance ${id} is not updated: its main component contains it (a component cycle).`);
 }
 
 function syncChildren(
@@ -520,6 +595,7 @@ export function addVariant(doc: Document, tx: Transaction, setId: NodeId): NodeI
 export function createInstance(doc: Document, tx: Transaction, componentId: NodeId, parentId: NodeId, at: { x: number; y: number }): NodeId {
   const main = doc.get(componentId);
   if (main?.type !== "COMPONENT") throw new Error("Not a component.");
+  if (wouldCreateCycle(doc, componentId, parentId)) throw new DocumentError(CYCLE_MESSAGE);
   const setParent = main.parentId ? doc.get(main.parentId) : undefined;
   const name = setParent?.type === "COMPONENT_SET" ? setParent.name : main.name;
   const id = tx.create("INSTANCE", parentId, { name, x: at.x, y: at.y, width: main.width, height: main.height, componentId });
@@ -589,6 +665,10 @@ export function resetOverrides(doc: Document, tx: Transaction, id: NodeId, layer
 export function setInstanceProperty(doc: Document, tx: Transaction, id: NodeId, name: string, value: boolean | string | undefined): void {
   const n = doc.get(id);
   if (n?.type !== "INSTANCE") return;
+  // Swapping a nested instance to a component that holds this instance's component is a cycle.
+  if (typeof value === "string" && doc.get(value)?.type === "COMPONENT" && ((n.componentId && componentsUsed(doc, [value]).has(n.componentId)) || wouldCreateCycle(doc, value, n.parentId))) {
+    throw new DocumentError(CYCLE_MESSAGE);
+  }
   const props = { ...(n.componentProperties ?? {}) } as Record<string, boolean | string>;
   if (value === undefined) delete props[name];
   else props[name] = value;
@@ -614,6 +694,7 @@ export function setVariant(doc: Document, tx: Transaction, id: NodeId, prop: str
     }
   }
   if (!best || best.id === main.id) return false;
+  if (wouldCreateCycle(doc, best.id, doc.get(id)?.parentId ?? null)) throw new DocumentError(CYCLE_MESSAGE);
   tx.set(id, "componentId", best.id);
   return true;
 }

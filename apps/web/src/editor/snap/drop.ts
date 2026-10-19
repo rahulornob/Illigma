@@ -3,7 +3,7 @@
  * "Drop onto a frame"): which frame receives them, and moving them there with
  * their place on the page kept.
  */
-import type { Document, Transaction } from "@illigma/core";
+import { isInsideInstance, wouldCreateCycle, type Document, type Transaction } from "@illigma/core";
 import type { NodeId, NodeType } from "@illigma/format";
 import { isAutoLayout, isInFlow } from "@illigma/layout";
 import { placementOf, toSpace, worldBounds, type Rect } from "../geometry";
@@ -32,7 +32,7 @@ export function droppable(doc: Document, ids: readonly NodeId[]): NodeId[] {
   return ids.filter((id) => {
     const p = doc.get(id)?.parentId;
     const parent = p ? doc.get(p) : undefined;
-    return !!parent && LEAVABLE.has(parent.type);
+    return !!parent && LEAVABLE.has(parent.type) && !isInsideInstance(doc, id);
   });
 }
 
@@ -107,6 +107,7 @@ export function reparent(tx: Transaction, doc: Document, ids: readonly NodeId[],
   for (const id of ids) {
     const n = doc.get(id);
     if (!n || (n.parentId === target && !auto)) continue;
+    if (n.parentId !== target && wouldCreateCycle(doc, id, target)) continue; // a component never goes inside itself
     const p = placementOf(doc, id);
     const local = toSpace(space, p.x, p.y);
     const position = after
