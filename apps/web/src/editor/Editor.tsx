@@ -24,6 +24,7 @@ import { autoLayoutSelection, removeAutoLayout } from "./layout-model";
 import { useDocVersion, useSaveDisplay } from "./hooks";
 import { LayersPanel } from "./LayersPanel";
 import { PropertiesPanel } from "./PropertiesPanel";
+import { useComponents } from "./components/useComponents";
 import { openWarnings } from "./open-warnings";
 import { useImageImport } from "./paint/useImageImport";
 import { openExportDialog } from "./export/dialog-state";
@@ -555,6 +556,7 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
   // Layers and pages: clipboard, group, order, hide/lock, context menus; each page keeps its own camera and selection.
   const layerCommands = useLayerCommands({ doc, pageId, selection, setSelection, locked, canvas, onError: reportEditError });
   const switchPage = usePageMemory({ doc, pageId, selection, setPageId, setSelection, canvas });
+  const components = useComponents({ doc, pageId, canvas, locked, setSelection, switchPage, onError: reportEditError, drop: imageDrop });
   const onCanvasMenu = (e: { preventDefault(): void; clientX: number; clientY: number }) => {
     e.preventDefault();
     if (doc.live) return;
@@ -628,9 +630,10 @@ export function Editor({ session, onClose, onSession }: EditorProps) {
           readOnly={locked}
           onError={reportEditError}
           onLayerMenu={(x, y) => layerCommands.openMenu(x, y, "layers")}
+          onInsertComponent={components.insert}
         />
 
-        <main className="canvas-area" aria-label="Canvas area" {...imageDrop} onContextMenu={onCanvasMenu}>
+        <main className="canvas-area" aria-label="Canvas area" {...components.handlers} onContextMenu={onCanvasMenu}>
           <Canvas
             doc={doc}
             pageId={pageId}

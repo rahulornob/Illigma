@@ -11,7 +11,7 @@
  * resize) and the Hug/Fill → Fixed switch when a layer's size is set by hand.
  */
 
-import type { Document, DocumentOptions, Normalizer, ReadonlyNode, Transaction } from "@illigma/core";
+import { withComponents, type Document, type DocumentOptions, type Normalizer, type ReadonlyNode, type Transaction } from "@illigma/core";
 import type { NodeId } from "@illigma/format";
 import { changedIds, isAutoLayout, isInFlow, layoutSizing, relayout, resizeMany, type Box, type LayoutChange, type ResizeEntry, type TextMeasure } from "@illigma/layout";
 
@@ -40,7 +40,7 @@ export const layoutNormalizer: Normalizer = (doc, tx, ops) => {
 };
 
 /** Options for every document the editor opens or creates. */
-export const DOCUMENT_OPTIONS: DocumentOptions = Object.freeze({ normalize: layoutNormalizer });
+export const DOCUMENT_OPTIONS: DocumentOptions = Object.freeze({ normalize: withComponents(layoutNormalizer) });
 
 /** The auto layout frame `id` flows in, or null: a top-level layer, a plain parent, or a hidden or absolute-positioned child. */
 export function flowParent(doc: Document, id: NodeId): ReadonlyNode | null {

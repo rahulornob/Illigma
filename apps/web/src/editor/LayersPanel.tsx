@@ -7,6 +7,7 @@ import { canDrop, moveLayers, renameNode, isContainer, type DropPlace } from "./
 import { layoutTransact } from "./layout-props";
 import { PagesPanel, RenameField } from "./PagesPanel";
 import { RENAME_EVENT } from "./useLayerCommands";
+import { AssetsPanel } from "./components/AssetsPanel";
 
 interface LayersPanelProps {
   doc: Document;
@@ -18,6 +19,8 @@ interface LayersPanelProps {
   /** No edits (view-only tab): rows still select, but don't rename, hide, lock or move. */
   readOnly?: boolean;
   onError?(e: unknown): void;
+  /** Place an instance of a component (Assets tab: Enter or double-click). */
+  onInsertComponent?(componentId: NodeId): void;
   /** Open the layer context menu at a point (right-click or Shift+F10 on a row). */
   onLayerMenu?(x: number, y: number): void;
 }
@@ -247,7 +250,8 @@ export function dropTargetAt(rows: readonly LayerRowData[], doc: Document, pageI
   return { place: { parentId: row.parentId, position: { before: row.id } }, line: i + 1, depth: row.depth, into: null };
 }
 
-export function LayersPanel({ doc, pageId, selection, onPage, onSelect, readOnly = false, onError = () => {}, onLayerMenu }: LayersPanelProps) {
+export function LayersPanel({ doc, pageId, selection, onPage, onSelect, readOnly = false, onError = () => {}, onLayerMenu, onInsertComponent }: LayersPanelProps) {
+  const [leftTab, setLeftTab] = useState<"layers" | "assets">("layers");
   /** Collapsed layers, per page (the list starts expanded). */
   const [collapsedByPage, setCollapsedByPage] = useState<ReadonlyMap<NodeId, ReadonlySet<NodeId>>>(new Map());
   const collapsed = useMemo(() => collapsedByPage.get(pageId) ?? new Set<NodeId>(), [collapsedByPage, pageId]);
@@ -684,6 +688,17 @@ export function LayersPanel({ doc, pageId, selection, onPage, onSelect, readOnly
     <aside className="panel panel-left" aria-label="Layers">
       <PagesPanel doc={doc} pageId={pageId} readOnly={readOnly} onPage={onPage} onError={onError} />
 
+      <div className="panel-tabbar" role="tablist" aria-label="Left panel">
+        <button type="button" role="tab" aria-selected={leftTab === "layers"} onClick={() => setLeftTab("layers")}>
+          Layers
+        </button>
+        <button type="button" role="tab" aria-selected={leftTab === "assets"} onClick={() => setLeftTab("assets")}>
+          Assets
+        </button>
+      </div>
+      {leftTab === "assets" ? (
+        <AssetsPanel doc={doc} onInsert={(id) => onInsertComponent?.(id)} />
+      ) : (
       <section ref={scroller} className="panel-section panel-grow" aria-labelledby="layers-heading" style={{ position: "relative" }} onScroll={measure}>
         <h2 id="layers-heading" className="section-heading">
           Layers
@@ -709,6 +724,7 @@ export function LayersPanel({ doc, pageId, selection, onPage, onSelect, readOnly
           </div>
         )}
       </section>
+      )}
     </aside>
   );
 }

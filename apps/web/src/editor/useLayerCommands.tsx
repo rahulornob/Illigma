@@ -13,6 +13,7 @@ import { deleteLayers, duplicateLayers, topmost } from "./edit";
 import { inLayer } from "./focus";
 import { reorderZ, toggleLocked, toggleVisible, ungroupLayers, wrapLayers, type OrderStep } from "./layer-ops";
 import { layoutTransact } from "./layout-props";
+import { componentCommandsFor, runComponentCommand, type ComponentCommand } from "./components/commands";
 
 export type LayerCommand =
   | "copy"
@@ -29,7 +30,8 @@ export type LayerCommand =
   | "toggle-locked"
   | "rename"
   | "select-parent"
-  | "select-children";
+  | "select-children"
+  | ComponentCommand;
 
 /** Asks the Layers panel to rename a layer inline (⌘R, the context menu). */
 export const RENAME_EVENT = "illigma:rename-layer";
@@ -176,6 +178,14 @@ export function useLayerCommands({ doc, pageId, selection, setSelection, locked,
           case "toggle-locked":
             doc.transact("Lock/unlock", (tx) => toggleLocked(tx, doc, sel));
             return;
+          case "create-component":
+          case "combine-variants":
+          case "detach-instance":
+          case "reset-overrides": {
+            const next = runComponentCommand(doc, cmd, sel);
+            if (next) setSelection(next);
+            return;
+          }
         }
       } catch (e) {
         onError(e);
@@ -243,6 +253,8 @@ export function useLayerCommands({ doc, pageId, selection, setSelection, locked,
       else if (code === "KeyH" && e.shiftKey) cmd = "toggle-visible";
       else if (code === "KeyL" && e.shiftKey) cmd = "toggle-locked";
       else if (code === "KeyR" && !e.shiftKey && !e.altKey) cmd = "rename";
+      else if (code === "KeyK" && e.altKey && !e.shiftKey) cmd = "create-component";
+      else if (code === "KeyB" && e.altKey && !e.shiftKey) cmd = "detach-instance";
       else if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
         e.preventDefault();
         openAtFocus();
@@ -284,6 +296,7 @@ export function useLayerCommands({ doc, pageId, selection, setSelection, locked,
   const anyVisible = nodes.some((n) => n.visible);
   const anyUnlocked = nodes.some((n) => !n.locked);
   const noEdit = locked || !has;
+  const compCmds = componentCommandsFor(doc, sel);
   const entries: ContextEntry<LayerCommand>[] = [
     { value: "copy", label: "Copy", shortcut: "⌘C", disabled: !has },
     { value: "cut", label: "Cut", shortcut: "⌘X", disabled: noEdit },
@@ -300,6 +313,11 @@ export function useLayerCommands({ doc, pageId, selection, setSelection, locked,
     { value: "group", label: "Group selection", shortcut: "⌘G", disabled: noEdit },
     { value: "frame", label: "Frame selection", shortcut: "⌥⌘G", disabled: noEdit },
     { value: "ungroup", label: "Ungroup", shortcut: "⇧⌘G", disabled: noEdit || !canUngroup },
+    { kind: "separator" },
+    { value: "create-component", label: "Create component", shortcut: "⌥⌘K", disabled: locked || !compCmds["create-component"] },
+    ...(compCmds["combine-variants"] ? [{ value: "combine-variants" as const, label: "Combine as variants", disabled: locked }] : []),
+    ...(compCmds["detach-instance"] ? [{ value: "detach-instance" as const, label: "Detach instance", shortcut: "⌥⌘B", disabled: locked }] : []),
+    ...(compCmds["reset-overrides"] ? [{ value: "reset-overrides" as const, label: "Reset all changes", disabled: locked }] : []),
     { kind: "separator" },
     { value: "toggle-visible", label: anyVisible || !has ? "Hide" : "Show", shortcut: "⇧⌘H", disabled: noEdit },
     { value: "toggle-locked", label: anyUnlocked || !has ? "Lock" : "Unlock", shortcut: "⇧⌘L", disabled: noEdit },

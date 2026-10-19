@@ -27,7 +27,7 @@ export interface ComponentPropertyDefinition {
   /** BOOLEAN: true/false. TEXT: the text. INSTANCE_SWAP: a component id. VARIANT: one of `variantOptions`. */
   defaultValue: boolean | string;
   /** VARIANT only: the values, in order. */
-  variantOptions?: string[];
+  variantOptions?: readonly string[];
 }
 
 /** Which component property drives a field of a node inside a component. */
